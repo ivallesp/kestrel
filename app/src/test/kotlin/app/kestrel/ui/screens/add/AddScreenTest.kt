@@ -17,6 +17,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -121,6 +122,46 @@ class AddScreenTest {
                 .filter { it.touchBoundsInRoot.width < minimum || it.touchBoundsInRoot.height < minimum }
                 .map { node -> node.config.getOrNull(SemanticsProperties.Text)?.joinToString() ?: node.toString() }
         assertTrue("Touch targets under 48 dp: $small", small.isEmpty())
+    }
+
+    @Test
+    fun theKeyboardsDoneKeyOnTheMaxFieldDoesNotArm() {
+        val actions = RecordingActions()
+        composeRule.setContent {
+            KestrelTheme(darkTheme = false, reduceMotion = true) {
+                AddScreen(
+                    AddFixtures.ready(maxText = "90.00"),
+                    actions = actions,
+                    windowInsets = PhoneInsets,
+                    focusMax = false,
+                )
+            }
+        }
+        composeRule.onNodeWithContentDescription("Your max bid").performClick().performImeAction()
+        composeRule.waitForIdle()
+        assertEquals(emptyList<String>(), actions.asked)
+    }
+
+    @Test
+    fun theSetMaxSheetsDoneKeyDoesNotArm() {
+        var saves = 0
+        composeRule.setContent {
+            KestrelTheme(darkTheme = false, reduceMotion = true) {
+                EditMaxSheetBody(
+                    state = AddFixtures.setSheet,
+                    actions =
+                        object : EditMaxActions {
+                            override fun save() {
+                                saves++
+                            }
+                        },
+                    focusMax = false,
+                )
+            }
+        }
+        composeRule.onNodeWithContentDescription("Your max bid").performClick().performImeAction()
+        composeRule.waitForIdle()
+        assertEquals(0, saves)
     }
 
     @Test

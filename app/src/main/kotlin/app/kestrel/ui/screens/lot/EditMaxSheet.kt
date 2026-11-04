@@ -27,6 +27,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -178,6 +179,7 @@ fun EditMaxSheetContent(
 ) {
     val text = input.text.toString()
     val form = remember(text, state, now) { EditMaxForm.evaluate(text, state, now) }
+    val focusManager = LocalFocusManager.current
     val inkSoft = MaterialTheme.colorScheme.onSurfaceVariant
     Column(modifier.fillMaxWidth()) {
         // The fields scroll on a short screen; Save and Cancel stay pinned above the keyboard.
@@ -194,7 +196,15 @@ fun EditMaxSheetContent(
                 currencySymbol = state.currencySymbol,
                 error = form.error,
                 readOnly = state.locked != null,
-                onDone = { if (form.canSave) onSave() },
+                // Setting a first max arms the snipe and has more below (odd pence, timing): Done only hides the
+                // keyboard there. Editing or raising has nothing else to choose, so Done saves.
+                onDone = {
+                    if (state.kind == SheetKind.Set) {
+                        focusManager.clearFocus()
+                    } else if (form.canSave) {
+                        onSave()
+                    }
+                },
             )
             form.sum?.let { sum ->
                 Spacer(Modifier.height(12.dp))

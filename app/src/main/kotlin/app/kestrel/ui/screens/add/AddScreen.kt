@@ -44,6 +44,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -407,7 +408,14 @@ private fun ReadyPage(
         Spacer(Modifier.height(16.dp))
         FactsCard(page.facts, now)
         Spacer(Modifier.height(24.dp))
-        MaxEntryField(page.max, onDone = actions::arm, modifier = Modifier.focusRequester(maxFocus))
+        // Done only hides the keyboard: the odd pence, the timing and the group below are still to come, and
+        // arming is a money decision taken with its own button.
+        val focusManager = LocalFocusManager.current
+        MaxEntryField(
+            page.max,
+            onDone = { focusManager.clearFocus() },
+            modifier = Modifier.focusRequester(maxFocus),
+        )
         Spacer(Modifier.height(16.dp))
         WorstCaseRow(page.worstCase)
         page.oddPence?.let { oddPence ->

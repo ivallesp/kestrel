@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -153,7 +154,14 @@ fun EditMaxSheetBody(
         ) {
             SheetLot(state.lot)
             Spacer(Modifier.height(16.dp))
-            MaxEntryField(state.max, onDone = actions::save, modifier = Modifier.focusRequester(maxFocus))
+            // Setting a first max arms the snipe and has more below the field (odd pence, timing): Done only hides
+            // the keyboard there. Editing or raising has nothing else to choose, so Done saves.
+            val focusManager = LocalFocusManager.current
+            MaxEntryField(
+                state.max,
+                onDone = if (state.mode == EditMaxMode.Set) ({ focusManager.clearFocus() }) else actions::save,
+                modifier = Modifier.focusRequester(maxFocus),
+            )
             Spacer(Modifier.height(12.dp))
             WorstCaseRow(state.worstCase)
             state.oddPence?.let { oddPence ->

@@ -12,6 +12,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -146,6 +147,27 @@ class LotScreenTest {
         assertTouchTargets()
         composeRule.onNodeWithText("Sign in").performClick()
         assertEquals(listOf(LotAction.SIGN_IN), actions)
+    }
+
+    @Test
+    fun theSetMaxSheetsDoneKeyDoesNotArm() {
+        val moment = fixture.polaroidWatching
+        val state = moment.lotState(SheetRequest(SheetKind.Set, leadSeconds = 6))
+        var saves = 0
+        show {
+            EditMaxSheetContent(
+                state = state.sheet!!,
+                input = TextFieldState("70"),
+                now = state.now,
+                onSave = { saves++ },
+                onClose = {},
+                onUseAmount = {},
+                onSelectLead = {},
+            )
+        }
+        composeRule.onNodeWithContentDescription("Your max bid").performClick().performImeAction()
+        composeRule.waitForIdle()
+        assertEquals(0, saves)
     }
 
     @Test
