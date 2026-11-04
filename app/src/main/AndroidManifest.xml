@@ -25,6 +25,11 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Kestrel.Starting">
 
+        <!-- Nothing leaves the phone: no WebView usage metrics either. -->
+        <meta-data
+            android:name="android.webkit.WebView.MetricsOptOut"
+            android:value="true" />
+
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
