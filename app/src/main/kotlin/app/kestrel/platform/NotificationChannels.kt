@@ -21,8 +21,11 @@ object NotificationChannels {
      */
     const val BACKGROUND = "background"
 
-    /** Channels whose loss would hide something the user must see; Readiness checks these. */
-    val essential: List<String> = listOf(ATTENTION, RESULTS, LIVE)
+    /**
+     * Channels whose loss would hide something the user must see; Readiness checks these. The countdown is optional:
+     * a blocked [LIVE] channel fails the Live Updates check instead (its importance is below MIN).
+     */
+    val essential: List<String> = listOf(ATTENTION, RESULTS)
 
     private val names =
         mapOf(

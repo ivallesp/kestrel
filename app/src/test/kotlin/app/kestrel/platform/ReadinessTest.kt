@@ -225,6 +225,19 @@ class ReadinessTest {
     }
 
     @Test
+    fun aCountdownChannelTurnedOffIsALiveUpdatesProblemNotANotificationsOne() =
+        runTest {
+            probes.liveImportance = NotificationManager.IMPORTANCE_NONE
+
+            assertTrue(item(ReadinessKey.NOTIFICATIONS).ok)
+            val live = item(ReadinessKey.LIVE_UPDATES)
+            assertFalse(live.ok)
+            assertEquals("The \"Final countdown\" channel is turned down too far.", live.detail)
+            val fix = ReadinessFixes(context, probes).intent(ReadinessKey.LIVE_UPDATES)!!
+            assertEquals(NotificationChannels.LIVE, fix.getStringExtra(Settings.EXTRA_CHANNEL_ID))
+        }
+
+    @Test
     fun aLiveChannelTurnedDownFixOpensThatChannel() {
         probes.liveImportance = NotificationManager.IMPORTANCE_MIN
 
@@ -269,6 +282,14 @@ class ReadinessTest {
                 notifications.createNotificationChannel(
                     NotificationChannel(NotificationChannels.RESULTS, "Results", NotificationManager.IMPORTANCE_NONE),
                 )
+                // A countdown turned off leaves results and alerts on: the optional Live Updates row covers it.
+                notifications.createNotificationChannel(
+                    NotificationChannel(
+                        NotificationChannels.LIVE,
+                        "Final countdown",
+                        NotificationManager.IMPORTANCE_NONE,
+                    ),
+                )
                 shadowOf(notifications).setNotificationsEnabled(true)
                 ShadowAlarmManager.setCanScheduleExactAlarms(false)
                 shadowOf(
@@ -281,6 +302,7 @@ class ReadinessTest {
 
                 assertTrue(android.notificationsEnabled())
                 assertEquals(listOf(NotificationChannels.RESULTS), android.blockedChannels())
+                assertEquals(NotificationManager.IMPORTANCE_NONE, android.liveChannelImportance())
                 assertFalse(android.canScheduleExactAlarms())
                 assertTrue(android.isIgnoringBatteryOptimizations())
                 assertEquals(UsageStatsManager.STANDBY_BUCKET_RARE, android.standbyBucket())
