@@ -191,6 +191,34 @@ class SnipeRepository(
         }
 
     /**
+     * The user says how a bid ended that Kestrel could not read (see [SnipeRules.settleRefusal]). A win then counts
+     * for the snipe's group; a loss lets the group's other snipes bid.
+     */
+    suspend fun settle(
+        snipeId: Long,
+        won: Boolean,
+    ): EditResult =
+        edit(snipeId) { snipe, now ->
+            SnipeRules.settleRefusal(snipe, now)?.let { return@edit EditResult.NotAllowed(it) }
+            val reason = "You marked it ${if (won) "won" else "lost"} after checking eBay."
+            val result =
+                SnipeResult(
+                    outcome = if (won) SnipeOutcome.WON else SnipeOutcome.LOST,
+                    finalPrice = snipe.result?.finalPrice ?: snipe.lastPrice,
+                    bidSentAtUtcMillis = snipe.result?.bidSentAtUtcMillis,
+                    bidLeadMillis = snipe.result?.bidLeadMillis,
+                    replyLatencyMillis = snipe.result?.replyLatencyMillis,
+                    ebayReplyText = snipe.result?.ebayReplyText,
+                    reason = reason,
+                )
+            val status = if (won) SnipeStatus.WON else SnipeStatus.LOST
+            write(
+                snipe.copy(status = status, result = result, updatedAtUtcMillis = now),
+                event(snipe.id, now, TimelineKind.RESULT, reason),
+            )
+        }
+
+    /**
      * Hides the snipe; [undoDelete] brings it back unchanged. Rows stay in the database for a day so an undo always
      * works, then they are purged with their timeline and prices.
      */
@@ -199,7 +227,7 @@ class SnipeRepository(
         val outcome =
             database.withTransaction {
                 val snipe = snipes.find(snipeId)?.toSnipe() ?: return@withTransaction EditResult.NotFound
-                SnipeRules.deleteRefusal(snipe.status)?.let { return@withTransaction EditResult.NotAllowed(it) }
+                SnipeRules.deleteRefusal(snipe, now)?.let { return@withTransaction EditResult.NotAllowed(it) }
                 snipes.markDeleted(snipeId, now)
                 EditResult.Done(snipe)
             }

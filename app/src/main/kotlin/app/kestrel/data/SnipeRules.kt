@@ -55,12 +55,42 @@ internal object SnipeRules {
             else -> null
         }
 
-    fun deleteRefusal(status: SnipeStatus): String? =
-        if (!status.isFinal && status.family == StatusFamily.BIDDING) {
+    /**
+     * A snipe can be deleted unless a window may be running it. Long after the end none can be, so a snipe whose
+     * result Kestrel never read can be removed (which also lets its group go on).
+     */
+    fun deleteRefusal(
+        snipe: Snipe,
+        nowUtcMillis: Long,
+    ): String? =
+        if (!snipe.status.isFinal && snipe.status.family == StatusFamily.BIDDING && !longOver(snipe, nowUtcMillis)) {
             "The bid window is open. Cancel the snipe first."
         } else {
             null
         }
+
+    /**
+     * The user may say how a bid ended once the auction is long over and Kestrel could not read it: only for a snipe
+     * whose bid may be with eBay, and only once.
+     */
+    fun settleRefusal(
+        snipe: Snipe,
+        nowUtcMillis: Long,
+    ): String? =
+        when {
+            snipe.status.isFinal -> "This snipe has already finished."
+            snipe.status !in bidInFlight && snipe.result?.bidSentAtUtcMillis == null -> "Kestrel did not bid here."
+            !longOver(snipe, nowUtcMillis) -> "The auction has not ended yet, or Kestrel is still reading the result."
+            else -> null
+        }
+
+    // Past this long after the end no window runs a snipe (ListingCheckProcedure takes it as abandoned too).
+    private fun longOver(
+        snipe: Snipe,
+        nowUtcMillis: Long,
+    ): Boolean = nowUtcMillis > snipe.endTimeUtcMillis + ABANDONED_WINDOW_AFTER_END_MILLIS
+
+    private const val ABANDONED_WINDOW_AFTER_END_MILLIS = 10 * 60_000L
 
     /** The status a new or edited max leads to, judged against the last price Kestrel saw. */
     fun statusForMax(

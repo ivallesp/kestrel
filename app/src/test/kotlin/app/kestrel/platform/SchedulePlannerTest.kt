@@ -173,7 +173,14 @@ class SchedulePlannerTest {
         val second = planner.plan(sent, nowUtcMillis = end + 3 * MINUTE, lastCheckAttemptUtcMillis = end + 3 * MINUTE)
         assertEquals(end + 33 * MINUTE, second.check?.atUtcMillis)
 
-        val tooLate = planner.plan(sent, nowUtcMillis = end + 7 * HOUR, lastCheckAttemptUtcMillis = end + 6 * HOUR)
+        // Past six hours (the phone was off overnight, or eBay kept answering with sign-in pages) every six hours.
+        val later = planner.plan(sent, nowUtcMillis = end + 7 * HOUR, lastCheckAttemptUtcMillis = end + 6 * HOUR)
+        assertEquals(end + 12 * HOUR, later.check?.atUtcMillis)
+        val backOn = planner.plan(sent, nowUtcMillis = end + 30 * HOUR)
+        assertEquals(end + 30 * HOUR + MINUTE, backOn.check?.atUtcMillis)
+
+        val tooLate =
+            planner.plan(sent, nowUtcMillis = end + 3 * 24 * HOUR, lastCheckAttemptUtcMillis = end + 3 * 24 * HOUR)
         assertTrue(tooLate.isEmpty)
     }
 

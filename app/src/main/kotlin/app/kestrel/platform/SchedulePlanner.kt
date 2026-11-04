@@ -139,8 +139,9 @@ internal class SchedulePlanner(
     }
 
     /**
-     * When the policy has no more checks, a few spaced checks after the end settle a result the window could not
-     * (the phone was off, or the app was killed mid-window). They stop a few hours after the end.
+     * When the policy has no more checks, spaced checks after the end settle a result the window could not (the phone
+     * was off, the app was killed mid-window, eBay asked for a sign-in): every 30 min for six hours, then every six
+     * hours for three days. An unfinished snipe may hold its group back, so the checks only stop well after that.
      */
     private fun resolveCheckAt(
         end: Long,
@@ -148,7 +149,13 @@ internal class SchedulePlanner(
         lastCheck: Long?,
     ): Long? {
         val afterEndCheck = lastCheck?.takeIf { it >= end }
-        val spaced = afterEndCheck?.plus(RESOLVE_SPACING_MILLIS) ?: (end + FIRST_RESOLVE_DELAY_MILLIS)
+        val spacing =
+            if (afterEndCheck != null && afterEndCheck - end >= QUICK_RESOLVE_FOR_MILLIS) {
+                SLOW_RESOLVE_SPACING_MILLIS
+            } else {
+                RESOLVE_SPACING_MILLIS
+            }
+        val spaced = afterEndCheck?.plus(spacing) ?: (end + FIRST_RESOLVE_DELAY_MILLIS)
         val target = maxOf(spaced, now + MINIMUM_CHECK_DELAY_MILLIS)
         return target.takeIf { it <= end + RESOLVE_GIVE_UP_AFTER_MILLIS }
     }
@@ -162,6 +169,8 @@ internal class SchedulePlanner(
         const val BACKSTOP_FOR_CHECKS_WITHIN_MILLIS = 2 * 60 * MINUTE_MILLIS
         const val FIRST_RESOLVE_DELAY_MILLIS = 3 * MINUTE_MILLIS
         const val RESOLVE_SPACING_MILLIS = 30 * MINUTE_MILLIS
-        const val RESOLVE_GIVE_UP_AFTER_MILLIS = 6 * 60 * MINUTE_MILLIS
+        const val QUICK_RESOLVE_FOR_MILLIS = 6 * 60 * MINUTE_MILLIS
+        const val SLOW_RESOLVE_SPACING_MILLIS = 6 * 60 * MINUTE_MILLIS
+        const val RESOLVE_GIVE_UP_AFTER_MILLIS = 3 * 24 * 60 * MINUTE_MILLIS
     }
 }

@@ -367,6 +367,44 @@ class SnipeRepositoryTest {
         }
 
     @Test
+    fun aBidWhoseResultNeverCameIsSettledByTheUserOnceTheAuctionEnded() =
+        runTest {
+            val snipe = addArmed()
+            forceStatus(snipe.id, SnipeStatus.BID_SENT)
+            assertTrue("not before the end", repository.settle(snipe.id, won = true) is EditResult.NotAllowed)
+
+            now = snipe.endTimeUtcMillis + 2 * HOUR
+            val settled = repository.settle(snipe.id, won = false)
+
+            val lost = (settled as EditResult.Done).snipe
+            assertEquals(SnipeStatus.LOST, lost.status)
+            assertEquals(SnipeOutcome.LOST, lost.result?.outcome)
+            assertEquals("You marked it lost after checking eBay.", lastMessage(snipe.id))
+            assertTrue("once only", repository.settle(snipe.id, won = true) is EditResult.NotAllowed)
+        }
+
+    @Test
+    fun aSnipeThatNeverBidHasNothingToSettle() =
+        runTest {
+            val snipe = addArmed()
+            now = snipe.endTimeUtcMillis + 2 * HOUR
+
+            assertTrue(repository.settle(snipe.id, won = true) is EditResult.NotAllowed)
+        }
+
+    @Test
+    fun aSnipeLeftInABidStatusCanBeDeletedLongAfterItsEnd() =
+        runTest {
+            val snipe = addArmed()
+            forceStatus(snipe.id, SnipeStatus.BID_SENT)
+            assertTrue(repository.delete(snipe.id) is EditResult.NotAllowed)
+
+            now = snipe.endTimeUtcMillis + 2 * HOUR
+
+            assertTrue(repository.delete(snipe.id) is EditResult.Done)
+        }
+
+    @Test
     fun deleteIsRefusedWhileTheWindowIsOpen() =
         runTest {
             val snipe = addArmed()

@@ -190,6 +190,9 @@ open class AppContainer(
             reschedule = { snipe, lastCheckAttempt -> scheduler.schedule(snipe, lastCheckAttempt) },
             cancelSchedule = { scheduler.cancel(it) },
             nowUtcMillis = { clock.nowUtcMillis() },
+            nothingLeftToTry = { snipe, lastCheckAttempt ->
+                SchedulePlanner(schedulePolicy).plan(snipe, clock.nowUtcMillis(), lastCheckAttempt).isEmpty
+            },
         )
     }
 

@@ -61,6 +61,12 @@ class SnipeActions internal constructor(
 
     suspend fun delete(snipeId: Long): EditResult = repository.delete(snipeId).alsoWhenDone { stopEverything(snipeId) }
 
+    /** Marks a bid whose result Kestrel could not read as won or lost, after the user checked eBay. */
+    suspend fun settle(
+        snipeId: Long,
+        won: Boolean,
+    ): EditResult = repository.settle(snipeId, won).alsoWhenDone { stopEverything(snipeId) }
+
     suspend fun undoDelete(snipeId: Long): EditResult = repository.undoDelete(snipeId).rescheduled()
 
     private fun stopEverything(snipeId: Long) {
