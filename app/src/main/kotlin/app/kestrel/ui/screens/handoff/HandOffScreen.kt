@@ -3,6 +3,7 @@ package app.kestrel.ui.screens.handoff
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -23,12 +25,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.LastBaseline
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.kestrel.ui.components.RollingDigits
 import app.kestrel.ui.components.StateLabel
+import app.kestrel.ui.format.countdown
 import app.kestrel.ui.format.forDisplay
+import app.kestrel.ui.format.noWidow
+import app.kestrel.ui.format.spoken
+import app.kestrel.ui.model.LotStatus
 import app.kestrel.ui.model.detail
 import app.kestrel.ui.model.label
 import app.kestrel.ui.screens.ready.InlinePrimaryButton
@@ -36,6 +46,8 @@ import app.kestrel.ui.screens.signinbrowser.BrowserBar
 import app.kestrel.ui.screens.signinbrowser.BrowserSheetContent
 import app.kestrel.ui.theme.KestrelTheme
 import app.kestrel.ui.theme.Spacing
+import java.time.Duration
+import java.time.Instant
 
 /**
  * A snipe's listing handed to the user: the host bar with Done, what eBay wants in the snipe's own status words,
@@ -61,13 +73,16 @@ fun HandOffScreen(
                     host = state.page.host,
                     progress = state.page.progress.takeIf { state.url != null },
                     onClose = onClose,
-                    // Done ends on the 16 dp column, like every other screen edge (the bar pads 4 dp itself).
+                    // Done ends on the 16 dp column, like every other screen edge (the bar pads 4 dp itself). With the
+                    // snipe gone there is nothing to be done with, so the close button is the one way back.
                     actions = {
-                        InlinePrimaryButton(
-                            "Done",
-                            onClick = onDone,
-                            modifier = Modifier.padding(end = 12.dp),
-                        )
+                        if (!state.gone) {
+                            InlinePrimaryButton(
+                                "Done",
+                                onClick = onDone,
+                                modifier = Modifier.padding(end = 12.dp),
+                            )
+                        }
                     },
                 )
                 when {
@@ -113,8 +128,9 @@ private fun Guidance(state: HandOffUiState) {
             )
             Spacer(Modifier.height(6.dp))
             StateLabel(status.tone, status.label(state.now))
+            bidAtOf(status)?.takeIf { it > state.now }?.let { bidAt -> TimeToBid(bidAt, state.now) }
             Spacer(Modifier.height(4.dp))
-            Text(status.detail(state.now), style = MaterialTheme.typography.bodyMedium, color = inkSoft)
+            Text(status.detail(state.now).noWidow(), style = MaterialTheme.typography.bodyMedium, color = inkSoft)
             Spacer(Modifier.height(8.dp))
             Text(HINT, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
         }
@@ -133,12 +149,56 @@ private fun Gone() {
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "There is nothing to check on eBay’s page for it. Tap Done to go back.",
+            text = "There is nothing to check on eBay’s page for it.",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
+
+/**
+ * How long is left before Kestrel bids, ticking, as on S3: "9 m 29 s left". The deadline sentence under it names the
+ * clock time.
+ */
+@Composable
+private fun TimeToBid(
+    bidAt: Instant,
+    now: Instant,
+) {
+    val left = Duration.between(now, bidAt)
+    val ink = MaterialTheme.colorScheme.onSurface
+    Row(
+        Modifier
+            .padding(top = 4.dp)
+            .clearAndSetSemantics { contentDescription = "${left.spoken()} left before Kestrel bids." },
+    ) {
+        RollingDigits(
+            text = left.countdown(),
+            style = KestrelTheme.type.countdownMedium,
+            unitStyle = MaterialTheme.typography.headlineMedium,
+            color = ink,
+            modifier = Modifier.alignBy(LastBaseline),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            "left",
+            style = MaterialTheme.typography.headlineMedium,
+            color = ink,
+            modifier = Modifier.alignBy(LastBaseline),
+        )
+    }
+}
+
+/** When Kestrel bids, for the statuses that hand a page over before the bid. */
+private fun bidAtOf(status: LotStatus): Instant? =
+    when (status) {
+        is LotStatus.Captcha -> status.bidAt
+        is LotStatus.PhoneCheck -> status.bidAt
+        is LotStatus.NeedsYou -> status.bidAt
+        is LotStatus.SignInNeeded -> status.bidAt
+        is LotStatus.DryRunFailed -> status.bidAt
+        else -> null
+    }
 
 /** What to do on eBay's page; Done is in the bar above. */
 private const val HINT = "When eBay’s page shows the listing again, tap Done."

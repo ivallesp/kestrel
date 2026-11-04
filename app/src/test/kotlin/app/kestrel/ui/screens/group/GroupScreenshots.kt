@@ -1,5 +1,7 @@
 package app.kestrel.ui.screens.group
 
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.runtime.remember
 import app.kestrel.ui.harness.PhoneInsets
 import app.kestrel.ui.harness.ScreenshotTest
 import app.kestrel.ui.screens.add.SheetPreview
@@ -35,6 +37,21 @@ class GroupScreenshots : ScreenshotTest() {
     @Test fun missingLight() = group("group-missing", dark = false, GroupFixtures.missing)
 
     @Test fun menuLight() = group("group-menu", dark = false, GroupFixtures.members, menuOpen = true)
+
+    /** The overflow of a group after its win: Rename only, because no member is open to ungroup. */
+    @Test fun menuAfterWinLight() =
+        group("group-menu-after-win", dark = false, GroupFixtures.afterWin, time = "20:12", menuOpen = true)
+
+    @Test fun renameSheetLight() =
+        capture("group-rename-sheet", darkTheme = false, time = "18:08") {
+            val state = GroupFixtures.members
+            SheetPreview(
+                title = "Rename group",
+                backdrop = { GroupScreen(state = state, windowInsets = PhoneInsets) },
+            ) {
+                RenameGroupBody(name = remember { TextFieldState(state.title) }, onSave = {})
+            }
+        }
 
     @Test fun addPickerLight() =
         capture("group-add-picker", darkTheme = false, time = "18:08") {

@@ -101,7 +101,13 @@ internal object HistoryStateBuilder {
         val thisMonth = YearMonth.from(input.now.atZone(zone))
         val decidedLots = lots.filter { it.snipe.status == SnipeStatus.WON || it.snipe.status == SnipeStatus.LOST }
         val allThisMonth = decidedLots.all { YearMonth.from(HomeStateBuilder.finishedAt(it).atZone(zone)) == thisMonth }
-        val period = if (allThisMonth) " in ${input.now.monthHeading(input.now, zone)}" else ""
+        // Always a period: "in November", or since the month of the first result ("since December 2024").
+        val first = decidedLots.minOfOrNull { HomeStateBuilder.finishedAt(it) }
+        val period =
+            when {
+                allThisMonth || first == null -> " in ${input.now.monthHeading(input.now, zone)}"
+                else -> " since ${first.monthHeading(input.now, zone)}"
+            }
         val saved = stats.totalSavedUnderMax.filterNot { it.isZero() }
         val detail =
             if (saved.isEmpty()) {

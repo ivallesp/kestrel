@@ -34,9 +34,9 @@ class HomeTextTest {
 
     @Test
     fun theOverlineNamesTheDayAndTheZone() {
-        assertEquals("SUNDAY 9 NOVEMBER · TIMES IN GMT", HomeText.overline(now))
-        assertEquals("THURSDAY 3 JULY · TIMES IN BST", HomeText.overline(fixture.at("2025-07-03T09:00:00Z")))
-        assertEquals("WED 24 SEPTEMBER · TIMES IN BST", HomeText.overline(fixture.at("2025-09-24T09:00:00Z")))
+        assertEquals("SUNDAY 9 NOVEMBER · GMT", HomeText.overline(now))
+        assertEquals("THURSDAY 3 JULY · BST", HomeText.overline(fixture.at("2025-07-03T09:00:00Z")))
+        assertEquals("WEDNESDAY 24 SEPTEMBER · BST", HomeText.overline(fixture.at("2025-09-24T09:00:00Z")))
     }
 
     @Test
@@ -66,7 +66,7 @@ class HomeTextTest {
     fun theTimeLineCarriesTabularFiguresOnlyOnItsFigures() {
         val line = HomeText.timeLine(lot(fixture.omega.id), now)
         val figures = line.spanStyles.map { line.text.substring(it.start, it.end) }
-        assertEquals(listOf("21:02", "2 h${NO_BREAK_SPACE}53 m"), figures)
+        assertEquals(listOf("21:02", "2", "53"), figures)
     }
 
     @Test
@@ -170,8 +170,22 @@ class HomeTextTest {
         val moment = fixture.canonFinalMinute
         val hero = HomeFixtures.lotOf(moment)
         val line = HomeText.heroLine(hero, moment.now)
-        assertEquals("Kestrel bids £120.00 in 30 s, at 18:21:34, 6 s before the end.", plain(line))
-        assertEquals(listOf("30 s"), line.spanStyles.map { line.text.substring(it.start, it.end) })
+        assertEquals("Kestrel bids £120.00 in 30 s", plain(line))
+        assertEquals(listOf("30"), line.spanStyles.map { line.text.substring(it.start, it.end) })
+    }
+
+    @Test
+    fun theHeroLineIsOneShortLineInEveryBiddingState() {
+        val lines =
+            listOf(
+                fixture.canonBidSent to "Bid sent · waiting for eBay",
+                fixture.canonInTheLead to "In the lead · not won until 18:21:40",
+                fixture.canonOutbid to "Outbid · another max is higher",
+                fixture.canonSignInNeeded to "Sign in before 18:21:34 to keep this bid",
+            )
+        lines.forEach { (moment, expected) ->
+            assertEquals(expected, plain(HomeText.heroLine(HomeFixtures.lotOf(moment), moment.now)))
+        }
     }
 
     @Test
@@ -197,7 +211,7 @@ class HomeTextTest {
 
     @Test
     fun theAccountButtonNamesTheAccount() {
-        assertEquals("Settings and eBay account, lot.42", HomeText.accountDescription(fixture.ACCOUNT))
+        assertEquals("Settings and eBay account, oakshelf", HomeText.accountDescription(fixture.ACCOUNT))
         assertEquals("Settings and eBay account, signed out", HomeText.accountDescription(null))
     }
 }

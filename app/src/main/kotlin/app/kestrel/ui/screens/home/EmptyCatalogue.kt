@@ -26,6 +26,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -41,7 +42,8 @@ import app.kestrel.ui.format.secondsText
 
 /**
  * S1 with nothing on the list (DESIGN 3.19): a dashed plate waiting for the first lot, what Kestrel does, three steps
- * and "Paste eBay link". [leadSeconds] is the lead new snipes get, for the third step.
+ * and "Paste eBay link". [leadSeconds] is the lead new snipes get, for the third step. With large text the plate, which
+ * is decoration, gives its room to the words, so "Paste eBay link" shows above the dock without scrolling.
  */
 @Composable
 internal fun EmptyCatalogue(
@@ -51,8 +53,10 @@ internal fun EmptyCatalogue(
 ) {
     val scheme = MaterialTheme.colorScheme
     Column(modifier.fillMaxWidth()) {
-        EmptyPlate()
-        Spacer(Modifier.height(24.dp))
+        if (LocalDensity.current.fontScale < PLATE_GIVES_WAY_FONT_SCALE) {
+            EmptyPlate()
+            Spacer(Modifier.height(24.dp))
+        }
         Text(
             text = "Nothing on the list yet",
             style = MaterialTheme.typography.headlineMedium,
@@ -61,7 +65,7 @@ internal fun EmptyCatalogue(
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "Kestrel bids for you in the last seconds of an eBay auction, up to the maximum you set.",
+            text = "Kestrel bids for you in the last seconds of an eBay auction, up to the maximum you\u00A0set.",
             style = MaterialTheme.typography.bodyLarge,
             color = scheme.onSurfaceVariant,
         )
@@ -83,6 +87,9 @@ internal fun EmptyCatalogue(
         )
     }
 }
+
+/** From this font scale the empty plate is left out. */
+private const val PLATE_GIVES_WAY_FONT_SCALE = 1.3f
 
 /** The steps of DESIGN 6.3; the third names the lead time Kestrel will really use. */
 private fun steps(leadSeconds: Int): List<Pair<String, String>> =

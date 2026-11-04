@@ -57,7 +57,7 @@ internal fun BrowserBar(
                         size = 16.dp,
                         contentDescription = "Secure page",
                     )
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(8.dp))
                     Text(
                         text = host,
                         style = MaterialTheme.typography.titleSmall,

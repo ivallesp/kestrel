@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.InputTransformation
+import androidx.compose.foundation.text.input.OutputTransformation
 import androidx.compose.foundation.text.input.TextFieldBuffer
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.TextFieldState
@@ -28,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.LastBaseline
 import androidx.compose.ui.semantics.contentDescription
@@ -36,6 +38,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.dp
 import app.kestrel.ui.theme.KestrelTheme
 
@@ -83,6 +86,23 @@ object MaxInput {
                 if (filtered != current) replace(0, length, filtered)
             }
         }
+
+    /**
+     * What the field shows (DESIGN 3.18): the typed text with thousands separators ("2200.00" reads "2,200.00", as
+     * every other amount is written); the state keeps the raw digits.
+     */
+    val Display: OutputTransformation =
+        object : OutputTransformation {
+            override fun TextFieldBuffer.transformOutput() {
+                val text = asCharSequence().toString()
+                val point = text.indexOf('.').let { if (it < 0) text.length else it }
+                var index = point - 3
+                while (index > 0) {
+                    replace(index, index, ",")
+                    index -= 3
+                }
+            }
+        }
 }
 
 /**
@@ -91,7 +111,9 @@ object MaxInput {
  * Attention accent with the [error] line ("Too low: eBay needs at least £66.00") when the value is too low.
  *
  * [state] is hoisted into the screen state and keyed by the lot id, so it is never rebuilt on recomposition; "Use
- * £90.37" writes into it with setTextAndPlaceCursorAtEnd. [readOnly] is for the moment the edits lock.
+ * £90.37" writes into it with setTextAndPlaceCursorAtEnd. [readOnly] is for the moment the edits lock: the amount
+ * turns ink soft, the underline and "At least" go, so the field no longer looks editable. "At least" also gives way
+ * to the error line, which says the same with the reason.
  */
 @Composable
 fun MaxField(
@@ -117,10 +139,13 @@ fun MaxField(
     Column(modifier) {
         SmallCaps("Your max bid")
         Spacer(Modifier.height(4.dp))
+        // "£" and "At least" share a baseline; the amount's box matches the "£" box, full 44 sp line for both, so the
+        // amount sits on the same baseline. The amount is not aligned by its own baseline: an empty field measures its
+        // line with another font, and the row, with the underline under it, would move on the first keystroke.
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
             Text(
                 text = currencySymbol,
-                style = KestrelTheme.type.priceHero,
+                style = KestrelTheme.type.priceHero.copy(lineHeightStyle = FullLine),
                 color = inkSoft,
                 modifier = Modifier.alignBy(LastBaseline),
             )
@@ -130,7 +155,6 @@ fun MaxField(
                 modifier =
                     Modifier
                         .weight(1f)
-                        .alignBy(LastBaseline)
                         .semantics {
                             contentDescription = "Your max bid"
                             stateDescription = value.ifEmpty { "Empty" }
@@ -138,23 +162,32 @@ fun MaxField(
                         },
                 readOnly = readOnly,
                 inputTransformation = MaxInput.Transformation,
-                textStyle = KestrelTheme.type.priceHero.copy(color = ink),
+                outputTransformation = MaxInput.Display,
+                // The full 44 sp line whether the field is empty or not, the same box as the "£".
+                textStyle =
+                    KestrelTheme.type.priceHero.copy(
+                        color = if (readOnly) inkSoft else ink,
+                        lineHeightStyle = FullLine,
+                    ),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
                 onKeyboardAction = { onDone() },
                 lineLimits = TextFieldLineLimits.SingleLine,
                 interactionSource = interactions,
                 cursorBrush = SolidColor(ink),
             )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = "At least $minimum",
-                style = MaterialTheme.typography.bodyMedium,
-                color = inkSoft,
-                modifier = Modifier.alignBy(LastBaseline),
-            )
+            if (!readOnly && error == null) {
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "At least $minimum",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = inkSoft,
+                    modifier = Modifier.alignBy(LastBaseline),
+                )
+            }
         }
         val underlineColour =
             when {
+                readOnly -> Color.Transparent
                 error != null -> attention
                 focused -> ink
                 else -> MaterialTheme.colorScheme.outline
@@ -175,3 +208,6 @@ fun MaxField(
         }
     }
 }
+
+/** The amount's line keeps its whole 44 sp height, empty or not (see [MaxField]). */
+private val FullLine = LineHeightStyle(alignment = LineHeightStyle.Alignment.Center, trim = LineHeightStyle.Trim.None)

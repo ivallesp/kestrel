@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.TextSelectionColors
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
@@ -38,8 +37,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.kestrel.ui.components.ConnectedToggleRow
+import app.kestrel.ui.components.KestrelDialog
 import app.kestrel.ui.components.LotPlate
 import app.kestrel.ui.components.MaxField
+import app.kestrel.ui.components.OddPenceWords
 import app.kestrel.ui.components.SumRow
 import app.kestrel.ui.components.SymbolIcon
 import app.kestrel.ui.components.Symbols
@@ -52,6 +53,7 @@ import app.kestrel.ui.format.secondsText
 import app.kestrel.ui.theme.KestrelTheme
 import app.kestrel.ui.theme.PlateShapes
 import app.kestrel.ui.theme.Spacing
+import app.kestrel.ui.components.OddPenceCard as SharedOddPenceCard
 
 /** The S2 lot header (DESIGN S2 item 2): the 104 dp plate, the title in headlineSmall and the seller. */
 @Composable
@@ -145,64 +147,32 @@ internal fun WorstCaseRow(
     }
 }
 
-/**
- * The odd-pence card (DESIGN S2 item 6): neutral surfaceContainerHigh, "Make it £90.37" and why, with "Use". The
- * button sits on the card colour: on surfaceContainerHigh the tonal container would be the same paper.
- */
+/** The odd-pence card of S2 and the sheets (DESIGN S2 item 6), drawn by the shared [SharedOddPenceCard]. */
 @Composable
 internal fun OddPenceCard(
     oddPence: OddPence,
     onUse: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-    ) {
-        Row(
-            modifier = Modifier.padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f).padding(vertical = 4.dp)) {
-                val (title, detail) =
-                    when (oddPence) {
-                        is OddPence.Suggestion -> {
-                            "Make it ${oddPence.amount.formatted()}" to
-                                "Odd pence beat bidders who stop at$NO_BREAK_SPACE${oddPence.roundAmount.formatted()}."
-                        }
+    when (oddPence) {
+        is OddPence.Suggestion -> {
+            SharedOddPenceCard(
+                title = OddPenceWords.suggestionTitle(oddPence.amount),
+                detail = OddPenceWords.suggestionDetail(oddPence.roundAmount),
+                useDescription = "Use ${oddPence.amount.formatted()}",
+                onUse = onUse,
+                modifier = modifier,
+            )
+        }
 
-                        OddPence.Tip -> {
-                            "Try odd pence" to "Odd pence beat bidders who stop at round numbers."
-                        }
-                    }
-                Text(text = title, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
-                Text(
-                    text = detail,
-                    style = MaterialTheme.typography.bodySmall.copy(lineBreak = LineBreak.Heading),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (oddPence is OddPence.Suggestion) {
-                Spacer(Modifier.width(12.dp))
-                FilledTonalButton(
-                    onClick = onUse,
-                    shapes = ButtonDefaults.shapes(),
-                    colors =
-                        ButtonDefaults.filledTonalButtonColors(
-                            containerColor = KestrelTheme.catalogue.card,
-                            contentColor = MaterialTheme.colorScheme.onSurface,
-                        ),
-                    contentPadding = ButtonDefaults.contentPaddingFor(Spacing.InlineButtonHeight),
-                    modifier =
-                        Modifier
-                            .heightIn(min = Spacing.InlineButtonHeight)
-                            .semantics { contentDescription = "Use ${oddPence.amount.formatted()}" },
-                ) {
-                    Text("Use", style = MaterialTheme.typography.labelLarge)
-                }
-            }
+        is OddPence.Tip -> {
+            SharedOddPenceCard(
+                title = OddPenceWords.tipTitle(oddPence.currency),
+                detail = OddPenceWords.tipDetail(oddPence.currency),
+                useDescription = null,
+                onUse = onUse,
+                modifier = modifier,
+            )
         }
     }
 }
@@ -246,7 +216,9 @@ internal fun BidTimingSection(
 }
 
 /** "6 s suits most connections. Choose 10 s on a weak signal." */
-internal val LEAD_HINT = "${secondsText(6)} suits most connections. Choose ${secondsText(10)} on a weak signal."
+internal val LEAD_HINT =
+    "${secondsText(6)} suits most connections. " +
+        "Choose ${secondsText(10)} on a${NO_BREAK_SPACE}weak${NO_BREAK_SPACE}signal."
 
 /** The S2 hint on a listing with extended bidding (DESIGN S2 item 7, MF33). */
 internal val EXTENDED_BIDDING_HINT =
@@ -382,14 +354,14 @@ internal fun figureLine(
 /** A radio row's semantics: one choice of several, read as a radio button. */
 internal fun Modifier.radioRole(): Modifier = semantics { role = Role.RadioButton }
 
-/** The max spelt out before arming a max far above the price. */
+/** The max spelt out before arming a max far above the price, in Kestrel's one dialog style. */
 @Composable
 internal fun WordsCheckDialog(
     check: WordsCheck,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
+    KestrelDialog(
         onDismissRequest = onDismiss,
         confirmButton = { InkTextButton(check.confirmLabel, onClick = onConfirm) },
         dismissButton = { InkTextButton("Change max", onClick = onDismiss) },

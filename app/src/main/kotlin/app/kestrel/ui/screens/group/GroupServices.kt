@@ -7,6 +7,7 @@ import app.kestrel.model.Snipe
 import app.kestrel.model.SnipeGroup
 import app.kestrel.model.TimelineEvent
 import app.kestrel.ui.model.Connectivity
+import app.kestrel.ui.model.UndoCancel
 import app.kestrel.ui.screens.add.tickingNow
 import app.kestrel.ui.shell.ConnectivityMonitor
 import kotlinx.coroutines.flow.Flow
@@ -31,6 +32,15 @@ interface GroupServices {
         snipeId: Long,
         groupId: Long?,
     ): EditResult
+
+    /** "Undo cancel": arms a snipe the group cancelled again, on its own (see [UndoCancel]). */
+    suspend fun undoCancel(snipeId: Long): EditResult
+
+    /** Gives the group a new name; null when it was renamed, otherwise why it was not. */
+    suspend fun renameGroup(
+        groupId: Long,
+        name: String,
+    ): String?
 
     /** Runs [work] outside any screen, so an Undo left for the previous screen still completes. */
     fun runDetached(work: suspend () -> Unit)
@@ -59,7 +69,28 @@ internal class ContainerGroupServices(
         groupId: Long?,
     ): EditResult = container.snipeActions.setGroup(snipeId, groupId)
 
+    override suspend fun undoCancel(snipeId: Long): EditResult {
+        val snipe = container.repository.snipe(snipeId) ?: return EditResult.NotFound
+        return UndoCancel.run(
+            snipe = snipe,
+            nowUtcMillis = nowUtcMillis(),
+            add = { listing, max, lead -> container.snipeActions.add(listing, max, lead, groupId = null) },
+            delete = container.snipeActions::delete,
+        )
+    }
+
+    // The data layer stores a group's name when the group is made and has no way to change it yet, so Rename says
+    // so instead of pretending; the sheet and its checks are ready for a repository call.
+    override suspend fun renameGroup(
+        groupId: Long,
+        name: String,
+    ): String? = RENAME_NOT_STORED
+
     override fun runDetached(work: suspend () -> Unit) {
         container.applicationScope.launch { work() }
+    }
+
+    private companion object {
+        const val RENAME_NOT_STORED = "Kestrel can’t store a new name for a group yet."
     }
 }

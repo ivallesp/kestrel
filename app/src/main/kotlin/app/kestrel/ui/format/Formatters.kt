@@ -107,11 +107,37 @@ fun absoluteTime(
     now: Instant,
     instant: Instant,
     zone: ZoneId = AuctionZone,
-): String {
-    val close = isWithinAnHour(now, instant)
-    val time = if (close) "${instant.clockWithSeconds(zone)} ${instant.zoneName(zone)}" else instant.clock(zone)
-    return if (isSameDay(now, instant, zone)) "Today $time" else "${instant.dayDate(zone)}, $time"
-}
+): String = if (isSameDay(now, instant, zone)) "Today ${timeOf(now, instant, zone)}" else dayAndTime(now, instant, zone)
+
+/**
+ * [absoluteTime] inside a sentence, after a word such as "Ends": "today, 18:21:40 GMT", "today, 21:02",
+ * "Mon 10 Nov, 20:10".
+ */
+fun absoluteTimeInSentence(
+    now: Instant,
+    instant: Instant,
+    zone: ZoneId = AuctionZone,
+): String =
+    if (isSameDay(now, instant, zone)) "today, ${timeOf(now, instant, zone)}" else dayAndTime(now, instant, zone)
+
+/** The time part of [absoluteTime]: seconds and zone only within the hour. */
+private fun timeOf(
+    now: Instant,
+    instant: Instant,
+    zone: ZoneId,
+): String =
+    if (isWithinAnHour(now, instant)) {
+        "${instant.clockWithSeconds(zone)} ${instant.zoneName(zone)}"
+    } else {
+        instant.clock(zone)
+    }
+
+/** "Mon 10 Nov, 20:10", or "Mon 10 Nov, 00:10:05 GMT" within the hour. */
+private fun dayAndTime(
+    now: Instant,
+    instant: Instant,
+    zone: ZoneId,
+): String = "${instant.dayDate(zone)}, ${timeOf(now, instant, zone)}"
 
 /** A clock time with seconds only within the hour: "18:21:34" or "21:02". */
 fun clockFor(
@@ -120,11 +146,11 @@ fun clockFor(
     zone: ZoneId = AuctionZone,
 ): String = if (isWithinAnHour(now, instant)) instant.clockWithSeconds(zone) else instant.clock(zone)
 
-/** The S1 overline: "SUNDAY 9 NOVEMBER · TIMES IN GMT". The zone is the one in force on that day. */
+/** The S1 overline: "SUNDAY 9 NOVEMBER · GMT". The zone is the one in force on that day. */
 fun zoneOverline(
     now: Instant,
     zone: ZoneId = AuctionZone,
-): String = "${now.longDate(zone)} · times in ${now.zoneName(zone)}".uppercase(UK)
+): String = "${now.longDate(zone)} · ${now.zoneName(zone)}".uppercase(UK)
 
 /**
  * The exact contract above "Arm snipe", with seconds and zone however far away it is:
@@ -156,11 +182,17 @@ fun receiptTime(
     }
 
 /**
+ * Whole seconds left, a partial second counted as a whole one, so a countdown never reads "0 s" while time remains
+ * (it reads "1 s" until the end, and screens say "Ended" from then on).
+ */
+fun Duration.wholeSecondsLeft(): Long = ((toMillis().coerceAtLeast(0) + 999) / 1_000)
+
+/**
  * Time left, more precise near the end: "4 d 1 h", "2 h 53 m", "13 m 07 s", "36 s". Seconds appear only under an
- * hour. Number and unit are joined by U+202F; groups are separated by a normal space.
+ * hour. Number and unit are joined by U+202F; groups are separated by a normal space. A partial second rounds up.
  */
 fun Duration.countdown(): String {
-    val totalSeconds = seconds.coerceAtLeast(0)
+    val totalSeconds = wholeSecondsLeft()
     val days = totalSeconds / 86_400
     val hours = totalSeconds % 86_400 / 3_600
     val minutes = totalSeconds % 3_600 / 60
@@ -175,7 +207,7 @@ fun Duration.countdown(): String {
 
 /** The same precision in words, for TalkBack: "13 minutes 7 seconds", "2 hours 53 minutes", "1 day 2 hours". */
 fun Duration.spoken(): String {
-    val totalSeconds = seconds.coerceAtLeast(0)
+    val totalSeconds = wholeSecondsLeft()
     val days = totalSeconds / 86_400
     val hours = totalSeconds % 86_400 / 3_600
     val minutes = totalSeconds % 3_600 / 60
@@ -233,6 +265,17 @@ fun String.forDisplay(): String =
 
 private val SlashBeforeWord = Regex("""/(?=[0-9A-Za-z])""")
 private val HyphenInsideWord = Regex("""(?<=[0-9A-Za-z])-(?=[0-9A-Za-z])""")
+
+/**
+ * Joins the last two words with a no-break space, so a paragraph that wraps never leaves one word alone on its last
+ * line ("reconnects.", "to Kestrel."). For body copy; titles balance their lines instead.
+ */
+fun String.noWidow(): String {
+    val end = trimEnd().length
+    val lastSpace = lastIndexOf(' ', startIndex = end - 1)
+    if (lastSpace <= 0) return this
+    return substring(0, lastSpace) + NO_BREAK_SPACE + substring(lastSpace + 1)
+}
 
 /**
  * Kestrel's own words with typographic quotes (rule SC3): apostrophes become ’ and double quotes become “ and ”.

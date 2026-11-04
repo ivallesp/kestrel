@@ -58,7 +58,6 @@ object AddFixtures {
     fun ready(
         maxText: String = "90.00",
         listing: Listing = sonyA700,
-        lastValidMax: Money? = gbp("90.00"),
         leadSeconds: Int = 6,
         group: GroupRowState = GroupRowState.None,
         signedIn: Boolean = true,
@@ -73,7 +72,6 @@ object AddFixtures {
                 minimum = minimum,
                 maxField = TextFieldState(maxText),
                 typed = typed,
-                lastValidMax = lastValidMax,
                 leadSeconds = leadSeconds,
                 group = group,
                 signedIn = signedIn,
@@ -86,7 +84,7 @@ object AddFixtures {
 
     val linkEntry: AddUiState get() = AddUiState(now, AddPage.LinkEntry(TextFieldState()))
 
-    val fetching: AddUiState get() = AddUiState(now, AddPage.Fetching("ebay.co.uk/itm/127504318862"))
+    val fetching: AddUiState get() = AddUiState(now, AddPage.Fetching("ebay.co.uk/itm/…"))
 
     val fetchFailed: AddUiState get() = AddUiState(now, AddPage.Failed(AddViewModel.NO_RESPONSE, canRetry = true))
 
@@ -115,32 +113,30 @@ object AddFixtures {
             return AddUiState(now, AddPage.AlreadySniped(header, canon.id, status, canon.ref.url))
         }
 
-    val emptyMax: AddUiState get() = ready(maxText = "", lastValidMax = null)
+    val emptyMax: AddUiState get() = ready(maxText = "")
 
     val tooLow: AddUiState get() = ready(maxText = "60.00")
 
     val signedOut: AddUiState get() = ready(signedIn = false)
 
     val otherCurrency: AddUiState
-        get() = ready(maxText = "200.00", listing = nintendo64Usd, lastValidMax = Money.of("200.00", "USD"))
+        get() = ready(maxText = "200.00", listing = nintendo64Usd)
 
     val extendedBidding: AddUiState get() =
         ready(
             maxText = "90.37",
             listing = sonyA700Extended,
-            lastValidMax = gbp("90.37"),
         )
 
     val groupChosen: AddUiState
         get() =
             ready(
                 maxText = "90.37",
-                lastValidMax = gbp("90.37"),
                 group = AddPlanner.groupRow(GroupChoice.Existing(CatalogueFixture.portableAudio), openSnipes = 2),
             )
 
     /** "£900.00" typed by mistake for £90.00: more than three times the price, so it is spelt out first. */
-    val wordsCheck: AddUiState get() = ready(maxText = "900.00", lastValidMax = gbp("900.00"), checkingWords = true)
+    val wordsCheck: AddUiState get() = ready(maxText = "900.00", checkingWords = true)
 
     /** The group picker over S2: "No group" selected. */
     fun picker(

@@ -33,8 +33,10 @@ sealed interface OddPence {
         val roundAmount: Money,
     ) : OddPence
 
-    /** No max yet: the advice without an amount. */
-    data object Tip : OddPence
+    /** No max yet: the advice without an amount, in the listing's [currency] ("odd pence", "odd cents"). */
+    data class Tip(
+        val currency: String,
+    ) : OddPence
 }
 
 /**
@@ -86,14 +88,26 @@ object MaxRules {
         }
     }
 
+    /**
+     * Why a max can't change once the bid window is open: the sheets say it the same way, whether the deadline passed
+     * while the sheet was open or the data layer refused the save.
+     */
+    const val LOCKED_SENTENCE = "The bid window is open, so this can’t change now."
+
     /** "Too low: eBay needs at least £66.00". */
     fun tooLowMessage(minimum: Money): String = "Too low: eBay needs at least ${minimum.formatted()}"
 
-    /** The odd-pence card for what is typed: a suggestion for a round valid max, a tip when empty, else none. */
-    fun oddPence(typed: TypedMax): OddPence? =
+    /**
+     * The odd-pence card for what is typed in [currency]: a suggestion for a round valid max, a tip when empty, else
+     * none.
+     */
+    fun oddPence(
+        typed: TypedMax,
+        currency: String,
+    ): OddPence? =
         when (typed) {
             TypedMax.Empty -> {
-                OddPence.Tip
+                OddPence.Tip(currency)
             }
 
             is TypedMax.TooLow -> {

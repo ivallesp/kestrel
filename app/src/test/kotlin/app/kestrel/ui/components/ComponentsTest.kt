@@ -114,7 +114,7 @@ class ComponentsTest {
             figures.spoken,
         )
         assertEquals("At most £126.50 with postage", figures.note)
-        assertEquals("£32.00 below your max", figures.startCaption?.text)
+        assertEquals("£32.00 below your\u00A0max", figures.startCaption?.text)
         assertEquals("Postage £6.50", figures.endCaption?.text)
     }
 
@@ -128,8 +128,22 @@ class ComponentsTest {
                 postage = CatalogueFixture.gbp("12.95"),
                 tone = StatusTone.Attention,
             )
-        assertEquals(MoneyCaption("£250.00 over your max", overMax = true), figures.startCaption)
+        assertEquals(MoneyCaption("£250.00 over your\u00A0max", overMax = true), figures.startCaption)
         assertEquals(StatusTone.Attention, figures.headroom?.tone)
+    }
+
+    @Test
+    fun overTheMaxAfterTheBidTheCaptionKeepsTheBiddingAccent() {
+        val figures =
+            lotMoneyFigures(
+                current = CatalogueFixture.gbp("122.00"),
+                bidCount = 18,
+                max = CatalogueFixture.gbp("120.00"),
+                postage = CatalogueFixture.gbp("6.50"),
+                tone = StatusTone.Bidding,
+            )
+        assertEquals(StatusTone.Bidding, figures.startCaption?.overTone)
+        assertEquals(StatusTone.Bidding, figures.headroom?.tone)
     }
 
     @Test
@@ -144,6 +158,6 @@ class ComponentsTest {
                 previousPrice = CatalogueFixture.gbp("88.00"),
             )
         assertEquals("Up £8.00 from £88.00", figures.startCaption?.text)
-        assertEquals("£24.00 below your max", figures.endCaption?.text)
+        assertEquals("£24.00 below your\u00A0max", figures.endCaption?.text)
     }
 }

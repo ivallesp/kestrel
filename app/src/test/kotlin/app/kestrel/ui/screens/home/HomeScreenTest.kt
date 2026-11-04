@@ -171,7 +171,7 @@ class HomeScreenTest {
             ),
         )
         composeRule.onNodeWithContentDescription("Status: Armed").performClick()
-        composeRule.onNodeWithContentDescription("Settings and eBay account, lot.42").performClick()
+        composeRule.onNodeWithContentDescription("Settings and eBay account, oakshelf").performClick()
         composeRule.onNodeWithContentDescription("Add snipe").performClick()
         composeRule.onNodeWithText("Portable audio: win 1 of 2", substring = true).performClick()
         scrollToEnd()

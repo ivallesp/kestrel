@@ -7,9 +7,12 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedListItem
@@ -64,11 +67,13 @@ private val RowActions =
         LotAction.OPEN_ON_EBAY,
     )
 
-/** The action a row shows at [now], if any. Undo cancel waits for an un-cancel in the data layer. */
+/**
+ * The action a row shows at [now], if any. Finished rows show none, except "Undo cancel" on a snipe the group
+ * cancelled while its auction still runs (DESIGN Group "After a win").
+ */
 fun GroupLotRowState.rowAction(now: Instant): LotAction? =
     status.action(now)?.takeIf {
-        it in RowActions &&
-            !status.kind.isFinal
+        (it in RowActions && !status.kind.isFinal) || it == LotAction.UNDO_CANCEL
     }
 
 /**
@@ -136,7 +141,7 @@ fun GroupLotRow(
                     )
                 }
                 Flags(row)
-                action?.let { RowActionButton(it, onClick = { onAction(it) }) }
+                action?.let { RowActionButton(it, onClick = { onAction(it) }, Modifier.padding(top = 8.dp)) }
             }
         }
     }
@@ -252,15 +257,26 @@ private fun Flag(
 private fun RowActionButton(
     action: LotAction,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Spacer(Modifier.height(8.dp))
     if (action == LotAction.SET_MAX) {
-        OutlinedActionButton(text = action.label, onClick = onClick)
+        OutlinedActionButton(text = action.label, onClick = onClick, modifier = modifier)
+    } else if (action == LotAction.UNDO_CANCEL) {
+        // Neutral tonal (DESIGN 3.17): a cancelled lot is not a problem to fix.
+        FilledTonalButton(
+            onClick = onClick,
+            shapes = ButtonDefaults.shapes(),
+            contentPadding = ButtonDefaults.contentPaddingFor(Spacing.InlineButtonHeight),
+            modifier = modifier.heightIn(min = Spacing.InlineButtonHeight),
+        ) {
+            Text(action.label, style = MaterialTheme.typography.labelLarge)
+        }
     } else {
         StateTonalButton(
             tone = StatusTone.Attention,
             text = action.label,
             onClick = onClick,
+            modifier = modifier,
             icon = if (action == LotAction.RAISE_MAX) Symbols.ArrowUpward else null,
         )
     }

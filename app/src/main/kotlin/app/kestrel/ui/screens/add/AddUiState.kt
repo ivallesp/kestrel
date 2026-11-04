@@ -163,13 +163,12 @@ data class ArmBar(
 
 /**
  * The exact contract: "Bids £90.00 on Thu 13 Nov at 20:04:12 GMT". [figure] is the clock time inside [text], set in
- * tabular figures. [greyed] is the last valid plan while the typed max is too low.
+ * tabular figures. While the typed max is too low it says what to type instead ("Set at least £66.08 to arm").
  */
 @Immutable
 data class ArmSummary(
     val text: String,
     val figure: String? = null,
-    val greyed: Boolean = false,
 )
 
 @Immutable

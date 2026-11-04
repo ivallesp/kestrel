@@ -10,10 +10,12 @@ import app.kestrel.model.Money
 import app.kestrel.model.ParsedLink
 import app.kestrel.model.Snipe
 import app.kestrel.model.SnipeGroup
+import app.kestrel.ui.shell.UiPreferences
 import app.kestrel.web.EbaySession
 import app.kestrel.web.FetchResult
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -42,6 +44,9 @@ interface AddServices {
 
     suspend fun defaultLeadSeconds(): Int
 
+    /** Settings "Suggest odd pence": whether S2 offers £90.37 for a round £90.00. */
+    suspend fun suggestOddPence(): Boolean = true
+
     /** A cheap hint (no network): whether the phone holds a signed-in eBay session for [site]. */
     fun isSignedIn(site: EbaySite): Boolean
 
@@ -55,6 +60,9 @@ interface AddServices {
 /** What the edit-max sheet needs from the app. */
 interface EditMaxServices {
     fun snipe(snipeId: Long): Flow<Snipe?>
+
+    /** Settings "Suggest odd pence": whether the set-max sheet offers £90.37 for a round £90.00. */
+    suspend fun suggestOddPence(): Boolean = true
 
     suspend fun updateMax(
         snipeId: Long,
@@ -79,6 +87,13 @@ internal class ContainerAddServices(
     private val container: AppContainer,
 ) : AddServices {
     override fun parse(text: String): ParsedLink = ItemUrlParser.parse(text)
+
+    override suspend fun suggestOddPence(): Boolean =
+        UiPreferences
+            .of(container.context)
+            .values
+            .first()
+            .suggestOddPence
 
     override suspend fun fetch(link: ParsedLink): FetchResult = container.listingFetcher.fetch(link)
 
@@ -109,6 +124,13 @@ internal class ContainerEditMaxServices(
     private val container: AppContainer,
 ) : EditMaxServices {
     override fun snipe(snipeId: Long): Flow<Snipe?> = container.repository.observeSnipe(snipeId)
+
+    override suspend fun suggestOddPence(): Boolean =
+        UiPreferences
+            .of(container.context)
+            .values
+            .first()
+            .suggestOddPence
 
     override suspend fun updateMax(
         snipeId: Long,

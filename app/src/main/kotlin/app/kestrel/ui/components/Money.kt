@@ -3,7 +3,7 @@ package app.kestrel.ui.components
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
@@ -40,6 +40,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.kestrel.model.Money
+import app.kestrel.ui.format.NO_BREAK_SPACE
 import app.kestrel.ui.format.formatted
 import app.kestrel.ui.format.plural
 import app.kestrel.ui.theme.KestrelTheme
@@ -53,12 +54,16 @@ data class Headroom(
     val tone: StatusTone,
 )
 
-/** A caption under the money grid. [overMax] sets it in the Attention accent at weight 600. */
+/**
+ * A caption under the money grid. [overMax] sets it in the accent of [overTone] at weight 600: Attention before the
+ * bid, when the user can still act, and Bidding once the bid is out and there is nothing left to do.
+ */
 @Immutable
 data class MoneyCaption(
     val text: String,
     val overMax: Boolean = false,
     @param:DrawableRes val icon: Int? = null,
+    val overTone: StatusTone = StatusTone.Attention,
 )
 
 /**
@@ -93,14 +98,17 @@ fun lotMoneyFigures(
 ): MoneyFigures {
     val comparable = current.currency == max.currency
     val over = comparable && current.minor > max.minor
+    // "your max" stays together, so a wrapped caption never leaves "max" alone on a line.
     val headroomText =
         when {
             !comparable -> null
-            over -> "${(current - max).formatted()} over your max"
-            current == max -> "At your max"
-            else -> "${(max - current).formatted()} below your max"
+            over -> "${(current - max).formatted()} over your${NO_BREAK_SPACE}max"
+            current == max -> "At your${NO_BREAK_SPACE}max"
+            else -> "${(max - current).formatted()} below your${NO_BREAK_SPACE}max"
         }
-    val headroomCaption = headroomText?.let { MoneyCaption(it, overMax = over) }
+    // Past the max, Attention asks the user to act; once the bid is out (Bidding) the overflow is just a fact.
+    val overTone = if (tone == StatusTone.Bidding) StatusTone.Bidding else StatusTone.Attention
+    val headroomCaption = headroomText?.let { MoneyCaption(it, overMax = over, overTone = overTone) }
     val worstCaseAmount = postage?.takeIf { it.currency == max.currency }?.let { max + it }
     val worstCase = worstCaseAmount?.let { "At most ${it.formatted()} with postage" }
     val risen =
@@ -115,7 +123,8 @@ fun lotMoneyFigures(
             worstCaseAmount?.let { append(", at most ${it.formatted()} with postage") }
             append('.')
             risen?.let { append(" Up ${(current - it).formatted()} from ${it.formatted()}.") }
-            headroomText?.let { append(" $it.") }
+            // TalkBack reads the caption with plain spaces.
+            headroomText?.let { caption -> append(" ").append(caption.replace(NO_BREAK_SPACE, SPACE)).append('.') }
         }
     return MoneyFigures(
         startLabel = startLabel,
@@ -124,7 +133,7 @@ fun lotMoneyFigures(
         endValue = max.formatted(),
         spoken = spoken,
         note = worstCase,
-        headroom = Headroom(current, max, if (over) StatusTone.Attention else tone).takeIf { comparable },
+        headroom = Headroom(current, max, if (over) overTone else tone).takeIf { comparable },
         startCaption =
             if (risen != null) {
                 MoneyCaption("Up ${(current - risen).formatted()} from ${risen.formatted()}", icon = Symbols.TrendingUp)
@@ -191,10 +200,23 @@ fun MoneyBlock(
         }
         if (figures.startCaption != null || figures.endCaption != null) {
             Spacer(Modifier.height(2.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                figures.startCaption?.let { MoneyCaptionText(it, Modifier.weight(1f, fill = false)) }
-                Spacer(Modifier.width(12.dp))
-                figures.endCaption?.let { MoneyCaptionText(it, Modifier.weight(1f, fill = false), TextAlign.End) }
+            // The end caption ("Postage £6.50") takes the width it needs and the start caption the rest. With large
+            // text the two stack, so neither wraps while space is free.
+            if (LocalDensity.current.fontScale >= STACKED_CAPTIONS_FONT_SCALE) {
+                Column(Modifier.fillMaxWidth()) {
+                    figures.startCaption?.let { MoneyCaptionText(it) }
+                    figures.endCaption?.let {
+                        MoneyCaptionText(it, Modifier.align(Alignment.End), TextAlign.End)
+                    }
+                }
+            } else {
+                Row(Modifier.fillMaxWidth()) {
+                    Box(Modifier.weight(1f)) { figures.startCaption?.let { MoneyCaptionText(it) } }
+                    figures.endCaption?.let {
+                        Spacer(Modifier.width(12.dp))
+                        MoneyCaptionText(it, textAlign = TextAlign.End)
+                    }
+                }
             }
         }
     }
@@ -207,7 +229,11 @@ private fun MoneyCaptionText(
     textAlign: TextAlign = TextAlign.Start,
 ) {
     val color =
-        if (caption.overMax) KestrelTheme.status.attention.accent else MaterialTheme.colorScheme.onSurfaceVariant
+        if (caption.overMax) {
+            KestrelTheme.status[caption.overTone].accent
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        }
     val style =
         if (caption.overMax) {
             MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
@@ -246,6 +272,23 @@ private fun PriceFigure(
 }
 
 private val MINIMUM_PRICE_SIZE = 16.sp
+
+private const val SPACE = '\u0020'
+
+/** From this font scale the two captions under the headroom rule stack instead of sharing a line. */
+private const val STACKED_CAPTIONS_FONT_SCALE = 1.3f
+
+/** From this font scale "YOU PAY AT MOST" no longer fits its column on one line, so it reads "AT MOST". */
+private const val SHORT_TOTAL_LABEL_FONT_SCALE = 1.3f
+
+/** The room a sum-row figure keeps before the operator after it. */
+private val OperatorClearance = 6.dp
+
+/** The widths of the sum row's three columns: "YOU PAY AT MOST" needs the most. */
+private val SumWeights = listOf(1f, 0.9f, 1.3f)
+
+/** From font scale 1.3 "AT MOST" is short and "YOUR MAX" is the longest label. */
+private val LargeTextSumWeights = listOf(1.2f, 1f, 1f)
 
 private val CaptionIconSize = 16.dp
 
@@ -344,7 +387,10 @@ fun LedgerRow(
 
 /**
  * The sum row (DESIGN 3.11): "YOUR MAX + POSTAGE = YOU PAY AT MOST", with the total at weight 700, then the proxy
- * sentence. Labels share one baseline and values another; the operators sit on the values' baseline.
+ * sentence. Labels share one baseline and values another; the operators sit on the values' baseline. Each label stays
+ * on one line: from font scale 1.3 the total's label shortens to "AT MOST" and gives the room it no longer needs to
+ * "YOUR MAX". The figures keep 6 dp clear of the operators, stepping their size down first, so a long prefix
+ * ("US$238.50") never touches "+" or "=".
  */
 @Composable
 fun SumRow(
@@ -354,18 +400,31 @@ fun SumRow(
     modifier: Modifier = Modifier,
 ) {
     val spoken = "Your max $max plus postage $postage: you pay at most $total."
+    val largeText = LocalDensity.current.fontScale >= SHORT_TOTAL_LABEL_FONT_SCALE
+    val totalLabel = if (largeText) "At most" else "You pay at most"
+    val weights = if (largeText) LargeTextSumWeights else SumWeights
     Column(modifier.clearAndSetSemantics { contentDescription = spoken }) {
         Row(Modifier.fillMaxWidth()) {
             val price = KestrelTheme.type.priceRow
-            SumColumn("Your max", max, price, Modifier.weight(1f).alignBy(LastBaseline))
+            SumColumn(
+                "Your max",
+                max,
+                price,
+                Modifier.weight(weights[0]).alignBy(LastBaseline).padding(end = OperatorClearance),
+            )
             Operator("+", Modifier.alignBy(LastBaseline))
-            SumColumn("Postage", postage, price, Modifier.weight(0.9f).alignBy(LastBaseline))
+            SumColumn(
+                "Postage",
+                postage,
+                price,
+                Modifier.weight(weights[1]).alignBy(LastBaseline).padding(end = OperatorClearance),
+            )
             Operator("=", Modifier.alignBy(LastBaseline))
             SumColumn(
-                "You pay at most",
+                totalLabel,
                 total,
                 KestrelTheme.type.priceRowTotal,
-                Modifier.weight(1.3f).alignBy(LastBaseline),
+                Modifier.weight(weights[2]).alignBy(LastBaseline),
             )
         }
         Spacer(Modifier.height(8.dp))
@@ -385,7 +444,7 @@ private fun SumColumn(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier) {
-        SmallCaps(label, maxLines = 2)
+        SmallCaps(label)
         // Long amounts ("US$200.00", "£2,200.00") step down rather than clip in the narrow columns.
         PriceFigure(text = value, style = style)
     }

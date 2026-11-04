@@ -197,18 +197,15 @@ private fun SheetLot(lot: SheetLotLine) {
 }
 
 /**
- * The deadline, the plan, the lock or the refusal, with its glyph. Only a plan sets its clock time in tabular figures
- * (it changes with the lead time); a refusal reads in the Attention accent with the warning glyph.
+ * The deadline, the plan, the lock or the refusal, with its glyph. Every time-to-bid line has the timer, as on the
+ * hero and the rows. Only a plan sets its clock time in tabular figures (it changes with the lead time). The lock and
+ * a refusal say the same thing (the max can't change inside the bid window), so they read the same: the warning
+ * glyph and the Attention accent.
  */
 @Composable
 private fun SheetLineRow(line: SheetLine) {
-    val refused = line.kind == SheetLineKind.Refused
-    val icon =
-        when (line.kind) {
-            SheetLineKind.Plan -> Symbols.Schedule
-            SheetLineKind.Refused -> Symbols.Warning
-            SheetLineKind.Deadline, SheetLineKind.Locked -> Symbols.Timer
-        }
+    val refused = line.kind == SheetLineKind.Refused || line.kind == SheetLineKind.Locked
+    val icon = if (refused) Symbols.Warning else Symbols.Timer
     val attention = KestrelTheme.status.attention.accent
     Row(verticalAlignment = Alignment.Top) {
         SymbolIcon(

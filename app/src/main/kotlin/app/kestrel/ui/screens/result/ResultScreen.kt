@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -25,8 +26,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialShapes
@@ -58,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import app.kestrel.ui.components.BottomFade
+import app.kestrel.ui.components.KestrelMenu
 import app.kestrel.ui.components.LedgerRow
 import app.kestrel.ui.components.LotPlate
 import app.kestrel.ui.components.MoneyBlock
@@ -68,7 +71,9 @@ import app.kestrel.ui.components.StateLabel
 import app.kestrel.ui.components.SymbolIcon
 import app.kestrel.ui.components.Symbols
 import app.kestrel.ui.components.Timeline
+import app.kestrel.ui.format.noWidow
 import app.kestrel.ui.model.LotAction
+import app.kestrel.ui.model.PhotoStyle
 import app.kestrel.ui.screens.lot.InkButton
 import app.kestrel.ui.theme.KestrelTheme
 import app.kestrel.ui.theme.PlateShapes
@@ -115,13 +120,8 @@ fun ResultScreen(
                 ) {
                     ResultPlate(state, plateKey, Modifier.zIndex(1f))
                     Spacer(Modifier.height(16.dp))
-                    StateLabel(
-                        tone = state.tone,
-                        words = state.statusLine,
-                        large = true,
-                        // The seal hangs below the plate's end corner; the line keeps clear of it.
-                        modifier = if (won) Modifier.padding(end = SealClearance) else Modifier,
-                    )
+                    // The seal hangs only 12 dp below the plate, so the line under it has the whole width.
+                    StateLabel(tone = state.tone, words = state.statusLine, large = true)
                     Spacer(Modifier.height(4.dp))
                     Text(
                         text = state.headline,
@@ -160,8 +160,8 @@ fun ResultScreen(
     }
 }
 
-/** How far the won status line stops short of the end, so the seal never covers it. */
-private val SealClearance = 112.dp
+/** How far up a scene's focus moves on the 136 dp plate (DESIGN 2.4: BiasAlignment from -1 to 1). */
+private const val SHORT_PLATE_FOCUS_LIFT = 0.35f
 
 @Composable
 private fun ResultTopBar(
@@ -186,7 +186,7 @@ private fun ResultTopBar(
             IconButton(onClick = { expanded = true }) {
                 SymbolIcon(Symbols.MoreVert, contentDescription = "More options")
             }
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            KestrelMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 DropdownMenuItem(
                     text = { Text(LotAction.OPEN_ON_EBAY.label) },
                     leadingIcon = { SymbolIcon(Symbols.OpenInNew) },
@@ -196,10 +196,11 @@ private fun ResultTopBar(
                     },
                 )
                 if (canDelete) {
+                    // The destructive item comes last, after a divider; its snackbar offers Undo (DESIGN Q22).
+                    HorizontalDivider()
                     DropdownMenuItem(
                         text = { Text("Delete") },
-                        // No glyph for delete yet; the space keeps the words in line with the item above.
-                        leadingIcon = { Spacer(Modifier.size(24.dp)) },
+                        leadingIcon = { SymbolIcon(Symbols.Delete) },
                         onClick = {
                             expanded = false
                             onDelete()
@@ -219,9 +220,16 @@ private fun ResultPlate(
     modifier: Modifier = Modifier,
 ) {
     val won = state.variant == ResultVariant.Won
+    // The shorter plate crops more of a scene's height, so its focus moves up to keep the top of the item.
+    val photo =
+        if (!won && state.photo.style == PhotoStyle.Scene) {
+            state.photo.copy(focusY = (state.photo.focusY - SHORT_PLATE_FOCUS_LIFT).coerceIn(-1f, 1f))
+        } else {
+            state.photo
+        }
     Box(modifier.fillMaxWidth()) {
         LotPlate(
-            photo = state.photo,
+            photo = photo,
             modifier = Modifier.fillMaxWidth().height(if (won) 176.dp else 136.dp),
             shape = PlateShapes.Result,
             cutoutInset = 18.dp,
@@ -233,7 +241,7 @@ private fun ResultPlate(
                 modifier =
                     Modifier
                         .align(Alignment.BottomEnd)
-                        .offset(x = (-14).dp, y = 30.dp),
+                        .offset(x = (-14).dp, y = SealDrop),
             )
         }
     }
@@ -286,6 +294,12 @@ private fun WonSeal(
 }
 
 private val SealSize = 96.dp
+
+/**
+ * How far the seal hangs below the plate: enough to break its edge like a stamp, less than the 16 dp to the status
+ * line, so the line never has to stop short of it.
+ */
+private val SealDrop = 12.dp
 
 /** The won card: what it was won for against the max, the ledger to the total, and how eBay takes payment. */
 @Composable
@@ -371,12 +385,28 @@ private fun OutcomeCard(
     val textColour = if (failed) colors.onContainer else MaterialTheme.colorScheme.onSurface
     Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, color = container, contentColor = textColour) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text(outcome.text, style = MaterialTheme.typography.bodyLarge, color = textColour)
+            Text(outcome.text.noWidow(), style = MaterialTheme.typography.bodyLarge, color = textColour)
             outcome.action?.let { action ->
-                if (failed) {
-                    PrimaryButton(action.label, onClick = { onAction(action) })
-                } else {
-                    InkButton(action.label, onClick = { onAction(action) })
+                when {
+                    failed -> {
+                        PrimaryButton(action.label, onClick = { onAction(action) })
+                    }
+
+                    // A tonal 40 dp button (DESIGN 3.17 "Tonal"): undoing is not the page's primary action.
+                    action == LotAction.UNDO_CANCEL -> {
+                        FilledTonalButton(
+                            onClick = { onAction(action) },
+                            shapes = ButtonDefaults.shapes(),
+                            contentPadding = ButtonDefaults.contentPaddingFor(Spacing.InlineButtonHeight),
+                            modifier = Modifier.heightIn(min = Spacing.InlineButtonHeight),
+                        ) {
+                            Text(action.label, style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
+
+                    else -> {
+                        InkButton(action.label, onClick = { onAction(action) })
+                    }
                 }
             }
         }
@@ -403,7 +433,11 @@ private fun PullQuote(quote: PullQuoteText) {
             val inkSoft = MaterialTheme.colorScheme.onSurfaceVariant
             Text(quote.timing, style = MaterialTheme.typography.labelMedium, color = inkSoft)
             Spacer(Modifier.height(4.dp))
-            Text(quote.quote, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
+            Text(
+                quote.quote.noWidow(),
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
         }
     }
 }

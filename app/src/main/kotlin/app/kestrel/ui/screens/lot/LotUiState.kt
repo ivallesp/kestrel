@@ -62,11 +62,14 @@ data class LotUiState(
     /** What the polite live region says now; it changes only at the moments of DESIGN S3 ("30 seconds to the bid"). */
     val announcement: String? = null,
     val sheet: EditSheetState? = null,
+    /** The first two words of the title, for the bar once the sheet is scrolled up ("Canon AE-1"). */
+    val shortTitle: String = title,
 )
 
 /**
  * The countdown: [figure] in countdown ("36") with [unit] ("s left") in the final minute, otherwise countdownMedium
- * ("13 m 07 s") with "left". [spoken] is its one sentence for TalkBack (rule MF47).
+ * ("13 m 07 s") with "left". With an empty [figure] only the words show, in the countdown unit style: "Ended" from
+ * the end on, and "Ends 18:21:40" once a bid failed. [spoken] is its one sentence for TalkBack (rule MF47).
  */
 @Immutable
 data class CountdownText(
@@ -76,12 +79,16 @@ data class CountdownText(
     val spoken: String,
 )
 
-/** The times column (from C2): "TODAY · GMT" over "BIDS 18:21:34", "ENDS 18:21:40" and a ticking "NOW 18:21:04". */
+/**
+ * The times column (from C2): "TODAY · GMT" over "BIDS 18:21:34", "ENDS 18:21:40" and a ticking "NOW 18:21:04".
+ * More than an hour from the end only "ENDS 21:43" shows, with [note] ("Bids 6 s before") under it.
+ */
 @Immutable
 data class TimesColumnText(
     val heading: String,
     val rows: List<TimeRowText>,
     val spoken: String,
+    val note: String? = null,
 )
 
 @Immutable
@@ -171,7 +178,7 @@ data class EditSheetState(
     val current: Money?,
     /** "Change it until 18:21:31, 3 s before the bid." or, when raising, "Bids at 21:02:09 GMT". */
     val deadline: String?,
-    /** Set once the edits locked: "Too late to change: Kestrel bids £120.00 at 18:21:34." */
+    /** Set once the edits locked: "The bid window is open, so this can’t change now. Kestrel bids £120.00 at …" */
     val locked: String?,
     val primary: String,
     val endAt: Instant,
@@ -181,4 +188,6 @@ data class EditSheetState(
     /** Why the last save was refused, in Kestrel's words. */
     val error: String? = null,
     val saving: Boolean = false,
+    /** Settings "Suggest odd pence". */
+    val suggestOddPence: Boolean = true,
 )

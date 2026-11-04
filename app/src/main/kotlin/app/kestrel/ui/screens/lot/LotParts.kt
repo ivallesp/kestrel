@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -45,6 +44,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.kestrel.ui.components.CalmLoadingIndicator
 import app.kestrel.ui.components.Figure
@@ -53,6 +53,7 @@ import app.kestrel.ui.components.RollingDigits
 import app.kestrel.ui.components.SmallCaps
 import app.kestrel.ui.components.SymbolIcon
 import app.kestrel.ui.components.Symbols
+import app.kestrel.ui.format.noWidow
 import app.kestrel.ui.model.LotAction
 import app.kestrel.ui.theme.KestrelTheme
 import app.kestrel.ui.theme.Spacing
@@ -100,22 +101,29 @@ fun CountdownRow(
     }
 }
 
-/** "36 s left" in the final minute, "13 m 07 s left" before it; only changed digits roll. One spoken sentence. */
+/**
+ * "36 s left" in the final minute, "13 m 07 s left" before it; only changed digits roll, and the unit letters are set
+ * in the unit style, never at figure size. Words alone ("Ended") take the countdown unit style. One spoken sentence.
+ */
 @Composable
 private fun CountdownFigure(countdown: CountdownText) {
     val ink = MaterialTheme.colorScheme.onSurface
     val type = KestrelTheme.type
+    val unitStyle = if (countdown.finalMinute) type.countdownUnit else MaterialTheme.typography.headlineMedium
     Row(Modifier.clearAndSetSemantics { contentDescription = countdown.spoken }) {
-        RollingDigits(
-            text = countdown.figure,
-            style = if (countdown.finalMinute) type.countdown else type.countdownMedium,
-            color = ink,
-            modifier = Modifier.alignBy(LastBaseline),
-        )
-        Spacer(Modifier.width(8.dp))
+        if (countdown.figure.isNotEmpty()) {
+            RollingDigits(
+                text = countdown.figure,
+                style = if (countdown.finalMinute) type.countdown else type.countdownMedium,
+                unitStyle = MaterialTheme.typography.headlineMedium,
+                color = ink,
+                modifier = Modifier.alignBy(LastBaseline),
+            )
+            Spacer(Modifier.width(8.dp))
+        }
         Text(
             text = countdown.unit,
-            style = if (countdown.finalMinute) type.countdownUnit else MaterialTheme.typography.headlineMedium,
+            style = unitStyle,
             color = ink,
             maxLines = 1,
             modifier = Modifier.alignBy(LastBaseline),
@@ -139,11 +147,8 @@ private fun TimesColumn(times: TimesColumnText) {
         }
     val ink = MaterialTheme.colorScheme.onSurface
     val figureStyle = MaterialTheme.typography.titleMedium
-    Column(
-        Modifier
-            .widthIn(min = TimesColumnWidth)
-            .clearAndSetSemantics { contentDescription = times.spoken },
-    ) {
+    // As wide as its widest row and placed at the end edge, so the figures end on the 395 dp column.
+    Column(Modifier.clearAndSetSemantics { contentDescription = times.spoken }) {
         SmallCaps(times.heading)
         times.rows.forEach { row ->
             Row(Modifier.heightIn(min = 24.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -155,10 +160,17 @@ private fun TimesColumn(times: TimesColumnText) {
                 }
             }
         }
+        times.note?.let { note ->
+            Text(
+                text = note,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
     }
 }
 
-private val TimesColumnWidth = 132.dp
 private val TimesLabelWidth = 44.dp
 
 /**
@@ -279,6 +291,9 @@ private fun ScaleLabels(
 
 private const val FINAL_MINUTE_SECONDS = 60f
 private val ScaleHeight = 24.dp
+
+/** How tall the scale's track is, above its labels. */
+internal val FinalMinuteScaleTrackHeight: Dp = ScaleHeight
 private val BidTickWidth = 3.dp
 private val WaveLength = 28.dp
 
@@ -315,7 +330,7 @@ fun StatusCardView(
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(card.title, style = titleStyle, color = colors.onContainer)
-                    Text(card.detail, style = MaterialTheme.typography.bodyMedium, color = colors.onContainer)
+                    Text(card.detail.noWidow(), style = MaterialTheme.typography.bodyMedium, color = colors.onContainer)
                 }
             }
             card.action?.let { action ->
@@ -369,7 +384,7 @@ fun EditRow(
         edit.note?.let { note ->
             Spacer(Modifier.width(12.dp))
             Text(
-                text = note,
+                text = note.noWidow(),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),

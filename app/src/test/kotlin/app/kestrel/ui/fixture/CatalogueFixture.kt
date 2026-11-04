@@ -53,7 +53,7 @@ object CatalogueFixture {
     val now: Instant = at("2025-11-09T18:08:33Z")
 
     /** A neutral eBay account name for the fixture. */
-    const val ACCOUNT = "lot.42"
+    const val ACCOUNT = "oakshelf"
 
     /** When the account signed in on the phone. */
     val signedInSince: Instant = at("2025-11-02T10:31:00Z")

@@ -4,11 +4,17 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.test.onRoot
 import app.kestrel.BuildConfig
 import app.kestrel.data.ThemeMode
 import app.kestrel.ui.fixture.CatalogueFixture
 import app.kestrel.ui.harness.PhoneInsets
+import app.kestrel.ui.harness.ScreenshotSurface
 import app.kestrel.ui.harness.ScreenshotTest
+import com.github.takahirom.roborazzi.captureRoboImage
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Settings at 18:08 (DESIGN Settings), signed in as the fixture account with five armed snipes. */
@@ -54,11 +60,23 @@ class SettingsScreenshots : ScreenshotTest() {
             Scrolled(SettingsFixtures.signedIn)
         }
 
+    /** Halfway down the page, where This phone and Appearance sit: never the same picture as the scrolled end. */
     @Test
-    fun middleLight() =
-        capture("settings-middle", darkTheme = false, time = "18:08") {
-            Settings(SettingsFixtures.signedIn, remember { ScrollState(initial = MIDDLE_PX) })
+    fun middleLight() {
+        val scroll = ScrollState(initial = 0)
+        composeRule.mainClock.autoAdvance = false
+        composeRule.setContent {
+            ScreenshotSurface(darkTheme = false, time = "18:08") { Settings(SettingsFixtures.signedIn, scroll) }
         }
+        composeRule.mainClock.advanceTimeBy(DEFAULT_ADVANCE_MILLIS)
+        val middle = scroll.maxValue / 2
+        assertTrue("The page must scroll past its middle", middle in 1 until scroll.maxValue)
+        composeRule.runOnIdle { scroll.dispatchRawDelta(middle.toFloat()) }
+        composeRule.mainClock.advanceTimeBy(DEFAULT_ADVANCE_MILLIS)
+        assertEquals(middle, scroll.value)
+        assertNotEquals(scroll.maxValue, scroll.value)
+        composeRule.onRoot().captureRoboImage("src/test/screenshots/${fileName("settings-middle", false, 1f)}.png")
+    }
 
     @Test
     fun signedOutLight() =
@@ -93,11 +111,6 @@ class SettingsScreenshots : ScreenshotTest() {
         capture("settings-font-licence", darkTheme = false, time = "18:08", wholeScreen = true) {
             Settings(SettingsFixtures.signedIn.copy(sheet = SettingsSheet.FontLicence))
         }
-
-    private companion object {
-        /** About halfway down, where This phone and Appearance sit. */
-        const val MIDDLE_PX = 1_500
-    }
 }
 
 internal object SettingsFixtures {
@@ -106,12 +119,13 @@ internal object SettingsFixtures {
     val signedIn: SettingsUiState =
         SettingsUiState(
             now = fixture.now,
-            account = AccountState.SignedIn(fixture.ACCOUNT),
+            account = AccountState.SignedIn(fixture.ACCOUNT, since = fixture.signedInSince),
             armedSnipes = fixture.snipes.count { it.maxBid != null && it.status.isActiveBid },
             defaultLeadSeconds = 6,
             themeMode = ThemeMode.SYSTEM,
             readiness = PhoneReadiness(problems = 1, checkedAt = fixture.readinessCheckedAt),
-            version = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+            // DESIGN Settings: the release this design describes.
+            version = "1.0 (1)",
             confirmingSignOut = false,
             sheet = null,
         )
@@ -143,6 +157,8 @@ internal object NoSettingsActions : SettingsActions {
     override fun openReady() = Unit
 
     override fun setTheme(mode: ThemeMode) = Unit
+
+    override fun setSuggestOddPence(on: Boolean) = Unit
 
     override fun openSheet(sheet: SettingsSheet) = Unit
 

@@ -47,7 +47,7 @@ class LotStateBuilderTest {
             state.edit,
         )
         assertEquals("Up £8.00 from £88.00", state.money.startCaption?.text)
-        assertEquals("£24.00 below your max", state.money.endCaption?.text)
+        assertEquals("£24.00 below your\u00A0max", state.money.endCaption?.text)
         assertEquals("At most £126.50 with postage", state.money.note)
     }
 
@@ -93,7 +93,8 @@ class LotStateBuilderTest {
         assertTrue(sent.scale!!.flat)
         assertNull(sent.edit)
         assertEquals(MenuEntry("Bid already sent", enabled = false), sent.menu.stopSniping)
-        assertEquals("5 seconds left.", sent.countdown.spoken)
+        // 5.6 s before the end: a partial second counts as a whole one, so it never reads "0 s" early.
+        assertEquals("6 seconds left.", sent.countdown.spoken)
 
         // Before the bid no label says "sent" (rule MF20).
         assertTrue(
@@ -113,10 +114,8 @@ class LotStateBuilderTest {
 
         val outbid = fixture.canonOutbid.lotState()
         assertEquals("Outbid · eBay replied in 0.8\u202Fs", outbid.card!!.title.text)
-        assertEquals(
-            "“You’ve been outbid. Another bidder’s maximum is higher.” Someone’s max is higher than yours.",
-            outbid.card!!.detail,
-        )
+        // eBay's sentence says why; Kestrel adds nothing that repeats it.
+        assertEquals("“You’ve been outbid. Another bidder’s maximum is higher.”", outbid.card!!.detail)
         assertEquals(
             "No reply from eBay yet",
             fixture.canonNoReply
@@ -129,12 +128,15 @@ class LotStateBuilderTest {
     @Test
     fun anExtensionReBasesTheScaleAndSaysWhoResetTheClock() {
         val state = fixture.walkmanExtended.lotState()
-        assertEquals("Extended · now ends 19:56:42", state.chipText)
+        // The chip says "Extended"; the card says when it now ends.
+        assertEquals("Extended", state.chipText)
+        assertEquals("Extended · now ends 19:56:42", state.card!!.title.text)
         assertEquals("44", state.countdown.figure)
         assertEquals("Extended", state.scale!!.startLabel)
         assertNull("Kestrel's bid sits at the start of the re-based scale", state.scale!!.bidFraction)
         assertEquals(
-            "Kestrel’s bid at 19:55:42 reset the clock to 60\u202Fs. It is still following.",
+            "Kestrel’s bid at 19:55:42 reset the clock to 60\u202Fs. Kestrel is still following. " +
+                "You’re in the lead so far.",
             state.card!!.detail,
         )
         assertEquals(LotStateBuilder.EXTENDED_BIDDING, state.extendedNote)
@@ -148,7 +150,9 @@ class LotStateBuilderTest {
         assertEquals("left", state.countdown.unit)
         assertEquals("7 days 3 hours left. Kestrel bids on Sun 16 Nov at 21:43.", state.countdown.spoken)
         assertEquals("Sun 16 Nov · GMT", state.times.heading)
-        assertEquals(listOf(TimeRowText("Bids", "21:43"), TimeRowText("Ends", "21:43")), state.times.rows)
+        // Without seconds BIDS and ENDS would read the same: the bid goes under the end in words.
+        assertEquals(listOf(TimeRowText("Ends", "21:43")), state.times.rows)
+        assertEquals("Bids 6\u202Fs before", state.times.note)
         assertNull(state.scale)
         assertNull(state.card)
         assertEquals("Dry run about 21:33, 10\u202Fmin before the end.", state.note)
@@ -199,7 +203,8 @@ class LotStateBuilderTest {
                 fixture.canonSignInNeeded to LotAction.SIGN_IN,
                 fixture.canonCaptcha to LotAction.OPEN_EBAY_PAGE,
                 fixture.canonPhoneCheck to LotAction.OPEN_EBAY_PAGE,
-                fixture.canonDryRunFailed to LotAction.FIX,
+                // The dry run met eBay's sign-in page, so its fix is signing in.
+                fixture.canonDryRunFailed to LotAction.SIGN_IN,
                 fixture.canonUnreachable to LotAction.OPEN_ON_EBAY,
                 fixture.omegaNeedsYou to LotAction.OPEN_EBAY_PAGE,
             )
@@ -216,11 +221,10 @@ class LotStateBuilderTest {
                 .detail,
         )
         val offline = fixture.canonOffline.lotState()
-        assertEquals("The 18:21:34 bid can’t go out until it reconnects.", offline.card!!.detail)
-        assertEquals(
-            OfflineNote("Offline since 18:02", "Prices are from 18:02. Kestrel can’t bid until the phone reconnects."),
-            offline.offline,
-        )
+        // The banner says the phone is offline once; the card says what that does to the bid.
+        assertEquals("The 18:21:34 bid can’t go out", offline.card!!.title.text)
+        assertEquals("Kestrel bids once the phone reconnects.", offline.card!!.detail)
+        assertEquals(OfflineNote("Offline since 18:02", "Prices are from 18:02."), offline.offline)
         // Raising is the card's action, so there is no second edit row.
         assertNull(fixture.omegaOverMax.lotState().edit)
     }
@@ -300,7 +304,10 @@ class LotStateBuilderTest {
         assertEquals("Arm snipe", set.primary)
 
         val locked = LotFixtures.canonLocked.lotState(SheetRequest(SheetKind.Edit)).sheet!!
-        assertEquals("Too late to change: Kestrel bids £120.00 at 18:21:34.", locked.locked)
+        assertEquals(
+            "The bid window is open, so this can’t change now. Kestrel bids £120.00 at 18:21:34.",
+            locked.locked,
+        )
     }
 
     @Test

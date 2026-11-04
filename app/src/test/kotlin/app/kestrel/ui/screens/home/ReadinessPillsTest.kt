@@ -56,7 +56,7 @@ class ReadinessPillsTest {
         assertEquals(PillKind.SeveralProblems, pill.kind)
         assertEquals(Symbols.Warning, pill.icon)
         assertEquals("2 things need attention", pill.title)
-        assertEquals("Battery restricted · signed out", pill.detail)
+        assertEquals("Signed out · battery restricted", pill.detail)
         assertEquals(PillAction.Review, pill.action)
     }
 
@@ -91,7 +91,7 @@ class ReadinessPillsTest {
         assertEquals(PillKind.Offline, alone.kind)
         assertEquals("Kestrel can’t check or bid", alone.detail)
         val withBattery = pill(HomeFixtures.batteryRestricted, offline = true)
-        assertEquals("Battery restricted · offline", withBattery.detail)
+        assertEquals("Offline · battery restricted", withBattery.detail)
     }
 
     @Test
@@ -108,7 +108,7 @@ class ReadinessPillsTest {
         val pill = pill(items = null, checking = true)
         assertEquals(PillKind.Checking, pill.kind)
         assertEquals("Checking this phone", pill.title)
-        assertEquals("Checking…", pill.detail)
+        assertEquals("This takes a few seconds", pill.detail)
     }
 
     @Test
@@ -135,6 +135,8 @@ class ReadinessPillsTest {
                 false,
                 now,
             )
-        assertEquals("All checks passed Sat 8 Nov at 21:40", pill.detail)
+        // A pass from another day is old: the pill says when the phone was last checked, not that it passed.
+        assertEquals("Last checked Sat 8 Nov at 21:40", pill.detail)
+        assertEquals(PillKind.Checking, pill.kind)
     }
 }

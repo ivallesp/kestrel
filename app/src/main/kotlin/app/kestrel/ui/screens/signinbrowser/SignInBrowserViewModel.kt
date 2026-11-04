@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import app.kestrel.AppContainer
 import app.kestrel.ui.model.Connectivity
 import app.kestrel.ui.shell.ConnectivityMonitor
+import app.kestrel.ui.shell.UiPreferences
 import app.kestrel.web.EbaySession
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -62,7 +63,7 @@ interface SignInSession {
 
 /**
  * Follows eBay's sign-in page in a visible WebView. A normal eBay page whose header says the user is signed in ends
- * it: Kestrel keeps the session and shows "Signed in as lot.42". Google, Facebook and Apple sign-in are refused by
+ * it: Kestrel keeps the session and shows "Signed in as oakshelf". Google, Facebook and Apple sign-in are refused by
  * the web layer and explained here; a page that finishes offline asks to try again.
  */
 class SignInBrowserViewModel(
@@ -202,6 +203,8 @@ internal class ContainerSignInSession(
         container.applicationScope.launch {
             EbaySession.flush()
             if (name != null) container.settings.setSignedInName(name)
+            // For Settings: "Signed in on this phone since Sun 2 Nov".
+            UiPreferences.of(context).recordSignIn(container.clock.nowUtcMillis())
         }
     }
 

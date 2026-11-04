@@ -20,6 +20,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import app.kestrel.model.SnipeStatus
+import app.kestrel.ui.components.menuBorder
 import app.kestrel.ui.fixture.CatalogueFixture
 import app.kestrel.ui.harness.PhoneInsets
 import app.kestrel.ui.harness.ScreenshotSurface
@@ -91,10 +92,12 @@ class HomeScreenshots : ScreenshotTest() {
         capture("S1-empty", darkTheme = false, time = "18:08", fontScale = 1.3f) { Home(HomeFixtures.empty) }
 
     @Test
-    fun offlineLight() = capture("S1-offline", darkTheme = false, time = "18:08") { Home(HomeFixtures.offline) }
+    fun offlineLight() =
+        capture("S1-offline", darkTheme = false, time = "18:08", online = false) { Home(HomeFixtures.offline) }
 
     @Test
-    fun offlineDark() = capture("S1-offline", darkTheme = true, time = "18:08") { Home(HomeFixtures.offline) }
+    fun offlineDark() =
+        capture("S1-offline", darkTheme = true, time = "18:08", online = false) { Home(HomeFixtures.offline) }
 
     @Test
     fun signedOutLight() =
@@ -155,13 +158,13 @@ class HomeScreenshots : ScreenshotTest() {
     @Test
     fun raiseUndoLight() =
         capture("S1-undo-raise", darkTheme = false, time = "18:08") {
-            Snackbar(HomeFixtures.home, "Max raised to £2,200.00")
+            Snackbar(HomeFixtures.raised, "Max raised to £2,200.00")
         }
 
     @Test
     fun stopUndoDark() =
         capture("S1-undo-stop", darkTheme = true, time = "18:08") {
-            Snackbar(HomeFixtures.home, "Stopped sniping Omega Speedmaster")
+            Snackbar(HomeFixtures.stopped, "Stopped sniping Omega Speedmaster")
         }
 
     @Composable
@@ -209,6 +212,7 @@ class HomeScreenshots : ScreenshotTest() {
             color = MenuDefaults.containerColor,
             tonalElevation = MenuDefaults.TonalElevation,
             shadowElevation = MenuDefaults.ShadowElevation,
+            border = menuBorder(),
         ) {
             Column(Modifier.padding(vertical = 8.dp)) {
                 RaiseMaxMenuItems(minimum = fixture.gbp("2200.00"), onQuickRaise = {}, onStopSniping = {})

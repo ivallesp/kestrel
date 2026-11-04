@@ -60,7 +60,7 @@ class HandOffScreenshots : ScreenshotTest() {
 
     @Test
     fun offlineLight() =
-        capture("handoff-offline", darkTheme = false, time = "18:12", wholeScreen = true) {
+        capture("handoff-offline", darkTheme = false, time = "18:12", wholeScreen = true, online = false) {
             HandOff(state(progress = null, sheet = BrowserSheet.Offline))
         }
 

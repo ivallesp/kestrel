@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.kestrel.ui.model.LotAction
 import app.kestrel.ui.screens.lot.LotEffect
 import app.kestrel.ui.screens.lot.LotPage
 import app.kestrel.ui.screens.lot.LotViewModel
@@ -58,6 +59,11 @@ fun ResultDestination(
                     navigator.leaveMessage(effect.message)
                     navigator.back()
                 }
+
+                is LotEffect.Reopen -> {
+                    navigator.leaveMessage(effect.message)
+                    navigator.replace(Destination.Lot(effect.snipeId))
+                }
             }
         }
     }
@@ -73,7 +79,13 @@ fun ResultDestination(
                     onShare = { shareReceipt(context, current.state.shareText) },
                     onOpenOnEbay = { navigator.open(Destination.HandOff(id)) },
                     onDelete = viewModel::delete,
-                    onAction = { action -> routeAction(action, null, id, navigator, openSheet = {}) },
+                    onAction = { action ->
+                        if (action == LotAction.UNDO_CANCEL) {
+                            viewModel.undoCancel()
+                        } else {
+                            routeAction(action, null, id, navigator, openSheet = {})
+                        }
+                    },
                 )
             }
 

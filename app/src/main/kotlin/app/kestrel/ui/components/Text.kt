@@ -25,7 +25,6 @@ import app.kestrel.ui.format.NO_BREAK_SPACE
 import app.kestrel.ui.format.ZERO_WIDTH_SPACE
 import app.kestrel.ui.theme.KestrelTheme
 import app.kestrel.ui.theme.TABULAR_FIGURES
-import app.kestrel.ui.theme.tabular
 import java.util.Locale
 
 /** The small-caps rules of DESIGN SC1 and SC2. */
@@ -110,8 +109,9 @@ fun tabularText(
 }
 
 /**
- * Figures-only sans text: clock times, ledger values, timeline times, counts, the S3 times column (rule T3). Tabular
- * figures are set on the whole string; never pass words.
+ * Figures-only sans text: clock times, ledger values, timeline times, counts, the S3 time column (rule T3). Tabular
+ * figures are set on the runs of digits, colons and points, never on the spaces or the unit letters between them,
+ * which keep their natural width; never pass words.
  */
 @Composable
 fun Figure(
@@ -123,8 +123,8 @@ fun Figure(
     maxLines: Int = 1,
 ) {
     Text(
-        text = tabularText(text, wraps = maxLines > 1),
-        style = style.tabular(),
+        text = buildAnnotatedString { appendTabularRuns(tabularText(text, wraps = maxLines > 1)) },
+        style = style,
         color = color,
         modifier = modifier,
         textAlign = textAlign,
@@ -135,9 +135,28 @@ fun Figure(
 /** The span on a ticking or aligned figure inside a sentence (rule T4). It sets tabular figures and nothing else. */
 val TabularFigureSpan = SpanStyle(fontFeatureSettings = TABULAR_FIGURES)
 
-/** Appends [figure] with tabular figures, its spaces made no-break so tnum does not widen them. */
+/**
+ * Appends [figure] with tabular figures on its digits, its spaces made no-break so the figure never breaks. The span
+ * ends before every space and unit: inside tnum Google Sans Flex widens U+202F and U+00A0 too (DESIGN Q4).
+ */
 fun AnnotatedString.Builder.appendFigure(figure: String) {
-    withStyle(TabularFigureSpan) { append(tabularText(figure, wraps = false)) }
+    appendTabularRuns(tabularText(figure, wraps = false))
+}
+
+/** True for the characters a tabular run covers: digits, colons, points and thousands separators. */
+fun Char.isTabularFigure(): Boolean = isDigit() || this == ':' || this == '.' || this == ','
+
+/** Appends [text], putting [TabularFigureSpan] on each run of [isTabularFigure] characters and nothing else. */
+fun AnnotatedString.Builder.appendTabularRuns(text: String) {
+    var start = 0
+    while (start < text.length) {
+        val figure = text[start].isTabularFigure()
+        var end = start
+        while (end < text.length && text[end].isTabularFigure() == figure) end++
+        val run = text.substring(start, end)
+        if (figure) withStyle(TabularFigureSpan) { append(run) } else append(run)
+        start = end
+    }
 }
 
 /**

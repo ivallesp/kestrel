@@ -6,10 +6,12 @@ import app.kestrel.model.StatusFamily
 import app.kestrel.ui.components.MoneyFigures
 import app.kestrel.ui.format.AuctionZone
 import app.kestrel.ui.format.NO_BREAK_SPACE
+import app.kestrel.ui.format.clockFor
 import app.kestrel.ui.format.clockWithSeconds
 import app.kestrel.ui.format.dayDate
 import app.kestrel.ui.format.forDisplay
 import app.kestrel.ui.format.formatted
+import app.kestrel.ui.format.isSameDay
 import app.kestrel.ui.format.secondsText
 import app.kestrel.ui.format.secondsWithTenths
 import app.kestrel.ui.format.zoneName
@@ -17,6 +19,7 @@ import app.kestrel.ui.model.LotAction
 import app.kestrel.ui.model.LotStatus
 import app.kestrel.ui.model.LotTimes
 import app.kestrel.ui.model.StateWords
+import app.kestrel.ui.model.action
 import app.kestrel.ui.model.chipText
 import app.kestrel.ui.model.detail
 import app.kestrel.ui.model.label
@@ -32,7 +35,7 @@ import java.time.temporal.ChronoUnit
 object ResultStateBuilder {
     /** DESIGN 6.3 and S4: what happens after a win. */
     const val PAYMENT_NOTE =
-        "eBay takes payment automatically from your saved method. If it can’t, you have 4 days to pay."
+        "eBay takes payment automatically from your saved method. If it can’t, you have 4\u00A0days to\u00A0pay."
 
     const val SECOND_CHANCE_TITLE = "If the winner doesn’t pay"
 
@@ -61,7 +64,7 @@ object ResultStateBuilder {
             variant = variant,
             title = snipe.title.forDisplay(),
             photo = inputs.photo,
-            tone = status.tone,
+            tone = if (variant == ResultVariant.Unknown) StatusTone.Ended else status.tone,
             statusLine = statusLine,
             headline = headline,
             receipt = LotTimeline.receipt(evidence, now, zone),
@@ -109,7 +112,11 @@ object ResultStateBuilder {
             }
         }
 
-    /** The status line with day, time and zone (rule MF38): "Won · ended Sun 9 Nov, 18:21:40 GMT". */
+    /**
+     * The status line with day, time and zone (rule MF38): "Won · ended Sun 9 Nov, 18:21:40 GMT". Where the headline
+     * already names the state ("Bid failed", "Cancelled", "Ended early"), the line keeps the state's glyph and gives
+     * only the moment ("Today, 18:21:34 GMT"), so the same words never sit one above the other.
+     */
     private fun statusLine(
         status: LotStatus,
         evidence: LotEvidence,
@@ -120,19 +127,28 @@ object ResultStateBuilder {
         val end = Instant.ofEpochMilli(snipe.endTimeUtcMillis)
         val words = status.label(now, zone).words
 
-        // The day and the time each stay whole, so a status line that must wrap never leaves the zone alone.
-        fun at(instant: Instant) =
-            "${instant.dayDate(zone).keptTogether()}, " +
-                "${instant.clockWithSeconds(zone)} ${instant.zoneName(zone)}".keptTogether()
+        // "today" on the day itself, so the line stays clear of the seal; seconds only within the hour (rule MF38
+        // keeps day, time and zone). The day and the time each stay whole, so a wrap never leaves the zone alone.
+        fun at(instant: Instant): String {
+            val day = if (isSameDay(now, instant, zone)) "today" else instant.dayDate(zone)
+            return "${day.keptTogether()}, ${"${clockFor(
+                now,
+                instant,
+                zone,
+            )} ${instant.zoneName(zone)}".keptTogether()}"
+        }
         val resultAt =
             Instant.ofEpochMilli(evidence.cancelledAtMillis ?: evidence.result?.atUtcMillis ?: snipe.updatedAtUtcMillis)
+
+        fun moment(instant: Instant) =
+            StateWords(words = "", detail = at(instant).replaceFirstChar { it.uppercaseChar() })
         return when (status) {
             is LotStatus.Won, is LotStatus.Lost -> StateWords(words, "ended ${at(end)}")
-            is LotStatus.EndedEarly -> StateWords(words, at(status.endedAt))
-            is LotStatus.CancelledByYou -> StateWords(words, at(status.cancelledAt))
-            is LotStatus.BidNotSent -> StateWords(words, at(LotTimes.bidAt(snipe)))
-            is LotStatus.BidFailed -> StateWords(words, at(LotTimes.bidAt(snipe)))
-            is LotStatus.CancelledByGroup -> StateWords(words, at(resultAt))
+            is LotStatus.EndedEarly -> moment(status.endedAt)
+            is LotStatus.CancelledByYou -> moment(status.cancelledAt)
+            is LotStatus.BidNotSent -> moment(LotTimes.bidAt(snipe))
+            is LotStatus.BidFailed -> moment(LotTimes.bidAt(snipe))
+            is LotStatus.CancelledByGroup -> moment(resultAt)
             else -> StateWords(words, at(end))
         }
     }
@@ -257,7 +273,8 @@ object ResultStateBuilder {
                     } else {
                         status.detail(now, zone)
                     }
-                OutcomeCardText(StatusTone.Ended, text)
+                // "Undo cancel" while the auction runs (DESIGN S4); never once it ended.
+                OutcomeCardText(StatusTone.Ended, text, status.action(now))
             }
 
             is LotStatus.BidNotSent -> {
@@ -276,7 +293,10 @@ object ResultStateBuilder {
             }
 
             is LotStatus.BidFailed -> {
-                OutcomeCardText(StatusTone.Failed, status.detail(now, zone))
+                // eBay's words may ask to try again; once the auction has ended there is nothing to retry.
+                val retryNote =
+                    if (status.ebayText?.contains("try again", ignoreCase = true) == true) " $NOTHING_TO_RETRY" else ""
+                OutcomeCardText(StatusTone.Failed, status.detail(now, zone) + retryNote)
             }
 
             else -> {
@@ -284,17 +304,26 @@ object ResultStateBuilder {
             }
         }
 
-    /** A bid went out but the result could not be read: say what is known and send the user to eBay's page. */
+    /**
+     * A bid went out but the result could not be read yet: one message, the same as the receipt's. Kestrel keeps
+     * checking; the user can look on eBay meanwhile.
+     */
     private fun unknown(evidence: LotEvidence): OutcomeCardText {
         val amount = evidence.sentAmount?.formatted()
         val lead = evidence.leadMillis?.let { " ${secondsWithTenths(it)} before the end" } ?: ""
         val sent = if (amount != null) "Kestrel sent your $amount bid$lead, but" else "Kestrel"
         return OutcomeCardText(
             StatusTone.Ended,
-            "$sent couldn’t read the result on eBay’s listing page. Check the listing on eBay.",
+            "$sent couldn’t read the result on eBay’s listing page yet. $UNKNOWN_NEXT",
             LotAction.OPEN_ON_EBAY,
         )
     }
+
+    /** What happens after a result Kestrel couldn't read, on the card and in the receipt. */
+    const val UNKNOWN_NEXT = "It keeps checking the page, and you can look on eBay too."
+
+    /** Under a refusal that asks to try again, once the auction has ended. */
+    const val NOTHING_TO_RETRY = "The auction has ended, so there is nothing to retry."
 
     private fun String.keptTogether(): String = replace(' ', NO_BREAK_SPACE)
 
@@ -305,7 +334,7 @@ object ResultStateBuilder {
         variant: ResultVariant,
         evidence: LotEvidence,
     ): PullQuoteText? {
-        if (variant !in setOf(ResultVariant.Won, ResultVariant.Lost, ResultVariant.Unknown)) return null
+        if (variant !in setOf(ResultVariant.Won, ResultVariant.Lost)) return null
         val text = evidence.replyText ?: return null
         if (evidence.sentAtMillis == null) return null
         val sent = evidence.leadMillis?.let { "Sent ${secondsWithTenths(it)} before the end" }

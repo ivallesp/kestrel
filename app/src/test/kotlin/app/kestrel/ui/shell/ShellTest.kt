@@ -31,11 +31,11 @@ class ShellTest {
         listOf(
             Destination.Lot(3) to NOT_ON_THE_LIST,
             Destination.Result(3) to NOT_ON_THE_LIST,
-            Destination.Ready to "Ready to snipe",
+            Destination.Ready to "This phone",
             Destination.SignIn to "Sign in to eBay",
-            // eBay's pages show their host in the bar, and the hand-off its Done button whatever the snipe.
+            // eBay's pages show their host in the bar; the hand-off of a snipe that is gone says so (and has no Done).
             Destination.SignInBrowser to "signin.ebay.co.uk",
-            Destination.HandOff(3) to "Done",
+            Destination.HandOff(3) to "This snipe is no longer on your list",
             Destination.Group(1) to "Group",
             Destination.Settings to "Settings",
             Destination.History to "History",
@@ -118,7 +118,7 @@ class ShellTest {
                 )
             }
         }
-        // Skip the three pages, then pass on signing in and on notifications: onboarding ends on Ready to snipe,
+        // Skip the three pages, then pass on signing in and on notifications: onboarding ends on S5 (This phone),
         // with Home underneath.
         composeRule.onNodeWithText("Skip").performClick()
         composeRule.waitForIdle()
@@ -127,7 +127,7 @@ class ShellTest {
         composeRule.onNodeWithText("Not now").performClick()
         composeRule.waitForIdle()
         assertTrue(stored)
-        composeRule.onAllNodesWithText("Ready to snipe").onFirst().assertIsDisplayed()
+        composeRule.onAllNodesWithText("This phone").onFirst().assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Back").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Snipes").assertIsDisplayed()

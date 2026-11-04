@@ -69,7 +69,7 @@ fun StateLabel(
                                 fontSize = detailStyle.fontSize,
                                 letterSpacing = detailStyle.letterSpacing,
                             ),
-                        ) { append(" · $detail") }
+                        ) { append(if (words.words.isEmpty()) detail else " · $detail") }
                     }
                 },
             style = wordStyle,

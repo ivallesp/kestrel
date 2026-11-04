@@ -102,6 +102,15 @@ data class NextBid(
 )
 
 object CheckRows {
+    /**
+     * The rows while the first check runs: every check by name, in the platform's order, with no verdict yet, so the
+     * page lists what it is checking rather than going blank.
+     */
+    fun pending(): List<CheckRow> =
+        names.keys.map { key ->
+            CheckRow(key, names.getValue(key), icons.getValue(key), CheckStanding.NotYet, null, "", null)
+        }
+
     /** The rows in the platform's order; the screen groups them by [CheckStanding]. */
     fun build(
         items: List<ReadinessItem>,
@@ -216,9 +225,10 @@ object CheckRows {
         if (item.ok) {
             passed(item, "Unrestricted, so bids go out on time with the screen off")
         } else {
+            // Android's own word for this battery setting, so it never reads as the background row's "Restricted".
             problem(
                 item,
-                "Restricted",
+                "Optimised",
                 "Android may pause Kestrel when the screen is off, so a bid could go out late.",
                 systemPage(item.key),
                 icon = Symbols.BatteryAlert,

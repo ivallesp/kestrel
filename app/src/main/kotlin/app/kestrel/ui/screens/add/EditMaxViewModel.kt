@@ -17,7 +17,6 @@ import app.kestrel.ui.format.clockWithSeconds
 import app.kestrel.ui.format.dayDate
 import app.kestrel.ui.format.formatted
 import app.kestrel.ui.format.isSameDay
-import app.kestrel.ui.format.isWithinAnHour
 import app.kestrel.ui.format.secondsText
 import app.kestrel.ui.format.withCurlyQuotes
 import app.kestrel.ui.format.zoneName
@@ -72,7 +71,7 @@ enum class SheetLineKind {
     /** "Bids at 21:02:09 GMT", or the full plan on a new max. */
     Plan,
 
-    /** "Too late to change: Kestrel bids £120.00 at 18:21:34." */
+    /** "The bid window is open, so this can’t change now." over "Kestrel bids £120.00 at 18:21:34." */
     Locked,
 
     /** The data layer refused the save, in its words, then the plan that stands. */
@@ -191,7 +190,14 @@ class EditMaxViewModel(
                     maxField.clearText()
                 }
             }
-            session.value = Session(id = id, mode = mode, leadSeconds = snipe.leadSeconds, previousMax = snipe.maxBid)
+            session.value =
+                Session(
+                    id = id,
+                    mode = mode,
+                    leadSeconds = snipe.leadSeconds,
+                    previousMax = snipe.maxBid,
+                    suggestOddPence = services.suggestOddPence(),
+                )
         }
         return id
     }
@@ -313,6 +319,8 @@ class EditMaxViewModel(
         val wordsConfirmed: Boolean = false,
         val saving: Boolean = false,
         val refusal: String? = null,
+        /** Settings "Suggest odd pence". */
+        val suggestOddPence: Boolean = true,
     )
 
     private companion object {
@@ -373,7 +381,12 @@ internal object EditMaxPlanner {
                     readOnly = blocked,
                 ),
             worstCase = AddPlanner.worstCase(shown, snipe.postage),
-            oddPence = if (mode == EditMaxMode.Set && !blocked) MaxRules.oddPence(typed) else null,
+            oddPence =
+                if (mode == EditMaxMode.Set && !blocked && session.suggestOddPence) {
+                    MaxRules.oddPence(typed, currency)
+                } else {
+                    null
+                },
             timing =
                 if (mode ==
                     EditMaxMode.Set
@@ -417,18 +430,17 @@ internal object EditMaxPlanner {
         return AddPlanner.wordsCheck(typed.max, current, confirmLabel)
     }
 
-    /** "£96.00 now · ends 18:21:40 GMT"; another day: "£61.00 now · ends Thu 13 Nov, 19:30". */
+    /**
+     * "£96.00 now · ends 18:21:40 GMT"; another day: "£61.00 now · ends Thu 13 Nov, 19:30 GMT". The zone is always
+     * there, as on S3's sheets, so the same sheet never reads two ways.
+     */
     fun lotLine(
         snipe: Snipe,
         now: Instant,
     ): String {
         val end = Instant.ofEpochMilli(snipe.endTimeUtcMillis)
-        val ends =
-            when {
-                !isSameDay(now, end) -> "${end.dayDate()}, ${clockFor(now, end)}"
-                isWithinAnHour(now, end) -> "${end.clockWithSeconds()} ${end.zoneName()}"
-                else -> clockFor(now, end)
-            }
+        val clock = "${clockFor(now, end)} ${end.zoneName()}"
+        val ends = if (isSameDay(now, end)) clock else "${end.dayDate()}, $clock"
         val price = snipe.lastPrice?.let { "${it.formatted()} now · " }.orEmpty()
         return "${price}ends $ends"
     }
@@ -447,8 +459,8 @@ internal object EditMaxPlanner {
         val bidMoment = if (isSameDay(now, bidAt)) bidClock else "${bidAt.dayDate()} at $bidClock"
         val standing = snipe.maxBid?.let { "Kestrel bids ${it.formatted()} at $bidMoment." }
         if (locked) {
-            val text = standing?.let { "Too late to change: $it" } ?: "Too late to set a max for this auction."
-            return SheetLine(SheetLineKind.Locked, text, figure = bidClock)
+            val text = standing?.let { "${MaxRules.LOCKED_SENTENCE}\n$it" } ?: "Too late to set a max for this auction."
+            return SheetLine(SheetLineKind.Locked, text, figure = bidClock.takeIf { standing != null })
         }
         if (refusal != null) {
             // The refusal and the plan that stands read as two lines.

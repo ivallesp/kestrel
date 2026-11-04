@@ -1,5 +1,6 @@
 package app.kestrel.ui.screens.home
 
+import app.kestrel.model.SnipeStatus
 import app.kestrel.platform.ReadinessItem
 import app.kestrel.platform.ReadinessKey
 import app.kestrel.ui.fixture.CatalogueFixture
@@ -88,6 +89,38 @@ object HomeFixtures {
 
     /** S1 at 18:08:33 (DESIGN S1): the battery is restricted. */
     val home: HomeUiState get() = build(input(listMoments))
+
+    /** After "Raise to £2,200.00, the next bid": the Omega bids again, at its new max. */
+    val raised: HomeUiState
+        get() =
+            build(
+                input(
+                    listMoments.map { moment ->
+                        if (moment.snipe.id != fixture.omega.id) {
+                            moment
+                        } else {
+                            moment.copy(
+                                snipe = moment.snipe.copy(maxBid = fixture.gbp("2200.00"), status = SnipeStatus.ARMED),
+                            )
+                        }
+                    },
+                ),
+            )
+
+    /** After "Stop sniping": the Omega is watched, without a max. */
+    val stopped: HomeUiState
+        get() =
+            build(
+                input(
+                    listMoments.map { moment ->
+                        if (moment.snipe.id != fixture.omega.id) {
+                            moment
+                        } else {
+                            moment.copy(snipe = moment.snipe.copy(maxBid = null, status = SnipeStatus.WATCHING))
+                        }
+                    },
+                ),
+            )
 
     /** Nothing on the list; every check passed at 18:06. */
     val empty: HomeUiState get() = build(input(emptyList(), readiness = readiness(allPassed), refreshing = false))

@@ -86,7 +86,8 @@ class LotStatusWordsTest {
             "At 18:11:40 eBay showed a sign-in page instead of the bid panel. Fix it before 18:21:34.",
             moment.detailText(),
         )
-        assertEquals(LotAction.FIX, moment.status.action(moment.now))
+        // The dry run met eBay's sign-in page: signing in is the fix, and the button says so.
+        assertEquals(LotAction.SIGN_IN, moment.status.action(moment.now))
     }
 
     @Test
@@ -150,11 +151,7 @@ class LotStatusWordsTest {
     fun outbid() {
         val moment = fixture.canonOutbid
         assertEquals("Outbid · ends 18:21:40", moment.labelText())
-        assertEquals(
-            "eBay replied: “You’ve been outbid. Another bidder’s maximum is higher.” " +
-                "Someone’s max is higher than yours.",
-            moment.detailText(),
-        )
+        assertEquals("eBay replied: “You’ve been outbid. Another bidder’s maximum is higher.”", moment.detailText())
     }
 
     @Test
@@ -162,7 +159,7 @@ class LotStatusWordsTest {
         val moment = fixture.walkmanExtended
         assertEquals("Extended · now ends 19:56:42", moment.labelText())
         assertEquals("A late bid reset the clock to 60${thin}s. Kestrel is still following.", moment.detailText())
-        assertEquals("Extended · now ends 19:56:42", moment.status.chipText())
+        assertEquals("Extended", moment.status.chipText())
     }
 
     @Test
@@ -189,7 +186,7 @@ class LotStatusWordsTest {
     @Test
     fun endedEarly() {
         val moment = fixture.gameBoyEndedEarly
-        assertEquals("Ended early by the seller", moment.labelText())
+        assertEquals("Ended early by the seller · Wed 12 Nov", moment.labelText())
         assertEquals("The seller ended the listing early. Nothing was bid.", moment.detailText())
     }
 
@@ -211,7 +208,7 @@ class LotStatusWordsTest {
     @Test
     fun bidNotSent() {
         val moment = fixture.canonBidNotSent
-        assertEquals("Bid not sent", moment.labelText())
+        assertEquals("Bid not sent · Sun 9 Nov", moment.labelText())
         assertEquals("eBay signed you out at 18:21:20. Nothing was bid.", moment.detailText())
         assertEquals(LotAction.SIGN_IN, moment.status.action(moment.now))
     }
@@ -219,7 +216,7 @@ class LotStatusWordsTest {
     @Test
     fun bidFailed() {
         val moment = fixture.canonBidFailed
-        assertEquals("Bid failed", moment.labelText())
+        assertEquals("Bid failed · Sun 9 Nov", moment.labelText())
         assertEquals(
             "eBay didn’t accept the bid: “Your bid wasn’t placed. Please try again.” Nothing was bid.",
             moment.detailText(),

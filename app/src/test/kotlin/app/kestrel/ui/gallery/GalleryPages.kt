@@ -434,7 +434,7 @@ private fun LotTimeline(modifier: Modifier = Modifier) {
                     "Your max, ${secondsText(6)} before the end",
                     TimelineMoment.Future,
                 ),
-                TimelineEntry("18:21:04", "Now", moment = TimelineMoment.Now),
+                TimelineEntry("18:21:04", "", moment = TimelineMoment.Now),
                 TimelineEntry("18:20:51", "Price rose to £96.00", "16 bids"),
                 TimelineEntry("18:20:40", "Final minute", "Checking every ${secondsText(2)}"),
                 TimelineEntry(
@@ -449,7 +449,7 @@ private fun LotTimeline(modifier: Modifier = Modifier) {
     }
 }
 
-/** The S4 receipt, newest first, in tenths, down to the day it was armed. */
+/** The S4 receipt, newest first, in tenths, down to the moment it was armed. */
 @Composable
 private fun ReceiptTimeline(modifier: Modifier = Modifier) {
     Column(modifier) {
@@ -471,7 +471,8 @@ private fun ReceiptTimeline(modifier: Modifier = Modifier) {
                     "6.1\u202Fs before the end",
                     tone = StatusTone.Bidding,
                 ),
-                TimelineEntry("Wed 5 Nov 21:12:44", "Armed with a £65.00 max", "${secondsText(6)} lead"),
+                // The Canon's own arming (DESIGN S4 receipt), the same morning.
+                TimelineEntry("09:14:02.0", "Armed with a £120.00 max, ${secondsText(6)}\u00A0lead"),
             ),
         )
     }
@@ -541,10 +542,10 @@ fun ControlsPage(
         )
         Spacer(Modifier.height(12.dp))
         val filled = remember { TextFieldState("90.00") }
-        MaxField(state = filled, minimum = "£66.00")
+        MaxField(state = filled, minimum = "£66.08")
         Spacer(Modifier.height(8.dp))
         val tooLow = remember { TextFieldState("60.00") }
-        MaxField(state = tooLow, minimum = "£66.00", error = "Too low: eBay needs at least £66.00")
+        MaxField(state = tooLow, minimum = "£66.08", error = "Too low: eBay needs at least £66.08")
         Spacer(Modifier.height(12.dp))
         OfflineBanner("Offline since 18:02", "Prices are from 18:02. Kestrel can’t bid until the phone reconnects.")
         Spacer(Modifier.height(12.dp))

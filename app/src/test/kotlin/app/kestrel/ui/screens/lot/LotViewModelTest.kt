@@ -299,6 +299,13 @@ private class FakeLotData(
         return snipe.value?.let { EditResult.Done(it) } ?: EditResult.NotFound
     }
 
+    var undoCancels = 0
+
+    override suspend fun undoCancel(id: Long): EditResult {
+        undoCancels++
+        return EditResult.Done(snipe.value!!.copy(id = id + 100, status = SnipeStatus.ARMED, groupId = null))
+    }
+
     override suspend fun sealStamped(id: Long): Boolean = id in stamped
 
     override suspend fun markSealStamped(id: Long) {

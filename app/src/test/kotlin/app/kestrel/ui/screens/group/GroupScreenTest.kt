@@ -51,6 +51,14 @@ class GroupScreenTest {
         override fun addSnipe() {
             asked += "add"
         }
+
+        override fun rename() {
+            asked += "rename"
+        }
+
+        override fun ungroup() {
+            asked += "ungroup"
+        }
     }
 
     private fun show(
@@ -86,6 +94,24 @@ class GroupScreenTest {
         composeRule.onNodeWithText("Add a snipe to this group").performClick()
         composeRule.onNodeWithContentDescription("Back").performClick()
         assertEquals(listOf("open 4", "add", "back"), actions.asked)
+    }
+
+    @Test
+    fun theOverflowOffersRenameAlwaysAndUngroupWhileAMemberIsOpen() {
+        val actions = RecordingActions()
+        show(GroupFixtures.afterWin, actions)
+        composeRule.onNodeWithContentDescription("More options").performClick()
+        composeRule.onNodeWithText("Ungroup").assertDoesNotExist()
+        composeRule.onNodeWithText("Rename").performClick()
+        assertEquals(listOf("rename"), actions.asked)
+    }
+
+    @Test
+    fun aCancelledMemberOffersUndoCancelWhileItsAuctionRuns() {
+        val actions = RecordingActions()
+        show(GroupFixtures.afterWin, actions)
+        composeRule.onNodeWithText("Undo cancel").performClick()
+        assertEquals(listOf("Undo cancel 4"), actions.asked)
     }
 
     @Test

@@ -67,6 +67,8 @@ fun SettingsDestination(
 
                 override fun setTheme(mode: ThemeMode) = viewModel.setThemeMode(mode)
 
+                override fun setSuggestOddPence(on: Boolean) = viewModel.setSuggestOddPence(on)
+
                 override fun openSheet(sheet: SettingsSheet) = viewModel.openSheet(sheet)
 
                 override fun closeSheet() = viewModel.closeSheet()

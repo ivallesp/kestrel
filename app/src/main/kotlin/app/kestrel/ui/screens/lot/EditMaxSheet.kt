@@ -37,6 +37,8 @@ import app.kestrel.ui.components.ConnectedToggleRow
 import app.kestrel.ui.components.KestrelBottomSheet
 import app.kestrel.ui.components.LotPlate
 import app.kestrel.ui.components.MaxField
+import app.kestrel.ui.components.OddPenceCard
+import app.kestrel.ui.components.OddPenceWords
 import app.kestrel.ui.components.PrimaryButton
 import app.kestrel.ui.components.SumRow
 import app.kestrel.ui.components.SymbolIcon
@@ -44,6 +46,7 @@ import app.kestrel.ui.components.Symbols
 import app.kestrel.ui.format.armSummary
 import app.kestrel.ui.format.formatted
 import app.kestrel.ui.format.secondsText
+import app.kestrel.ui.theme.KestrelTheme
 import app.kestrel.ui.theme.PlateShapes
 import app.kestrel.ui.theme.Spacing
 import kotlinx.coroutines.launch
@@ -83,17 +86,16 @@ object EditMaxForm {
         val tooLow = max != null && minimum != null && max < minimum
         val error = if (tooLow) "Too low: eBay needs at least ${minimum.formatted()}" else sheet.error
         val postage = sheet.postage
+        // A max that is too low is never added up: the row keeps its place with dashes (DESIGN S2 "Too low").
         val sum =
-            if (max != null &&
-                postage != null
-            ) {
-                SumFigures(max.formatted(), postage.formatted(), (max + postage).formatted())
-            } else {
-                null
+            when {
+                postage == null || max == null -> null
+                tooLow -> SumFigures(NO_AMOUNT, postage.formatted(), NO_AMOUNT)
+                else -> SumFigures(max.formatted(), postage.formatted(), (max + postage).formatted())
             }
         val setting = sheet.kind == SheetKind.Set
         val oddPence =
-            if (setting && max != null &&
+            if (setting && sheet.suggestOddPence && max != null &&
                 max.minor % 100 == 0L
             ) {
                 Money(max.minor + ODD_PENCE_MINOR, max.currency)
@@ -200,25 +202,33 @@ fun EditMaxSheetContent(
             }
             form.oddPence?.let { suggestion ->
                 Spacer(Modifier.height(12.dp))
-                OddPenceCard(suggestion = suggestion, roundAmount = form.max, onUse = { onUseAmount(suggestion) })
+                OddPenceCard(
+                    title = OddPenceWords.suggestionTitle(suggestion),
+                    detail = form.max?.let { OddPenceWords.suggestionDetail(it) }.orEmpty(),
+                    useDescription = "Use ${suggestion.formatted()}",
+                    onUse = { onUseAmount(suggestion) },
+                )
             }
             if (state.leadOptions.isNotEmpty()) {
                 Spacer(Modifier.height(16.dp))
                 LeadTimeChoice(state, onSelectLead)
             }
-            val line = state.locked ?: form.armLine ?: state.deadline
+            // Every time-to-bid line has the timer; the lock reads as the Attention warning, as the refused save does.
+            val locked = state.locked
+            val line = locked ?: form.armLine ?: state.deadline
             if (line != null) {
                 Spacer(Modifier.height(12.dp))
                 IconLine(
                     icon =
-                        if (form.armLine != null &&
-                            state.locked == null
+                        if (locked !=
+                            null
                         ) {
-                            Symbols.Schedule
+                            Symbols.Warning
                         } else {
                             Symbols.Timer
                         },
                     text = line,
+                    warning = locked != null,
                 )
             }
         }
@@ -276,44 +286,6 @@ private fun SheetLotLine(state: EditSheetState) {
     }
 }
 
-/** "Make it £90.37" on a neutral card (rule MF17), with a tonal "Use". */
-@Composable
-private fun OddPenceCard(
-    suggestion: Money,
-    roundAmount: Money?,
-    onUse: () -> Unit,
-) {
-    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-        Row(
-            Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = "Make it ${suggestion.formatted()}",
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                roundAmount?.let {
-                    Text(
-                        text = "Odd pence beat bidders who stop at ${it.formatted()}.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            Spacer(Modifier.width(8.dp))
-            FilledTonalButton(
-                onClick = onUse,
-                shapes = ButtonDefaults.shapes(),
-                modifier = Modifier.heightIn(min = Spacing.TouchTarget),
-            ) {
-                Text("Use", style = MaterialTheme.typography.labelLarge)
-            }
-        }
-    }
-}
-
 /** DESIGN S2 bid timing: the row, the 3 s / 6 s / 10 s toggles and the hint. */
 @Composable
 private fun LeadTimeChoice(
@@ -349,22 +321,25 @@ private fun LeadTimeChoice(
     }
 }
 
-/** A 16 dp glyph and one line of ink-soft text: the deadline, the arm summary or the lock. */
+/**
+ * A 16 dp glyph and the line beside it: the deadline or the arm summary in ink soft, or the lock as a [warning] in the
+ * Attention accent.
+ */
 @Composable
 private fun IconLine(
     icon: Int,
     text: String,
+    warning: Boolean = false,
 ) {
     val style = MaterialTheme.typography.bodyMedium
     val iconTop = with(LocalDensity.current) { ((style.lineHeight.toDp() - 16.dp) / 2).coerceAtLeast(0.dp) }
+    val colour = if (warning) KestrelTheme.status.attention.accent else MaterialTheme.colorScheme.onSurfaceVariant
     Row(verticalAlignment = Alignment.Top) {
-        SymbolIcon(
-            icon,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            size = 16.dp,
-            modifier = Modifier.padding(top = iconTop),
-        )
+        SymbolIcon(icon, tint = colour, size = 16.dp, modifier = Modifier.padding(top = iconTop))
         Spacer(Modifier.width(8.dp))
-        Text(text, style = style, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(text, style = style, color = colour)
     }
 }
+
+/** The sum row's figure while no valid max is typed. */
+private const val NO_AMOUNT = "—"

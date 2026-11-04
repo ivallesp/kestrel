@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
@@ -42,6 +43,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -127,7 +129,12 @@ fun AddScreen(
                 .fillMaxSize()
                 .windowInsetsPadding(windowInsets),
         ) {
-            AddTopBar(listingUrl = page.listingUrl, onClose = actions::close, onViewListing = actions::viewListing)
+            AddTopBar(
+                listingUrl = page.listingUrl,
+                ruled = scrollState.canScrollBackward,
+                onClose = actions::close,
+                onViewListing = actions::viewListing,
+            )
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 Column(
                     Modifier
@@ -145,6 +152,8 @@ fun AddScreen(
                         is AddPage.Ready -> ReadyPage(page, state.now, focusMax, actions)
                     }
                 }
+                // Content under the pinned bar fades into the page instead of being cut (DESIGN 2.8, Q14).
+                if (scrollState.canScrollForward) EdgeFade(Modifier.align(Alignment.BottomCenter))
                 SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
             }
             when (page) {
@@ -180,19 +189,29 @@ fun AddScreen(
     }
 }
 
-/** The S2 top bar (64 dp): close, "New snipe", and "View listing" once the listing's address is known. */
+/**
+ * The S2 top bar (64 dp): close, "New snipe", and "View listing" once the listing's address is known. A 1 dp rule
+ * runs under it while the page is scrolled, so scrolled content never meets the bar without an edge.
+ */
 @Composable
 private fun AddTopBar(
     listingUrl: String?,
+    ruled: Boolean,
     onClose: () -> Unit,
     onViewListing: (String) -> Unit,
 ) {
+    val rule = KestrelTheme.catalogue.rule
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .height(64.dp)
-                .padding(start = 4.dp, end = 8.dp),
+                .drawBehind {
+                    if (ruled) {
+                        val y = size.height - 0.5.dp.toPx()
+                        drawLine(rule, Offset(0f, y), Offset(size.width, y), strokeWidth = 1.dp.toPx())
+                    }
+                }.padding(start = 4.dp, end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onClose) { SymbolIcon(Symbols.Close, contentDescription = "Close") }
@@ -285,14 +304,35 @@ private fun FailedPage(
     Column {
         Spacer(Modifier.height(16.dp))
         NoticeCard(icon = Symbols.Info, title = "Couldn’t open this listing.", detail = page.reason)
-        Spacer(Modifier.height(16.dp))
-        NoticeActions {
-            if (page.signIn) InkButton("Sign in", onClick = actions::signIn)
-            if (page.canRetry) TonalButton("Try again", onClick = actions::retry, icon = Symbols.Refresh)
-            InkTextButton("Paste a different link", onClick = actions::pasteDifferentLink)
+        if (page.signIn || page.canRetry) {
+            Spacer(Modifier.height(16.dp))
+            NoticeActions {
+                if (page.signIn) InkButton("Sign in", onClick = actions::signIn)
+                if (page.canRetry) TonalButton("Try again", onClick = actions::retry, icon = Symbols.Refresh)
+            }
         }
+        PasteDifferentLink(actions)
     }
 }
+
+/**
+ * "Paste a different link", in the same place on every page that cannot go on: a text button on its own line under
+ * the page's message and actions, its words on column A.
+ */
+@Composable
+private fun PasteDifferentLink(
+    actions: AddActions,
+    modifier: Modifier = Modifier,
+) {
+    InkTextButton(
+        "Paste a different link",
+        onClick = actions::pasteDifferentLink,
+        modifier = modifier.padding(top = 8.dp).offset(x = -TextButtonInset),
+    )
+}
+
+/** The horizontal padding inside an expressive text button (16 dp), before its words. */
+private val TextButtonInset = 16.dp
 
 @Composable
 private fun CannotSnipePage(
@@ -315,13 +355,11 @@ private fun CannotSnipePage(
                 NoticeCard(icon = Symbols.Flag, title = "This auction has already ended.")
             }
         }
-        Spacer(Modifier.height(16.dp))
-        NoticeActions {
-            if (page.reason == CannotSnipeReason.BuyItNow) {
-                TonalButton("Open on eBay", onClick = { actions.viewListing(page.listingUrl) })
-            }
-            InkTextButton("Paste a different link", onClick = actions::pasteDifferentLink)
+        if (page.reason == CannotSnipeReason.BuyItNow) {
+            Spacer(Modifier.height(16.dp))
+            TonalButton("Open on eBay", onClick = { actions.viewListing(page.listingUrl) })
         }
+        PasteDifferentLink(actions)
     }
 }
 
@@ -340,12 +378,7 @@ private fun AlreadySnipedPage(
         }
         Spacer(Modifier.height(16.dp))
         PrimaryButton(text = "Open snipe", onClick = { actions.openSnipe(page.snipeId) })
-        Spacer(Modifier.height(8.dp))
-        InkTextButton(
-            "Paste a different link",
-            onClick = actions::pasteDifferentLink,
-            modifier = Modifier.fillMaxWidth(),
-        )
+        PasteDifferentLink(actions)
     }
 }
 
@@ -515,16 +548,10 @@ private fun ArmBarView(
 ) {
     BottomBar(ruled = ruled) {
         val summary = bar.summary
-        val colour =
-            if (summary.greyed) {
-                MaterialTheme.colorScheme.onSurface.copy(alpha = GREYED_ALPHA)
-            } else {
-                MaterialTheme.colorScheme.onSurface
-            }
         Text(
             text = figureLine(summary.text, summary.figure),
             style = MaterialTheme.typography.bodyMedium,
-            color = colour,
+            color = MaterialTheme.colorScheme.onSurface,
             minLines = 1,
         )
         if (bar.signInNeeded) {
@@ -558,5 +585,14 @@ private fun ArmBarView(
     }
 }
 
-/** Disabled content (Material's 38 %): the last valid plan while the typed max is too low. */
-private const val GREYED_ALPHA = 0.38f
+/** A 28 dp page-colour fade at the foot of the scrolling page, above the pinned bar (DESIGN 2.8 BottomFade). */
+@Composable
+private fun EdgeFade(modifier: Modifier = Modifier) {
+    val page = MaterialTheme.colorScheme.background
+    Box(
+        modifier
+            .fillMaxWidth()
+            .height(Spacing.BottomFadeHeight)
+            .background(Brush.verticalGradient(listOf(page.copy(alpha = 0f), page))),
+    )
+}

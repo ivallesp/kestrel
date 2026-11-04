@@ -31,6 +31,8 @@ import app.kestrel.ui.theme.tabular
  * Slide on fastSpatialSpec, fade on fastEffectsSpec; with reduced motion the characters swap.
  *
  * Cells are matched from the end, so units and separators stay put when the figure gets shorter ("10 s" to "9 s").
+ * Only digits, colons and points get tabular figures; spaces keep their natural width (DESIGN Q4). [unitStyle] sets
+ * the unit letters ("m", "s") apart from the figures, so a serif "s" never reads as a capital at figure size.
  * The characters are hidden from TalkBack; give the sentence to speak in [contentDescription] (rule MF47), or leave
  * it null when an enclosing node speaks for the countdown.
  */
@@ -40,6 +42,7 @@ fun RollingDigits(
     style: TextStyle,
     modifier: Modifier = Modifier,
     color: Color = Color.Unspecified,
+    unitStyle: TextStyle = style,
     contentDescription: String? = null,
 ) {
     val reduceMotion = KestrelTheme.reduceMotion
@@ -72,7 +75,13 @@ fun RollingDigits(
                     },
                     label = "digit $positionFromEnd",
                 ) { shown ->
-                    Text(text = shown.toString(), style = figureStyle, color = color, maxLines = 1)
+                    val cellStyle =
+                        when {
+                            shown.isTabularFigure() -> figureStyle
+                            shown.isLetter() -> unitStyle
+                            else -> style
+                        }
+                    Text(text = shown.toString(), style = cellStyle, color = color, maxLines = 1)
                 }
             }
         }

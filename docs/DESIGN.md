@@ -232,7 +232,7 @@ Emphasized variants add 100 weight: serif 400 to 500 and 500 to 600; sans 400 to
 ### 2.6 Figures and spacing characters (tabular-figure rules)
 - **T1. Serif figure styles carry tnum in the style.** These are priceHero, priceLarge, priceRow, countdown and countdownMedium. They only ever get figure strings, never words.
 - **T2. No Google Sans style carries tnum in its TextStyle.** Google Sans Flex's tnum widens the word space, which is the C3 fault.
-- **T3. Figures-only sans strings go through `Figure`** (ported from C2 `ui/components/Figure.kt`). This covers clock times, ledger values, timeline times, counts and the S3 time column. `Figure` sets tnum on the whole string and replaces U+0020 with U+00A0 (adding U+200B after each one when the text may wrap).
+- **T3. Figures-only sans strings go through `Figure`** (ported from C2 `ui/components/Figure.kt`). This covers clock times, ledger values, timeline times, counts and the S3 time column. `Figure` sets tnum on the runs of digits, colons, points and commas only, so the spaces between figures and their units keep their natural width, and replaces U+0020 with U+00A0 (adding U+200B after each one when the text may wrap).
 - **T4. Sentences with a ticking or aligned figure** ("Ends in 13 m 07 s", "Kestrel bids £120.00 in 30 s") use an AnnotatedString:
   - put `SpanStyle(fontFeatureSettings = "tnum")` on the figure run only;
   - the span sets nothing else (no weight, no family);
@@ -287,7 +287,8 @@ Emphasized variants add 100 weight: serif 400 to 500 and 500 to 600; sans 400 to
 - **Flat by default.** Hierarchy comes from tonal layers (page, then card) and 1 dp hairlines. Cards and the dock have no shadows.
 - **Dock:** surfaceContainerLow with a 1 dp top rule.
 - **Bottom sheets:** surfaceContainerLow with a scrim of #000000 at 32 %.
-- **Menus:** the default DropdownMenu (surfaceContainer with its default shadow).
+- **Menus:** the default DropdownMenu (surfaceContainer with its default shadow) plus a 1 dp edge in the outline colour, so a menu stands off the page and the cards even where no shadow is drawn (Q12).
+- **Dialogs:** one style (`KestrelDialog`): surfaceContainerLow like the sheets, 24 dp from each side of the screen, and the page dimmed to the sheets' 32 %, not the platform's 60 %.
 - **Snackbar:** the default.
 - **S3 sheet over the photo:** no shadow; its 28 dp corners do the work.
 
@@ -387,7 +388,7 @@ A grid with two columns across the container width.
 3. **Row 2, figures.** Start figure priceHero (40/44); end figure priceLarge (28/32), end-aligned. They share one last baseline.
 4. **Row 3 (optional, end-aligned).** bodySmall, ink soft: "At most £126.50 with postage". It shows on the hero, S3 and the edit sheets.
 5. **8 dp, then the HeadroomRule.** 12 dp tall: a 4 dp track in the rule colour, a fill in the family accent, and a 2 x 12 dp ink tick at the max.
-6. **2 dp, then the caption row.** bodyMedium, ink soft. Start: "£32.00 below your max". End: "Postage £6.50".
+6. **2 dp, then the caption row.** bodyMedium, ink soft. Start: "£32.00 below your max". End: "Postage £6.50". The end caption takes the width it needs and the start caption the rest; "your max" never breaks. From font scale 1.3 the two captions stack (the end one end-aligned).
 
 Variants:
 - **Over max:**
@@ -412,7 +413,7 @@ Semantics: one merged node, for example "Current bid £88.00, 14 bids. Your max 
   4. an end-aligned column:
      - line 1 is a Figure in titleMedium 600: "18:21:40";
      - line 2 in bodyMedium, ink soft: "Today · GMT".
-- **Height:** 42 dp.
+- **Height:** 42 dp: line 2 is always one line (maxLines 1, ellipsis), and the timer sits centred on line 1, never on the whole block.
 - **Over one hour:** "Ends in 2 h 53 m", "Bids at 21:02, 6 s before", "21:02", "Today · GMT".
 - **Another day:** "Ends in 1 d 2 h", "Bids Mon 10 Nov at 20:10", "20:10", "Mon 10 Nov · GMT".
 - **Ticking:** once a second inside the hour (per-digit roll), once a minute otherwise, aligned to the wall clock.
@@ -438,8 +439,11 @@ Semantics: one merged node, for example "Current bid £88.00, 14 bids. Your max 
     - after the time block: 12 dp, then the "Raise max" split button (40 dp).
   - **Bidding:**
     - the chip shows "Final minute", "Bid sent", "In the lead", "Outbid" or "Extended";
-    - line 2 of the time block becomes the bid sentence: "Kestrel bids £120.00 in 30 s", or "Bid sent · waiting for eBay" with a 20 dp LoadingIndicator in the Bidding accent, or "In the lead · not won until 18:21:40".
+    - line 2 of the time block becomes one short bid line (never the 6.1 detail): "Kestrel bids £120.00 in 30 s"; "Bid sent · waiting for eBay" with a 20 dp LoadingIndicator in the Bidding accent; "In the lead · not won until 18:21:40"; "Outbid · another max is higher"; "Bid sent · no reply yet"; "Kestrel is still following" (Extended); "Reading eBay’s result…" with the LoadingIndicator.
+    - the hero chip of an extended lot reads "Extended"; the time block already shows the new end.
+    - after the bid, an overflow past the max is drawn in the Bidding accent: Attention means the user can still act.
   - **Sign-in needed:** an Attention chip "Sign-in needed"; line 2 reads "Sign in before 18:21:34 to keep this bid".
+  - **Other attention cases** (over max, captcha, phone check, dry run failed, offline, can't reach) keep "Bids at 18:21:34, 6 s before": their chip and button say what is wrong. While offline the price label reads "LAST READ 18:02 · 14 BIDS".
 
 ### 3.5 Lot row (snipe row)
 - **Container:** SegmentedListItem (C3 `LotRow`) in the card colour. Padding 12 dp top and bottom, 16 dp at the start and end, top-aligned.
@@ -508,6 +512,7 @@ Semantics: one merged node, for example "Current bid £88.00, 14 bids. Your max 
 **Add button:**
 - Filled ink, 56 dp tall: add 20 dp, 8 dp, then "Add" in labelLarge.
 - contentDescription "Add snipe".
+- From font scale 1.2 it is the add glyph (24 dp) alone in a 56 dp circle, still read as "Add snipe", so line 1 of the pill keeps its width.
 - Hidden in the empty state.
 
 **Readiness pill:**
@@ -523,10 +528,14 @@ Semantics: one merged node, for example "Current bid £88.00, 14 bids. Your max 
 |---|---|---|---|---|
 | All good | surfaceContainerLow with a 1 dp rule border; check_circle in the Won accent | "Ready to snipe" | "All checks passed at 18:06" | none |
 | One problem | Attention container; the check's own icon (battery_alert filled) in the accent | "Battery restricted" | "A bid could go out late" | "Fix" opens that exact system page |
-| Several problems | Attention container; warning | "2 things need attention" | "Battery restricted · signed out" | "Review" opens S5 |
+| Several problems | Attention container; warning | "2 things need attention" | "Signed out · battery restricted" (most serious first: signed out, offline, then the battery and the rest) | none: a chevron, because the pill itself opens S5 |
 | Signed out | Attention container; account_circle | "Signed out of eBay" | "Snipes are paused" | "Sign in" opens S6 |
 | Offline with a bid within 1 h | Attention container; cloud_off | "Phone offline" | "The 18:21:34 bid can't go out" | none |
 | Re-checking | unchanged | unchanged | "Checking…" | unchanged |
+| First check | surfaceContainerLow with a rule border; hourglass_top in ink soft | "Checking this phone" | "This takes a few seconds" | none |
+| Old pass (more than 30 min) | as first check, info glyph | "Ready to snipe" | "Last checked Sat 8 Nov at 21:40" (never "passed"), while Kestrel checks again | none |
+
+Line 1 never wraps or truncates (maxLines 1); it fits beside Add at font scale 1.0 and 1.3.
 
 ### 3.9 Readiness row (S5)
 - **Container:** SegmentedListItem in the card colour, 16 dp padding.
@@ -535,12 +544,13 @@ Semantics: one merged node, for example "Current bid £88.00, 14 bids. Your max 
   - Others: surfaceContainerHigh with the glyph in ink soft.
 - **Headline:** the check name in titleMedium 600.
 - **State line:**
-  - problems: warning 16 dp plus the stateWord "Restricted" in the Attention accent;
+  - problems: warning 16 dp plus the stateWord in the Attention accent, in Android's own words ("Optimised" for the battery, "Restricted" for background activity);
   - optional checks: "Off · optional" in labelLarge, ink soft, with no glyph.
-- **Detail:** bodyMedium, ink soft, up to 3 lines.
+- **Detail:** bodyMedium, ink soft, up to 3 lines, at the full width of the text column. A two-part detail ("0.04 s off Google time · synced 1 min ago") stays on one line when it fits, otherwise its parts take a line each without the dot.
+- **While a check runs:** every row keeps its place and its state line reads "Checking…" in ink soft; before the first check the rows are the checks themselves, each "Checking…".
 - **Trailing:**
-  - problem: a filled ink "Fix" button (40 dp);
-  - optional: a tonal "Turn on" button (40 dp);
+  - problem: a filled ink "Fix" button (40 dp), at the end of the name's line, so the detail runs under it;
+  - optional: a tonal "Turn on" button (40 dp), placed the same way;
   - passed: check_circle 24 dp in the Won accent, contentDescription "Passed";
   - not applicable: info 24 dp in ink soft.
 
@@ -551,10 +561,10 @@ Semantics: one merged node, for example "Current bid £88.00, 14 bids. Your max 
   - text, the remaining width.
 - **Dots:**
   - past events: 8 dp filled in ink soft;
-  - key past events take their family accent: Bid sent in Bidding, Won confirmed in Won, failures in the Failed tone;
-  - now: 10 dp filled in the Bidding accent on a 20 dp halo in the Bidding container, with "Now" in labelMedium 700 above the time;
+  - key past events take their family accent: Bid sent in Bidding, Won confirmed in Won, failures (eBay's refusal, Bid not sent) in the Failed tone;
+  - now: 10 dp filled in the Bidding accent on a 20 dp halo in the Bidding container, with "Now" in labelMedium 700 above the time and no title of its own (the chip and the card above say the status);
   - future: a 10 dp ring with a 2 dp stroke in the outline colour.
-- **Rail:** 2 dp wide.
+- **Rail:** 2 dp wide, drawn behind each whole row, so it never breaks where a row grows.
   - Solid in the rule colour between past events.
   - Dashed (4 dp on, 4 dp off) in the outline colour from now up to the future events.
 - **Text:**
@@ -574,9 +584,10 @@ Semantics: one merged node, for example "Current bid £88.00, 14 bids. Your max 
 - Three columns with weights 1, 0.9 and 1.3:
   - "YOUR MAX" over "£90.00" in priceRow;
   - "POSTAGE" over "£8.95" in priceRow;
-  - "YOU PAY AT MOST" over "£98.95" in priceRow at weight 700.
+  - "YOU PAY AT MOST" over "£98.95" in priceRow at weight 700. From font scale 1.3 the label reads "AT MOST", so every label stays on one line.
 - The operator gutters ("+" and "=") are 24 dp wide, in titleMedium, ink soft, sitting on the value baseline.
-- Labels share one baseline; values share one baseline.
+- Labels share one baseline; values share one baseline. Figures keep 6 dp clear of the operators and step their size down first ("US$238.50").
+- While the max is empty or too low, the max and total read "—".
 - Below: 8 dp, then bodySmall, ink soft: "Usually less: eBay charges one step above the next bidder, never more than your max."
 
 ### 3.12 Final-minute scale (S3 only; the app's only wavy element)
@@ -588,6 +599,7 @@ Semantics: one merged node, for example "Current bid £88.00, 14 bids. Your max 
 - **Labels (labelMedium):** start "Final minute"; "Bid", end-aligned 6 dp before the tick; end "End".
 - **Bid sent:** the amplitude flattens to 0.
 - **Extended:** the scale re-bases to the 60 s before the new end, and the start label reads "Extended".
+- **Ended:** from the end on the start label reads "Ended".
 - **Semantics:** progressBarRangeInfo, plus "Final minute: 36 seconds left. Kestrel bids in 30 seconds."
 
 ### 3.13 Bid card (S3)
@@ -601,12 +613,14 @@ Semantics: one merged node, for example "Current bid £88.00, 14 bids. Your max 
 | Final minute | gavel | "Kestrel bids £120.00 in 30 s" | "At 18:21:34, 6 s before the end" |
 | Bid sent | LoadingIndicator 24 dp | "Bid sent at 18:21:33.9" | "Waiting for eBay's reply" |
 | In the lead | gavel | "In the lead · eBay replied in 0.8 s" | "“Your current bid puts you in the lead.” Not won until it ends." |
-| Outbid | gavel | "Outbid · eBay replied in 0.7 s" | eBay's sentence, then "Someone's max is higher than yours." |
+| Outbid | gavel | "Outbid · eBay replied in 0.7 s" | eBay's sentence alone (Kestrel's own words only when eBay gave none) |
 | No reply (5 s after sending) | gavel | "No reply from eBay yet" | "Kestrel will read the result when the auction ends." |
-| Extended | gavel | "Extended · now ends 19:56:42" | "Kestrel's bid at 19:55:42 reset the clock to 60 s. It is still following." |
+| Extended | gavel | "Extended · now ends 19:56:42" | "Kestrel's bid at 19:55:42 reset the clock to 60 s. Kestrel is still following. You’re in the lead so far." (the last sentence only when eBay's reply said so; another bidder's reset reads as 6.1) |
 | Reading result | LoadingIndicator | "Ended · reading the result" | "Checking the listing page" |
 | Attention (captcha) | warning | "eBay wants a quick check" | "Solve it before 18:21:34 so Kestrel can bid. Kestrel never solves these for you." plus the "Open eBay page" button |
 | Bid not sent | error | "Bid not sent" | "eBay signed you out at 18:21:20. Nothing was bid." plus the "Sign in" button |
+| Needs you | warning | "Look at the listing on eBay" | the engine's explanation, plus "Open eBay page" |
+| Phone offline | warning | "The 18:21:34 bid can’t go out" | "Kestrel bids once the phone reconnects." (the banner above says the phone is offline) |
 
 The Attention row uses the Attention container. The "Bid not sent" row uses the Failed container.
 
@@ -621,7 +635,7 @@ The Attention row uses the Attention container. The "Bid not sent" row uses the 
 - **Shape:** MaterialShapes.Cookie12Sided, 96 dp.
 - **Fill:** the Won accent.
 - **Content:** trophy 26 dp, then "WON" in sectionHead. Both are in the card colour in light theme and in #15130F in dark theme.
-- **Placement:** rotated -10°, anchored to the plate's bottom-end corner, offset -14 dp horizontally and +30 dp vertically.
+- **Placement:** rotated -10°, anchored to the plate's bottom-end corner, offset -14 dp horizontally and +12 dp vertically: it breaks the plate's edge like a stamp but ends above the status line, which keeps its whole width.
 
 ### 3.16 Bottom sheet
 - **Container:** ModalBottomSheet in surfaceContainerLow, 28 dp top corners.
@@ -636,9 +650,9 @@ The Attention row uses the Attention container. The "Bid not sent" row uses the 
 | Kind | Colours | Height | Use |
 |---|---|---|---|
 | Primary (Button) | primary / onPrimary (ink on paper; paper on ink in dark) | 56 dp for screen primaries and the dock Add; 40 dp inline | Arm snipe, Continue to eBay, Paste eBay link, Save max, Fix |
-| Tonal | secondaryContainer / onSecondaryContainer | 40 or 48 dp | Turn on, Use, Watch without a max |
+| Tonal | secondaryContainer / onSecondaryContainer | 40 or 48 dp | Turn on, Watch without a max, Undo cancel |
 | State tonal | family container / on-container | 40 dp | Raise max, Open eBay page, Sign in (on attention rows) |
-| Outlined | 1 dp outline, ink text | 40 or 48 dp | Set a max, Edit max, Add a snipe to this group |
+| Outlined | 1 dp outline, ink text | 40 or 48 dp | Set a max, Edit max, Add a snipe to this group, Use (odd pence: a tonal button would be the same paper as its card) |
 | Text | ink text | 48 dp | Not now, Cancel, Check again, View listing, See all finished snipes |
 | Split | `SplitButtonLayout` with `TonalLeadingButton` and `TonalTrailingButton` in Attention tonal colours | 40 dp | Raise max (see the menu below) |
 | Connected toggles | ButtonGroup with ToggleButton. Unchecked: secondaryContainer. Checked: primary with a check 18 dp. `Role.RadioButton` | 48 dp | lead time 3 s / 6 s / 10 s; theme |
@@ -656,7 +670,7 @@ The Attention row uses the Attention container. The "Bid not sent" row uses the 
 ### 3.18 Max field
 - **Field:** `BasicTextField` with a `TextFieldState` hoisted into the screen state and keyed by the lot id, so it is never rebuilt on recomposition.
 - **Keyboard:** `KeyboardType.Decimal`, `ImeAction.Done`.
-- **Input filter:** digits and one ".", at most 2 decimals. "£" and "," are stripped. On blur the value formats to 2 decimals.
+- **Input filter:** digits and one ".", at most 2 decimals. "£" and "," are stripped. On blur the value formats to 2 decimals. The field shows thousands separators ("2,200.00", an output transformation); the state keeps the digits. An empty field keeps the amount's line height, so the underline never moves on the first keystroke.
 - **Layout, in order:**
   1. the label "YOUR MAX BID" in smallCaps;
   2. 4 dp;
@@ -664,14 +678,16 @@ The Attention row uses the Attention container. The "Bid not sent" row uses the 
      - "£" in priceHero, ink soft;
      - the amount in priceHero, ink;
      - a 2 dp ink cursor;
-     - end-aligned on the last baseline: "At least £66.00" in bodyMedium, ink soft.
+     - end-aligned on the last baseline: "At least £66.08" in bodyMedium, ink soft (hidden while the error line shows, which says the same with its reason).
   4. the underline.
 - **Underline:** 2 dp ink when focused, 1 dp outline when not, 2 dp Attention accent when the value is too low.
-- **Error line:** warning 16 dp plus bodyMedium in the Attention accent: "Too low: eBay needs at least £66.00".
+- **Error line:** warning 16 dp plus bodyMedium in the Attention accent: "Too low: eBay needs at least £66.08".
+- **Read-only** (the edits locked): the amount in ink soft, no underline, no "At least".
+- **The minimum** is the engine's (`BidIncrements.minimumNextBid`): for a UK private seller it is the higher of the two readings of eBay's rule, the increment on the displayed price (£66.00) or the increment on the item price with its Buyer Protection on top (£60.87 + £2.00 + £3.21 = £66.08), so a max the UI accepts is never one eBay refuses.
 - **Semantics:**
   - contentDescription "Your max bid";
   - stateDescription = the value;
-  - `error("Too low: eBay needs at least £66.00")`.
+  - `error("Too low: eBay needs at least £66.08")`.
 - **"Use £90.37"** writes into the TextFieldState and puts the cursor at the end.
 
 ### 3.19 Empty states
@@ -686,9 +702,11 @@ The Attention row uses the Attention container. The "Bid not sent" row uses the 
 5. 28 dp, then the primary "Paste eBay link" (content_paste, 56 dp, full width).
 6. 12 dp, then bodySmall centred: "Kestrel never bids above your max."
 
+From font scale 1.3 the dashed plate (decoration) is left out, so "Paste eBay link" shows above the dock without scrolling.
+
 **History empty:** "No finished snipes yet" in headlineSmall, then "When an auction ends, its result and receipt appear here."
 
-**Group with no lots:** "No snipes in this group yet" with the outlined button "Add a snipe to this group".
+**Group with no lots:** "No snipes in this group yet", "Add two or more snipes. Once one is won, Kestrel cancels the rest.", and the outlined button "Add a snipe to this group".
 
 ### 3.20 Snackbar, banners and loading
 - **Snackbar:**
@@ -716,9 +734,9 @@ The Attention row uses the Attention container. The "Bid not sent" row uses the 
 
 **Layout, top to bottom (dp from the top of the screen):**
 1. **Header** (70 dp: 8 top, 16 overline, 2, 40 title, 4 bottom).
-   - Overline in smallCaps, ink soft: "SUNDAY 9 NOVEMBER · TIMES IN GMT". The zone is computed (BST in summer).
+   - Overline in smallCaps, ink soft: "SUNDAY 9 NOVEMBER · GMT". The zone is computed (BST in summer). One format on every day: the longest ("WEDNESDAY 24 SEPTEMBER · BST") is 28 characters.
    - Title "Snipes" in headlineLarge at column A.
-   - Account button: a 48 dp circle in the card colour with a 1 dp rule border and person 24 dp. Its right edge is at 395 dp. contentDescription "Settings and eBay account, ivan.v".
+   - Account button: a 48 dp circle in the card colour with a 1 dp rule border and person 24 dp. Its right edge is at 395 dp. contentDescription "Settings and eBay account, oakshelf".
 2. **Section head** "ENDING SOON", "2 lots" (12 above, 20, 8 below).
 3. **Ending soon block** (segmented):
    - hero Canon (365 dp);
@@ -785,7 +803,7 @@ The Attention row uses the Attention container. The "Bid not sent" row uses the 
 - **Pull-to-refresh:** refreshes all open lots now.
 - **"Raise max":**
   - the leading half opens the raise sheet;
-  - the menu's first item sets £2,200.00 at once with the snackbar "Max raised to £2,200.00" and Undo;
+  - the menu's first item sets £2,200.00 at once with the snackbar "Max raised to £2,200.00" and Undo; the row reads "Armed · max £2,200.00" under it;
   - "Stop sniping" sets the lot to Watching with "Stopped sniping Omega Speedmaster" and Undo.
 
 **States:**
@@ -807,6 +825,7 @@ The Attention row uses the Attention container. The "Bid not sent" row uses the 
   - armed rows read "Sign-in needed · paused";
   - the hero shows its sign-in variant.
 - **Attention:** the Omega row as specified. Other Attention states swap the action as in 3.5.
+- **Finished rows** all name their day: "Won · Sat 8 Nov", "Bid not sent · Sun 9 Nov", "Ended early by the seller · Wed 12 Nov".
 - **Extended bidding:**
   - the flag on the row;
   - during an extension the lot's state line reads "Extended · now ends 19:56:42" in the Bidding family.
@@ -833,14 +852,14 @@ The Attention row uses the Attention container. The "Bid not sent" row uses the 
    - "Includes £3.13 Buyer Protection (private seller)." in bodySmall;
    - a hairline (12 dp above and below);
    - schedule 20 dp plus "Ends Thu 13 Nov, 20:04" in bodyLarge, and at the end "in 4 d 1 h" in titleSmall 700. No seconds, because the end is more than 1 h away.
-4. **Max field** (3.18) showing 90.00, with "At least £66.00".
+4. **Max field** (3.18) showing 90.00, with "At least £66.08".
 5. **Sum row** (3.11): £90.00 + £8.95 = £98.95, with the proxy sentence under it.
 6. **Odd-pence card:**
    - surfaceContainerHigh, 20 dp corners;
    - "Make it £90.37" in titleSmall 700;
    - "Odd pence beat bidders who stop at £90.00." in bodySmall;
-   - a tonal "Use" button.
-   The card is hidden once the max has non-zero pence.
+   - an outlined "Use" button (40 dp).
+   The card is hidden once the max has non-zero pence, and when Settings "Suggest odd pence" is off. A listing in another currency says "odd cents".
 7. **Bid timing:**
    - row: "Bid timing" in titleSmall 600, and at the end "6 s before the end" in bodyMedium, ink soft;
    - 8 dp, then connected toggles 3 s / 6 s / 10 s (48 dp);
@@ -852,7 +871,7 @@ The Attention row uses the Attention container. The "Bid not sent" row uses the 
    - "Optional. Win one of several; the rest cancel." in bodyMedium;
    - chevron. It opens the group picker sheet.
    Once chosen: "Portable audio: win 1 of 2" with "Change".
-9. **Pinned bottom bar** (page colour; top rule while content is under it):
+9. **Pinned bottom bar** (page colour; top rule and a 28 dp page-colour fade above it while content is under it; a 1 dp rule under the top bar once the page scrolls):
    - the arm summary in bodyMedium with tnum spans: "Bids £90.00 on Thu 13 Nov at 20:04:12 GMT". This is the exact contract, so it is one of the two places that show seconds far from the end;
    - 8 dp;
    - the primary "Arm snipe" with schedule 20 dp, 56 dp, full width.
@@ -871,11 +890,12 @@ The Attention row uses the Attention container. The "Bid not sent" row uses the 
   - a field "eBay listing link" with a tonal "Paste" button;
   - hint: "Or share a listing from the eBay app: tap Share, then Kestrel."
 - **Fetching:**
-  - the lot header area shows ContainedLoadingIndicator 48 dp with "Getting the listing from eBay…" and the host "ebay.co.uk/itm/…" in bodySmall;
-  - the other sections are disabled.
+  - the lot header area shows ContainedLoadingIndicator 48 dp with "Getting the listing from eBay…" and the host "ebay.co.uk/itm/…" in bodySmall (no scheme, item number or query);
+  - nothing else shows until the listing arrives, except the disabled "Arm snipe": the sections need the listing's minimum, postage and end, and 3.20 allows no skeleton.
 - **Fetch failed:**
   - "Couldn't open this listing." plus a reason ("eBay didn't respond", "That link isn't an eBay listing");
   - tonal "Try again", text "Paste a different link".
+- **"Paste a different link"** sits in one place on every page that cannot go on: a text button on its own line under the message and its actions, its words on column A.
 - **Not an auction:** "This is a Buy it now listing, so there's nothing to snipe." with "Open on eBay".
 - **Already ended:** "This auction has already ended."
 - **Already sniped:** "You already have a snipe on this listing." with "Open snipe".
@@ -883,9 +903,10 @@ The Attention row uses the Attention container. The "Bid not sent" row uses the 
   - the primary becomes the tonal "Watch without a max";
   - the summary reads "No max yet: Kestrel will only watch the price."
 - **Too low:**
-  - the field error;
+  - the field error (the "At least" hint gives way to it);
   - "Arm snipe" disabled;
-  - the summary keeps the last valid plan, greyed.
+  - the sum row reads "—" for the max and the total;
+  - the summary says what to type: "Set at least £66.08 to arm".
 - **Signed out:**
   - the preview works;
   - "Arm snipe" first opens S6, with the line "Sign in to arm this snipe."
@@ -893,7 +914,7 @@ The Attention row uses the Attention container. The "Bid not sent" row uses the 
 ### S3 Lot detail (the final minute is hero moment one)
 - **Now:** 18:21:04.
 - **Lot:** Canon. 36 s left.
-- **Status bar:** light icons over the photo.
+- **Status bar:** light icons over a scene photo and in dark theme; dark icons over a light-theme cutout plate, which has no top gradient (white icons would be about 2.6:1 on the paper).
 
 **Layout:**
 1. **Photo band**, 232 dp including the status bar:
@@ -901,13 +922,14 @@ The Attention row uses the Attention container. The "Bid not sent" row uses the 
    - dark theme at 88 %;
    - a top gradient of black from 45 % to 0 over 96 dp.
    - back and overflow buttons: 48 dp circles at 8 dp from the edges, top = status inset + 8 dp.
-   - **overflow menu:** "Open on eBay"; "Stop sniping" (disabled after Bid sent, with the label "Bid already sent").
+   - **overflow menu:** "Open on eBay"; "Stop sniping" (disabled after Bid sent, with the label "Bid already sent"); a divider, then "Delete" with the delete glyph while no bid window runs (its snackbar offers Undo).
+   - **once the sheet is scrolled up** a page-coloured bar takes over, with a 1 dp rule, the short title and the countdown ("Canon AE-1" over "36 s left").
 2. **Sheet** from y = 204 dp: page colour, 28 dp top corners, 16 dp side padding, 16 dp top padding.
    1. StateChip "Final minute" (Bidding).
    2. 12 dp, then the title in lotTitle.
    3. 12 dp, then the **countdown row**:
-      - start: "36" in countdown, 8 dp, "s left" in countdownUnit, baseline-aligned;
-      - end: the times column (from C2, at least 132 dp wide):
+      - start: "36" in countdown, 8 dp, "s left" in countdownUnit, baseline-aligned. A partial second counts as a whole one, so it never reads "0 s left" before the end; from the end on it reads "Ended" in countdownUnit, and once the bid failed "Ends 18:21:40";
+      - end: the times column (from C2), as wide as its widest row and ending on the 395 dp edge:
         - "TODAY · GMT" in smallCaps;
         - three 24 dp rows, each a smallCaps label in a 44 dp column plus a Figure in titleMedium 600: "BIDS 18:21:34", "ENDS 18:21:40", "NOW 18:21:04".
       - "NOW" ticks.
@@ -922,7 +944,7 @@ The Attention row uses the Attention container. The "Bid not sent" row uses the 
    8. 24 dp, then the **checks card** (card colour, 16 dp padding):
       - "CHECKS PASSED" in smallCaps;
       - three rows, each check_circle 20 dp in the Won accent plus bodyMedium:
-        - "Signed in as ivan.v · checked 18:20:31";
+        - "Signed in as oakshelf · checked 18:20:31";
         - "Dry run at 18:11:40 · nothing was sent";
         - "Clock 0.04 s off Google time".
    9. 24 dp, then "TIMELINE" and the timeline on the page:
@@ -951,18 +973,18 @@ The Attention row uses the Attention container. The "Bid not sent" row uses the 
 
 **States (same screen, driven by status):**
 - **Armed, more than 1 h away** (for example the Game Boy):
-  - countdownMedium "7 d 3 h" plus "left";
-  - the times column headed "SUN 16 NOV · GMT" with "BIDS 21:43" and "ENDS 21:43";
+  - countdownMedium "7 d 3 h" plus "left" (the unit letters in headlineMedium, the figures in countdownMedium);
+  - the times column headed "SUN 16 NOV · GMT" with "ENDS 21:43" alone and "Bids 6 s before" under it (without seconds "BIDS" and "ENDS" would read the same);
   - no scale;
   - no bid card. Instead a quiet line: "Dry run about 21:33, 10 min before the end."
 - **Under 1 h:** countdownMedium "13 m 07 s"; the times include seconds and the NOW row.
 - **Final minute:** as specified above.
-- **Bid sent:** at 18:21:34.4. Countdown "5 s left"; the wave is flat; bid card "Bid sent"; times show "SENT 18:21:33.9".
+- **Bid sent:** at 18:21:34.4. Countdown "6 s left" (5.6 s, rounded up); the wave is flat; bid card "Bid sent"; times show "SENT 18:21:33.9".
 - **In the lead:** at 18:21:35.2. Chip "In the lead"; bid card with the quote; timeline row "18:21:34.7 eBay replied: in the lead".
 - **Outbid:** chip "Outbid"; bid card "Outbid".
 - **No reply:** bid card "No reply from eBay yet".
 - **Extended** (the Walkman, Tue 11 Nov at 19:55:58):
-  - chip "Extended · now ends 19:56:42";
+  - chip "Extended" (the card's first line says "Extended · now ends 19:56:42");
   - countdown "44 s left", re-based;
   - timeline row "19:55:42 Kestrel's bid reset the clock to 60 s · now ends 19:56:42";
   - an explanation under the bid card in bodySmall: "This listing uses extended bidding. Any bid in the last 60 s, including Kestrel's, resets the clock to 60 s, so others get a minute to respond. Your max still caps what you pay."
@@ -972,8 +994,9 @@ The Attention row uses the Attention container. The "Bid not sent" row uses the 
   - the captcha bid card with "Open eBay page", which opens the WebView at the challenge;
   - countdownMedium "9 m 35 s".
 - **Attention: sign-in or dry run:** the same pattern with its own copy (section 6).
-- **Offline:** the offline banner under the chip, plus the Attention card "Phone offline · the 18:21:34 bid can't go out until it reconnects."
-- **Bid not sent:** the red bid card, chip "Bid not sent" (Failed tone), and "Sign in".
+- **Offline:** the offline banner under the chip says it once ("Offline since 18:02" / "Prices are from 18:02."); the chip reads "Bid at risk" and the Attention card "The 18:21:34 bid can’t go out" / "Kestrel bids once the phone reconnects."; the price label reads "LAST READ 18:02 · 16 BIDS".
+- **Bid not sent:** the red bid card, chip "Bid not sent" (Failed tone), and "Sign in"; the countdown gives way to "Ends 18:21:40".
+- **Attention: dry run met a sign-in page:** the action reads "Sign in" (not "Fix") and opens S6.
 
 ### Edit-max sheet (also used for Raise max and Set a max)
 - **Fixture:** Canon at 18:21:12.
@@ -983,7 +1006,7 @@ The Attention row uses the Attention container. The "Bid not sent" row uses the 
 2. **Lot line:**
    - plate 40 dp;
    - "Canon AE-1 Program + 50mm f/1.8" in titleSmall, one line;
-   - "£96.00 now · ends 18:21:40 GMT" in bodySmall.
+   - "£96.00 now · ends 18:21:40 GMT" in bodySmall; the zone is always there ("ends Thu 13 Nov, 19:30 GMT").
 3. 16 dp, then the **max field** prefilled with 120.00, with "At least £98.00".
 4. 12 dp, then the **sum row** £120.00 + £6.50 = £126.50.
 5. 12 dp, then the **deadline line**: timer 16 dp plus bodyMedium "Change it until 18:21:31, 3 s before the bid."
@@ -996,7 +1019,7 @@ The Attention row uses the Attention container. The "Bid not sent" row uses the 
   - snackbar "Max changed to £130.00" with Undo (available until the deadline).
 - **When the deadline passes during editing:**
   - the field becomes read-only;
-  - the message "Too late to change: Kestrel bids £120.00 at 18:21:34." appears;
+  - the Attention warning line "The bid window is open, so this can’t change now. Kestrel bids £120.00 at 18:21:34." appears, the same line and style as a save the data layer refused;
   - Save is disabled and Cancel becomes "Close".
 
 **Variants:**
@@ -1005,7 +1028,7 @@ The Attention row uses the Attention container. The "Bid not sent" row uses the 
   - prefilled £2,200.00 and selected;
   - "At least £2,200.00";
   - sum row £2,200.00 + £12.95 = £2,212.95;
-  - arm line "Bids at 21:02:09 GMT";
+  - arm line "Bids at 21:02:09 GMT", with the timer glyph like every time-to-bid line (schedule stays on "Arm snipe" only);
   - primary "Raise max".
 - **Set a max** (Polaroid):
   - title "Set your max";
@@ -1019,7 +1042,7 @@ The Attention row uses the Attention container. The "Bid not sent" row uses the 
 1. **Top bar** (56 dp): close; at the end, share and overflow ("Open on eBay").
    - Share sends a text receipt: title, "Won for £101.00", total, end time, eBay's reply.
 2. **Plate** 176 dp, with the WON seal stamping once.
-3. 16 dp, then the **status line** in stateWordLarge: trophy plus "Won", then " · ended Sun 9 Nov, 18:21:40 GMT".
+3. 16 dp, then the **status line** in stateWordLarge: trophy plus "Won", then " · ended today, 18:21:40 GMT" ("today" on the day itself, the date on any other; seconds only within the hour of now). The seal ends above it, so it runs the whole width on one line.
 4. 4 dp, then **"You won"** in displayMedium.
 5. 2 dp, then the **title** in lotTitle.
 6. 16 dp, then the **paid card** (card colour, 16 dp padding):
@@ -1065,48 +1088,54 @@ The Attention row uses the Attention container. The "Bid not sent" row uses the 
 **Other variants:**
 - **Bid not sent** (red; Canon at 18:22:05):
   - plate 136 dp;
-  - status line: error plus "Bid not sent", then " · Sun 9 Nov, 18:21:34 GMT", in the Failed tone;
+  - status line: error plus "Sun 9 Nov, 18:21:34 GMT" ("Today, 18:21:34 GMT" on the day), the glyph in the Failed tone. The headline below names the state, so the line gives only the moment; the same holds for Bid failed, Ended early, Cancelled and Cancelled by group;
   - "Bid not sent" in displaySmall;
   - a Failed-container card: "eBay signed you out at 18:21:20, 14 s before the bid. Nothing was bid." with the primary "Sign in";
   - receipt:
-    - "18:21:40 Auction ended · sold for £104.00 to another bidder";
+    - "18:21:40.0 Auction ended · sold for £104.00 to another bidder";
     - "18:21:34.0 Bid not sent · signed out";
     - "18:21:20.3 eBay ended the session";
     - "18:11:40.2 Dry run passed".
-- **Bid failed** (red): like Bid not sent, but the card quotes eBay: "eBay didn't accept the bid: “…”. Nothing was bid."
+- **Bid failed** (red): like Bid not sent, but the card quotes eBay: "eBay didn't accept the bid: “…”. Nothing was bid." When eBay's words ask to try again, "The auction has ended, so there is nothing to retry." follows. The refusal's receipt dot is in the Failed tone.
 - **Ended early** (Ended family):
   - "Ended early";
-  - "The seller ended the listing before its end time. Nothing was bid."
+  - "The seller ended the listing before its end time. Nothing was bid.";
+  - the receipt ends with "Seller ended the listing · Before its end time" at the moment it ended.
 - **Cancelled by group** (Ended family):
   - "Cancelled";
   - "Kestrel cancelled this because you won Sony MiniDisc Walkman MZ-N707 in Portable audio.";
-  - a tonal "Undo cancel" while the auction runs.
+  - a tonal "Undo cancel" (40 dp) while the auction runs. It arms the listing again on its own, with the old max and lead, outside the group (whose rule would cancel it again), and opens its S3 with "Sniping Sony Walkman again, on its own". Receipt times are in tenths on the day of the cancel.
+- **Result not known** (Ended tone): "Kestrel sent your £120.00 bid 6.1 s before the end, but couldn’t read the result on eBay’s listing page yet. It keeps checking the page, and you can look on eBay too." with "Open on eBay"; eBay's reply is a receipt row, not a pull-quote.
+- **The 136 dp plate** lifts a scene's focus (focusY - 0.35), so the top of the item stays in the crop.
 
-### S5 Ready to snipe
+### S5 This phone
 - **Now:** 18:13:52, after the 18:11:40 dry run.
 
 **Layout:**
 1. **Top bar:** back; at the end, a text button "Check again" with refresh. While checking it reads "Checking…" and is disabled. There is no spinner.
-2. **Overline** in smallCaps: "CHECKED TODAY 18:13".
-3. **"Ready to snipe"** in headlineLarge.
+2. **Overline** in smallCaps: "CHECKED TODAY 18:13" ("CHECKING NOW" before the first check).
+3. **"This phone"** in headlineLarge: a neutral title, so the page never says ready while the chip below says otherwise.
 4. 8 dp, then the **StateChip** (Attention) "1 thing needs attention".
 5. 12 dp, then bodyLarge: "Fix it before 18:21:34, when Kestrel bids on your Canon AE-1 Program."
 6. 4 dp, then bodyMedium, ink soft: "Kestrel bids from this phone, so it has to be on, online and free to act at the exact second."
 7. **"NEEDS ATTENTION", 1:** Battery:
-   - "Restricted";
+   - "Optimised" (Android's word for this setting);
    - "Android may pause Kestrel when the screen is off, so a bid could go out late.";
    - Fix, which opens the app's battery page.
 8. **"RECOMMENDED", 1:** Live Updates:
    - "Off · optional";
    - "Shows the countdown in the status bar and on the lock screen.";
    - "Turn on", which opens the Live Updates page.
-9. **"ALL GOOD", 5:**
-   - eBay account: "Signed in as ivan.v · checked 2 min ago";
+9. **"ALL GOOD", 8:** every check the platform runs, so a passing one is evidence too:
+   - eBay account: "Signed in as oakshelf · checked 2 min ago";
    - Notifications: "On";
    - Exact timing: "Allowed, so bids leave on the second";
+   - Background activity: "Not restricted";
+   - Pause if unused: "Off, so Kestrel stays armed even if you don’t open it";
    - Phone clock: "0.04 s off Google time · synced 1 min ago";
+   - Internet: "Connected (Wi-Fi)";
    - Dry run: "Passed today at 18:11 on the Canon AE-1 · nothing was sent".
-10. **Footer** in bodySmall, ink soft: "Kestrel re-checks every 15 minutes, and does a dry run about 10 minutes before each bid."
+10. **Footer** in bodySmall, ink soft: "Kestrel runs these checks whenever you open this page, and does a dry run about 10 minutes before each bid." (The platform has no timed re-check; S1 re-checks when it is shown and every 15 minutes while it is open.)
 
 **Behaviour:**
 - When the user returns from a system page, Kestrel re-checks.
@@ -1114,6 +1143,7 @@ The Attention row uses the Attention container. The "Bid not sent" row uses the 
 
 **States:**
 - **All good:** chip "Ready to snipe" (Won glyph check_circle); the deadline line is hidden.
+- **Checking:** "Check again" reads "Checking…"; every row stays, with "Checking…" as its state line (3.9).
 - **Nothing armed:**
   - the Dry run row reads "Runs about 10 minutes before each bid" with the info glyph;
   - it is not counted as a pass.
@@ -1145,7 +1175,7 @@ The Attention row uses the Attention container. The "Bid not sent" row uses the 
   - close;
   - lock 16 dp plus "signin.ebay.co.uk" in titleSmall, read-only, always showing the current host;
   - a flat (non-wavy) LinearProgressIndicator under the bar while pages load.
-- **Success:** a sheet "Signed in as ivan.v", then back to where the user came from.
+- **Success:** a sheet "Signed in as oakshelf", then back to where the user came from.
 - **Failures:**
   - **Google or Facebook buttons:** if the page navigates to accounts.google.com or facebook.com, Kestrel stops and shows "Google sign-in doesn't work inside apps. Use your eBay email or username and password." with "Back to eBay's page".
   - **Closed before finishing:** "Sign-in didn't finish."
@@ -1171,7 +1201,7 @@ The Attention row uses the Attention container. The "Bid not sent" row uses the 
 1. **Top bar:**
    - back;
    - title "Portable audio" in titleLarge;
-   - overflow: "Rename"; "Ungroup", which keeps both snipes armed on their own and offers Undo.
+   - overflow, always there: "Rename" (a sheet with the name field prefilled and a primary "Save"); "Ungroup", which keeps both snipes armed on their own and offers Undo, only while a member is open.
 2. **Rule card** (secondaryContainer, 20 dp corners):
    - link 24 dp plus "Win 1 of 2" in headlineSmall;
    - "Once one is won, Kestrel cancels the other." in bodyMedium;
@@ -1180,14 +1210,15 @@ The Attention row uses the Attention container. The "Bid not sent" row uses the 
 4. 12 dp, then the outlined "Add a snipe to this group", which opens a picker of armed snipes.
 
 **Rules:**
-- **Bid times within 2 min of each other:** the rule card turns Attention: "MiniDisc and Walkman bid 2 min apart. Kestrel may not know the first result in time, so you could win both."
+- **Bid times within 2 min of each other:** the rule card turns Attention: "MiniDisc and Walkman bid 2 min apart. Kestrel may not know the first result in time, so you could win both." (the words that tell the titles apart, the gap in whole minutes).
 - **After a win:**
   - the card turns Won: "Won 1 of 2 · Sony MiniDisc Walkman MZ-N707 for £31.00";
-  - the other row reads "Cancelled · you won another in Portable audio" with "Undo cancel" while it runs.
+  - the other row reads "Cancelled · you won another in Portable audio" with a tonal "Undo cancel" while it runs (S4 "Cancelled by group").
 
 **Group picker sheet** (from S2):
 - title "Add to a group";
 - radio list: "No group" (default), "Portable audio · 2 snipes", "New group…" (adds a name field);
+- the Group screen's "Add a snipe to this group" sheet lists each candidate with its state, "Ends Sun 9 Nov, 18:21" and, when it ends close to a member, "Ends close to a snipe in this group" in the Attention accent; its 40 dp plates have a 1 dp rule edge.
 - primary "Done".
 
 ### Settings
@@ -1197,23 +1228,24 @@ Opened from the S1 account button.
 1. **Top bar:** back. Then "Settings" in headlineLarge in the content.
 2. **"ACCOUNT":**
    - account_circle;
-   - "ivan.v" in titleMedium;
-   - "Signed in on this phone since Sun 2 Nov";
+   - "oakshelf" in titleMedium;
+   - "Signed in on this phone since Sun 2 Nov" (the date when the phone signed in through Kestrel; without it, "Signed in on this phone");
    - a tonal "Sign out" button, which opens a dialog:
      - title "Sign out of eBay?";
      - text "Your 5 armed snipes pause until you sign in again. Kestrel keeps your list.";
      - buttons "Sign out" (text, ink) and "Cancel".
 3. **"BIDDING":**
    - "Default lead time" / "How long before the end Kestrel bids", then connected toggles 3 s / 6 s / 10 s;
-   - "Suggest odd pence" / "Offer £90.37 instead of £90.00", with a Switch.
+   - "Suggest odd pence" / "Offer £90.37 instead of £90.00", with a Switch (checked track primary, thumb onPrimary).
 4. **"ALERTS":**
-   - "Price passed your max" / "One alert per listing when the price goes past your max", with a Switch;
+   - "Price passed your max" / "One alert per listing when the price goes past your max", with a Switch, shown on and disabled until the alerts can be turned off;
    - "Notification settings" / "Live Updates, sounds and lock screen", with a chevron to the system page.
-5. **"THIS PHONE":** "Ready to snipe", whose StateLabel reads "1 thing needs attention". It opens S5.
+5. **"THIS PHONE":** "Phone checks", whose StateLabel reads "1 thing needs attention" (or "All checks passed at 18:06"). It opens S5 ("This phone").
 6. **"APPEARANCE":** "Theme", with connected toggles System / Light / Dark.
-7. **"ABOUT":**
+7. **"HELP":** "How Kestrel bids" (a sheet: one bid at the end, a dry run first, you stay in charge, from this phone) and eBay's own words on sniping as a pull-quote.
+8. **"ABOUT":**
    - "Kestrel 1.0 (1)" / "Kestrel isn't made by or affiliated with eBay.";
-   - "Licences", listing the fonts (OFL) and photo credits.
+   - "Licences", listing the fonts (OFL) and the open-source software (Apache 2.0), each licence and holder on its own line. Kestrel ships no photos: listing photos come from eBay. "Read the font licence" shows both fonts' copyright lines, then the shared licence once, its section names in small caps.
 
 **Rows:** SegmentedListItem in the card colour, 16 dp padding.
 
@@ -1222,7 +1254,7 @@ Opened from "See all finished snipes".
 
 **Layout:**
 1. **Top bar:** back. Then "History" in headlineLarge.
-2. **Summary card:** "Won 1 of 2 in November" in titleMedium, "£11.00 under your max in total" in bodyMedium.
+2. **Summary card:** "Won 1 of 2 in November" in titleMedium, "£11.00 under your max in total" in bodyMedium. Results over several months name when they start: "Won 2 of 4 since December 2024".
 3. **Month section heads,** for example "NOVEMBER", "2 lots". The year appears only when it is not the current one: "DECEMBER 2024".
 4. **Done rows** (3.5), newest first. A tap opens S4.
 
@@ -1359,7 +1391,7 @@ Code: `ui/model/SnipeStatus.kt`.
   - Armed → (EndedEarly | Cancelled).
 - **Won** needs eBay's result on the listing page. It is never inferred from "In the lead".
 
-| Status | Family | List label | Detail or hero line | Action |
+| Status | Family | List label | Detail | Action |
 |---|---|---|---|---|
 | Watching | Watching | "Watching · no max yet" | "Watching. Set a max to snipe it." | "Set a max" |
 | Armed | Armed | "Armed · max £45.00" | "Armed · bids at 18:21:34, 6 s before the end" | "Edit max" |
@@ -1367,35 +1399,38 @@ Code: `ui/model/SnipeStatus.kt`.
 | SignInNeeded | Attention | "Sign-in needed · paused" | "eBay signed you out. Sign in before 18:21:34 so Kestrel can bid." | "Sign in" |
 | Captcha | Attention | "eBay wants a quick check" | "Solve it on eBay's page before 18:21:34. Kestrel never solves these for you." | "Open eBay page" |
 | PhoneCheck | Attention | "eBay wants to verify you" | "eBay asked for a code by text. Enter it on eBay's page; Kestrel will retry the dry run." | "Open eBay page" |
-| DryRunFailed | Attention | "Dry run failed" | "At 18:11:40 eBay showed a sign-in page instead of the bid panel. Fix it before 18:21:34." | "Fix" |
+| DryRunFailed | Attention | "Dry run failed" | "At 18:11:40 eBay showed a sign-in page instead of the bid panel. Fix it before 18:21:34." | "Sign in" when the dry run met a sign-in page, otherwise "Fix" |
 | OfflineNearBid | Attention | "Phone offline · bid at risk" | "Kestrel can't bid at 18:21:34 unless the phone reconnects." | none |
 | Unreachable | Attention | "Can't reach the listing" | "Kestrel couldn't check this listing three times. It keeps trying." | "Open on eBay" |
+| NeedsYou | Attention | "Needs you · open the listing" | the engine's explanation, or "Kestrel stopped and needs you to look at this listing on eBay." | "Open eBay page" |
 | FinalMinute | Bidding | "Final minute · bids in 30 s" | "Kestrel bids £120.00 in 30 s, at 18:21:34, 6 s before the end." | "Edit max" (until 18:21:31) |
 | BidSent | Bidding | "Bid sent · waiting for eBay" | "Bid sent at 18:21:33.9 · waiting for eBay's reply" | none |
 | InTheLead | Bidding | "In the lead · ends 18:21:40" | "eBay accepted your bid: “Your current bid puts you in the lead.” Not won until it ends." | none |
-| Outbid | Bidding | "Outbid · ends 18:21:40" | "eBay replied: “…” Someone's max is higher than yours." | none |
+| Outbid | Bidding | "Outbid · ends 18:21:40" | "eBay replied: “…”" (without a quote: "Another bidder’s max is higher than yours.") | none |
 | NoReply | Bidding | "Bid sent · no reply yet" | "No reply from eBay yet. Kestrel will read the result when the auction ends." | none |
 | Extended | Bidding | "Extended · now ends 19:56:42" | "A late bid reset the clock to 60 s. Kestrel is still following." | none |
 | ReadingResult | Bidding | "Ended · reading the result" | "Reading eBay's result…" | none |
 | Won | Won | "Won · Sat 8 Nov" | "You won · won for £101.00, £19.00 under your £120.00 max" | "View receipt" |
 | Lost | Ended | "Lost · Fri 7 Nov" | "Outbid · sold for £79.00. Your max was £65.00." | "View receipt" |
-| EndedEarly | Ended | "Ended early by the seller" | "The seller ended the listing early. Nothing was bid." | none |
+| EndedEarly | Ended | "Ended early by the seller · Wed 12 Nov" | "The seller ended the listing early. Nothing was bid." | none |
 | CancelledByYou | Ended | "Cancelled · Sat 8 Nov" | "You stopped this snipe. Nothing was bid." | "Undo" (snackbar) |
 | CancelledByGroup | Ended | "Cancelled · you won another in Portable audio" | "Kestrel cancelled this because you won Sony MiniDisc Walkman MZ-N707." | "Undo cancel" (while it runs) |
-| BidNotSent | Ended, failure (red) | "Bid not sent" | "eBay signed you out at 18:21:20. Nothing was bid." | "Sign in" |
-| BidFailed | Ended, failure (red) | "Bid failed" | "eBay didn't accept the bid: “…”. Nothing was bid." | "View receipt" |
+| BidNotSent | Ended, failure (red) | "Bid not sent · Sun 9 Nov" | "eBay signed you out at 18:21:20. Nothing was bid." | "Sign in" |
+| BidFailed | Ended, failure (red) | "Bid failed · Sun 9 Nov" | "eBay didn't accept the bid: “…”. Nothing was bid." | "View receipt" |
+
+The hero's line 2 is never the detail: 3.4 lists its one-line words. Chips are short: "Extended", "Bid at risk" (offline near a bid), "Needs you".
 
 ### 6.2 Readiness words
 | Situation | Words |
 |---|---|
 | Ready | "Ready to snipe" / "All checks passed at 18:06" |
 | One problem (dock) | "Battery restricted" / "A bid could go out late" / "Fix" |
-| Several problems | "2 things need attention" / "Battery restricted · signed out" / "Review" |
+| Several problems | "2 things need attention" / "Signed out · battery restricted" / a chevron |
 | S5 header | "1 thing needs attention" / "Fix it before 18:21:34, when Kestrel bids on your Canon AE-1 Program." |
-| S5 rows | "Restricted", "Off · optional", "Signed in as ivan.v · checked 2 min ago", "On", "Allowed, so bids leave on the second", "0.04 s off Google time · synced 1 min ago", "Passed today at 18:11 on the Canon AE-1 · nothing was sent", "Runs about 10 minutes before each bid" |
+| S5 rows | "Optimised", "Off · optional", "Signed in as oakshelf · checked 2 min ago", "On", "Allowed, so bids leave on the second", "0.04 s off Google time · synced 1 min ago", "Passed today at 18:11 on the Canon AE-1 · nothing was sent", "Runs about 10 minutes before each bid" |
 
 ### 6.3 Key sentences
-- **S1 overline:** "SUNDAY 9 NOVEMBER · TIMES IN GMT".
+- **S1 overline:** "SUNDAY 9 NOVEMBER · GMT".
 - **S1 Done link:** "See all finished snipes".
 - **S1 extended flag:** "Extended bidding: Kestrel's bid will reset the clock to 60 s."
 - **S1 offline banner:** "Offline since 18:02" / "Prices are from 18:02. Kestrel can't bid until the phone reconnects."
@@ -1405,7 +1440,7 @@ Code: `ui/model/SnipeStatus.kt`.
   3. "Kestrel bids at the end" / "From this phone, 6 s before the auction closes."
 - **S2:**
   - "Includes £3.13 Buyer Protection (private seller)."
-  - "At least £66.00"
+  - "At least £66.08"
   - "Usually less: eBay charges one step above the next bidder, never more than your max."
   - "Odd pence beat bidders who stop at £90.00."
   - "6 s suits most connections. Choose 10 s on a weak signal."
@@ -1613,7 +1648,7 @@ Sources: VJ = visual judge, CJ = clarity judge, TJ = truthfulness judge. The con
 - **Q20. Notification titles.** Every template is filled with the longest fixture names and stays at 28 characters or fewer (unit test).
 - **Q21. Fixture.** Every rendered day label matches its Instant, and the S5 render time is after the dry run.
 - **Q22. Destructive actions.** Every destructive action is in a menu with Undo, or in the sign-out dialog.
-- **Q23. Insets.** Status-bar icons are dark on paper, light on the S3 photo and light in dark theme. The S3 band sits under the status bar with the scrim.
+- **Q23. Insets.** Status-bar icons are dark on paper, light on the S3 scene photo and light in dark theme. Over a light-theme S3 cutout plate they are dark, and the band has no scrim. The S3 band sits under the status bar with the scrim. Offline renders draw the status bar without Wi-Fi and with an empty signal.
 - **Q24. Icons.** Filled glyphs only for warning, error, trophy, check_circle and battery_alert. Sizes follow 2.11.
 - **Q25. Launcher icon.** It is legible at 24 dp. The monochrome layer is a head with an eye hole and no rings, and themed light and dark look right.
 - **Q26. Dock.** Each pill state renders (ready, one problem, several, signed out, offline). The Fix button is 48 dp touch.
@@ -1634,7 +1669,7 @@ Sources: VJ = visual judge, CJ = clarity judge, TJ = truthfulness judge. The con
 ## Appendix A. Fixture (fake data; instants in 2025, the year is never shown)
 **Clock:**
 - **Now:** Sun 9 Nov 2025 18:08:33 GMT.
-- **Account:** ivan.v, signed in since Sun 2 Nov.
+- **Account:** oakshelf, signed in since Sun 2 Nov.
 - **Readiness:** battery restricted. Last full check 18:06 for S1; 18:13:52 for S5.
 
 **Lots:**
@@ -1656,7 +1691,7 @@ Sources: VJ = visual judge, CJ = clarity judge, TJ = truthfulness judge. The con
   - current £64.00 including £3.13 Buyer Protection, 7 bids;
   - postage £8.95;
   - ends Thu 13 Nov 20:04:18 (in 4 d 1 h at 18:09:10);
-  - minimum £66.00;
+  - minimum £66.08 (3.18: the higher reading of eBay's rule with Buyer Protection);
   - max typed 90.00, worst case £98.95, odd pence £90.37;
   - lead 6 s, so it bids at 20:04:12 GMT.
 

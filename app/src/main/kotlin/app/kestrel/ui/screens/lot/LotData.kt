@@ -10,11 +10,14 @@ import app.kestrel.model.SnipeStatus
 import app.kestrel.model.TimelineEvent
 import app.kestrel.ui.model.Connectivity
 import app.kestrel.ui.model.GroupContext
+import app.kestrel.ui.model.UndoCancel
 import app.kestrel.ui.shell.ConnectivityMonitor
+import app.kestrel.ui.shell.UiPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -61,6 +64,15 @@ interface LotData {
     suspend fun delete(id: Long): EditResult
 
     suspend fun undoDelete(id: Long): EditResult
+
+    /**
+     * "Undo cancel" for a snipe its group cancelled while the auction still runs (see [UndoCancel]): the result
+     * carries the snipe that bids now, which has a new id.
+     */
+    suspend fun undoCancel(id: Long): EditResult
+
+    /** Settings "Suggest odd pence": whether the set-max sheet offers £90.37 for a round £90.00. */
+    suspend fun suggestOddPence(): Boolean = true
 
     /** Whether the WON seal of [id] already stamped once (DESIGN 2.10: it plays on the first open only). */
     suspend fun sealStamped(id: Long): Boolean
@@ -124,6 +136,23 @@ class ContainerLotData(
     override suspend fun delete(id: Long): EditResult = actions.delete(id)
 
     override suspend fun undoDelete(id: Long): EditResult = actions.undoDelete(id)
+
+    override suspend fun suggestOddPence(): Boolean =
+        UiPreferences
+            .of(container.context)
+            .values
+            .first()
+            .suggestOddPence
+
+    override suspend fun undoCancel(id: Long): EditResult {
+        val snipe = repository.snipe(id) ?: return EditResult.NotFound
+        return UndoCancel.run(
+            snipe = snipe,
+            nowUtcMillis = nowUtcMillis(),
+            add = { listing, max, lead -> actions.add(listing, max, lead, groupId = null) },
+            delete = actions::delete,
+        )
+    }
 
     override suspend fun sealStamped(id: Long): Boolean =
         withContext(Dispatchers.IO) { sealPreferences().getStringSet(STAMPED, emptySet()).orEmpty().contains("$id") }

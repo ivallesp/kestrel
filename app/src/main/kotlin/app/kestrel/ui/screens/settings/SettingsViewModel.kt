@@ -15,6 +15,8 @@ import app.kestrel.ui.screens.ready.CheckRows
 import app.kestrel.ui.screens.ready.CheckStanding
 import app.kestrel.ui.screens.ready.ContainerReadySources
 import app.kestrel.ui.screens.ready.ReadySources
+import app.kestrel.ui.shell.UiPreferenceValues
+import app.kestrel.ui.shell.UiPreferences
 import app.kestrel.web.EbaySession
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
@@ -24,6 +26,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -31,9 +34,13 @@ import java.time.Instant
 
 /** Who is signed in to eBay on this phone. */
 sealed interface AccountState {
-    /** [name] is the eBay user name; null when only the session cookie says so. */
+    /**
+     * [name] is the eBay user name; null when only the session cookie says so. [since] is when the phone signed in
+     * through Kestrel, when the screens saw it happen.
+     */
     data class SignedIn(
         val name: String?,
+        val since: Instant? = null,
     ) : AccountState
 
     data object SignedOut : AccountState
@@ -56,10 +63,12 @@ data class SettingsUiState(
     /** Snipes that will bid, for the sign-out dialog. */
     val armedSnipes: Int,
     val defaultLeadSeconds: Int,
+    /** "Suggest odd pence": S2 and the set-max sheets offer £90.37 for a round £90.00. */
+    val suggestOddPence: Boolean = true,
     val themeMode: ThemeMode,
     /** Null until the first readiness check finishes. */
     val readiness: PhoneReadiness?,
-    /** "0.1.0 (1)" */
+    /** "1.0 (1)" */
     val version: String,
     val confirmingSignOut: Boolean,
     val sheet: SettingsSheet?,
@@ -77,6 +86,11 @@ interface SettingsSources {
     suspend fun setDefaultLeadSeconds(seconds: Int)
 
     suspend fun setThemeMode(mode: ThemeMode)
+
+    /** The screens' own choices: odd pence, and when the phone signed in. */
+    fun uiPreferences(): Flow<UiPreferenceValues> = flowOf(UiPreferenceValues())
+
+    suspend fun setSuggestOddPence(on: Boolean) {}
 
     /** Removes the eBay cookies and the stored name. */
     suspend fun signOut()
@@ -103,20 +117,24 @@ class SettingsViewModel(
 
     private val dialogs = combine(confirmingSignOut, sheet) { confirming, sheet -> confirming to sheet }
 
+    private val stored = combine(sources.settings(), sources.uiPreferences()) { settings, ui -> settings to ui }
+
     val state: StateFlow<SettingsUiState> =
         combine(
-            sources.settings(),
+            stored,
             sources.snipes(),
             phone,
             sessionCookie,
             dialogs,
-        ) { settings, snipes, phone, cookie, dialogs ->
+        ) { (settings, ui), snipes, phone, cookie, dialogs ->
             val name = settings.signedInName
+            val since = ui.signedInSinceUtcMillis?.let(Instant::ofEpochMilli)
             SettingsUiState(
                 now = now(),
-                account = if (name != null || cookie) AccountState.SignedIn(name) else AccountState.SignedOut,
+                account = if (name != null || cookie) AccountState.SignedIn(name, since) else AccountState.SignedOut,
                 armedSnipes = snipes.count { it.maxBid != null && it.status.isActiveBid },
                 defaultLeadSeconds = settings.defaultLeadSeconds,
+                suggestOddPence = ui.suggestOddPence,
                 themeMode = settings.themeMode,
                 readiness = phone,
                 version = version,
@@ -165,6 +183,8 @@ class SettingsViewModel(
     fun setDefaultLead(seconds: Int) = launchStore { sources.setDefaultLeadSeconds(seconds) }
 
     fun setThemeMode(mode: ThemeMode) = launchStore { sources.setThemeMode(mode) }
+
+    fun setSuggestOddPence(on: Boolean) = launchStore { sources.setSuggestOddPence(on) }
 
     fun askToSignOut() {
         confirmingSignOut.value = true
@@ -228,9 +248,16 @@ internal class ContainerSettingsSources(
 
     override suspend fun setThemeMode(mode: ThemeMode) = container.settings.setThemeMode(mode)
 
+    private val ui by lazy { UiPreferences.of(container.context) }
+
+    override fun uiPreferences(): Flow<UiPreferenceValues> = ui.values
+
+    override suspend fun setSuggestOddPence(on: Boolean) = ui.setSuggestOddPence(on)
+
     override suspend fun signOut() {
         EbaySession.signOut()
         container.settings.setSignedInName(null)
+        ui.clearSignIn()
     }
 
     override fun nowUtcMillis(): Long = container.clock.nowUtcMillis()

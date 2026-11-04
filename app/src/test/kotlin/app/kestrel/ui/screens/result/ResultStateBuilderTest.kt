@@ -23,7 +23,7 @@ class ResultStateBuilderTest {
     fun aWinIsWonForWithTheTotalAndNeverPaid() {
         val state = fixture.canonWon.resultState()
         assertEquals(ResultVariant.Won, state.variant)
-        assertEquals("Won · ended Sun 9 Nov, 18:21:40 GMT", state.line())
+        assertEquals("Won · ended today, 18:21:40 GMT", state.line())
         assertEquals("You won", state.headline)
         val paid = state.paid!!
         assertEquals("£101.00", paid.wonFor)
@@ -49,7 +49,7 @@ class ResultStateBuilderTest {
     fun aLossSaysTheBidCountedAndNothingIsOwed() {
         val state = fixture.nintendo64Lost.resultState()
         assertEquals(ResultVariant.Lost, state.variant)
-        assertEquals("Lost · ended Fri 7 Nov, 19:41:00 GMT", state.line())
+        assertEquals("Lost · ended today, 19:41:00 GMT", state.line())
         assertEquals("Outbid", state.headline)
         val sold = state.sold!!
         assertEquals("Sold for", sold.figures.startLabel)
@@ -73,7 +73,7 @@ class ResultStateBuilderTest {
         val state = fixture.canonBidNotSent.resultState()
         assertEquals(ResultVariant.BidNotSent, state.variant)
         assertEquals(StatusTone.Failed, state.tone)
-        assertEquals("Bid not sent · Sun 9 Nov, 18:21:34 GMT", state.line())
+        assertEquals("Today, 18:21:34 GMT", state.line())
         assertEquals("Bid not sent", state.headline)
         assertEquals(
             OutcomeCardText(
@@ -92,7 +92,7 @@ class ResultStateBuilderTest {
         assertEquals(ResultVariant.BidFailed, state.variant)
         assertEquals(StatusTone.Failed, state.tone)
         assertEquals("Bid failed", state.headline)
-        assertEquals("Bid failed · Sun 9 Nov, 18:21:34 GMT", state.line())
+        assertEquals("Today, 18:21:34 GMT", state.line())
         assertTrue(state.outcome!!.text.startsWith("eBay didn’t accept the bid: “Your bid wasn’t placed."))
     }
 
@@ -101,13 +101,15 @@ class ResultStateBuilderTest {
         val early = fixture.gameBoyEndedEarly.resultState()
         assertEquals(ResultVariant.EndedEarly, early.variant)
         assertEquals("Ended early", early.headline)
+        // The headline names the state, so the line under the plate gives only the moment.
+        assertEquals("", early.statusLine.words)
         assertEquals("The seller ended the listing before its end time. Nothing was bid.", early.outcome!!.text)
         assertEquals(StatusTone.Ended, early.tone)
 
         val cancelled = fixture.gameBoyCancelled.resultState()
         assertEquals("Cancelled", cancelled.headline)
         assertEquals("You stopped this snipe. Nothing was bid.", cancelled.outcome!!.text)
-        assertEquals("Cancelled · Sat 8 Nov, 16:20:00 GMT", cancelled.line())
+        assertEquals("Sat 8 Nov, 16:20 GMT", cancelled.line())
 
         val group = LotFixtures.walkmanSkippedByGroup.resultState()
         assertEquals("Cancelled", group.headline)
@@ -115,9 +117,9 @@ class ResultStateBuilderTest {
             "Kestrel cancelled this because you won Sony MiniDisc Walkman MZ-N707 in Portable audio.",
             group.outcome!!.text,
         )
-        assertEquals("Cancelled · Mon 10 Nov, 20:10:16 GMT", group.line())
-        // No way to restore a cancelled snipe exists yet, so no Undo is offered.
-        assertNull(group.outcome!!.action)
+        assertEquals("Today, 20:10:16 GMT", group.line())
+        // The Walkman's auction still runs, so the card offers to bid on it again.
+        assertEquals(LotAction.UNDO_CANCEL, group.outcome!!.action)
     }
 
     @Test

@@ -51,6 +51,8 @@ import app.kestrel.model.EbaySite
 import app.kestrel.ui.components.PrimaryButton
 import app.kestrel.ui.components.SymbolIcon
 import app.kestrel.ui.components.Symbols
+import app.kestrel.ui.format.NO_BREAK_SPACE
+import app.kestrel.ui.format.noWidow
 import app.kestrel.ui.screens.ready.EdgeFade
 import app.kestrel.ui.screens.ready.GlyphCircle
 import app.kestrel.ui.theme.KestrelTheme
@@ -85,7 +87,7 @@ private val Promises =
         Promise(
             Symbols.Smartphone,
             "Your session stays on this phone",
-            "It is kept here and never sent anywhere else. Sign out any time in Settings.",
+            "It is kept here and never sent anywhere else. Sign${NO_BREAK_SPACE}out any time in Settings.",
         ),
         Promise(
             Symbols.AlternateEmail,
@@ -138,8 +140,8 @@ fun SignInScreen(
                         Text(
                             text =
                                 "Kestrel bids with your own eBay account, from this phone. eBay may ask you to sign " +
-                                    "in again now and then.",
-                            style = MaterialTheme.typography.bodyLarge.copy(lineBreak = LineBreak.Heading),
+                                    "in again now and${NO_BREAK_SPACE}then.",
+                            style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(Modifier.height(20.dp))
@@ -184,13 +186,14 @@ private fun PromiseRow(promise: Promise) {
         )
         Spacer(Modifier.width(16.dp))
         Column(Modifier.weight(1f).semantics(mergeDescendants = true) {}) {
+            // Titles balance their lines, so "password" never sits alone; details keep the paragraph measure.
             Text(
                 promise.title,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleMedium.copy(lineBreak = LineBreak.Heading),
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                promise.detail,
+                promise.detail.noWidow(),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -233,7 +236,9 @@ fun Frontispiece(
                     Modifier
                         .align(Alignment.BottomCenter)
                         .wrapContentSize(Alignment.BottomCenter, unbounded = true)
-                        .requiredSize(archWidth * PORTRAIT_SCALE),
+                        .requiredSize(archWidth * PORTRAIT_SCALE)
+                        // The bird's shoulders sit left of the layer's centre; this centres them in the arch.
+                        .offset(x = archWidth * PORTRAIT_SHIFT),
             )
         }
         if (lock) {
@@ -257,3 +262,6 @@ fun Frontispiece(
  * times the arch width lets the shoulders fill the arch and the head sit clear of its curve.
  */
 private const val PORTRAIT_SCALE = 1.45f
+
+/** How far right the portrait moves, as a share of the arch width, so both shoulders meet the arch's sides. */
+private const val PORTRAIT_SHIFT = 0.045f

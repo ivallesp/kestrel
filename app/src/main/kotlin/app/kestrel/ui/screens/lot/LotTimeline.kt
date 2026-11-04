@@ -2,11 +2,13 @@ package app.kestrel.ui.screens.lot
 
 import app.kestrel.data.PricePoint
 import app.kestrel.model.Money
+import app.kestrel.model.SnipeStatus
 import app.kestrel.model.TimelineEvent
 import app.kestrel.model.TimelineKind
 import app.kestrel.ui.components.TimelineEntry
 import app.kestrel.ui.components.TimelineMoment
 import app.kestrel.ui.format.AuctionZone
+import app.kestrel.ui.format.NO_BREAK_SPACE
 import app.kestrel.ui.format.clockFor
 import app.kestrel.ui.format.clockWithSeconds
 import app.kestrel.ui.format.clockWithTenths
@@ -22,6 +24,7 @@ import app.kestrel.ui.model.LotStatus
 import app.kestrel.ui.model.LotTimes
 import app.kestrel.ui.model.chipText
 import app.kestrel.ui.model.label
+import app.kestrel.ui.screens.result.ResultStateBuilder
 import app.kestrel.ui.theme.StatusTone
 import java.time.Instant
 import java.time.ZoneId
@@ -57,7 +60,8 @@ object LotTimeline {
                 .filter { it.atMillis <= nowMillis }
                 .sortedByDescending { it.atMillis }
         val future = futureRows(evidence, status, nowMillis).sortedByDescending { it.atMillis }
-        val nowRow = Row(nowMillis, status.label(now, zone).text, moment = TimelineMoment.Now)
+        // "Now 18:21:04" alone: the chip and the card above already say the status (DESIGN 3.10).
+        val nowRow = Row(nowMillis, "", moment = TimelineMoment.Now)
         return (future + nowRow + past).map { liveEntry(it, now, zone) }
     }
 
@@ -71,13 +75,28 @@ object LotTimeline {
         val rows = eventRows(evidence, Style.Receipt) + listOfNotNull(finalMinuteRow(evidence, nowMillis))
         val ended = rows.any { it.kind == TimelineKind.ENDED }
         val endMillis = evidence.snipe.endTimeUtcMillis
+        val endedEarly = evidence.resultOutcome == "ENDED_EARLY" || evidence.snipe.status == SnipeStatus.ENDED_EARLY
         val endedRow =
-            if (!ended && nowMillis >= endMillis && evidence.result != null && evidence.windowOpened != null) {
-                Row(endMillis, "Auction ended", endedWithoutReport(evidence), kind = TimelineKind.ENDED)
-            } else {
-                null
+            when {
+                ended || nowMillis < endMillis -> {
+                    null
+                }
+
+                // The seller's early end is the receipt's last fact, at the moment the listing ended.
+                endedEarly -> {
+                    Row(endMillis, "Seller ended the listing", "Before its end time", kind = TimelineKind.ENDED)
+                }
+
+                evidence.result != null && evidence.windowOpened != null -> {
+                    Row(endMillis, "Auction ended", endedWithoutReport(evidence), kind = TimelineKind.ENDED)
+                }
+
+                else -> {
+                    null
+                }
             }
-        val resultDay = Instant.ofEpochMilli(endMillis)
+        // Tenths on the day of the result: the end, or the cancel for a snipe that was cancelled days before.
+        val resultDay = Instant.ofEpochMilli(evidence.cancelledAtMillis ?: endMillis)
         return (rows + listOfNotNull(endedRow))
             .filter { it.atMillis <= nowMillis }
             .sortedByDescending { it.atMillis }
@@ -119,7 +138,7 @@ object LotTimeline {
     private fun spoken(
         time: String,
         row: Row,
-    ): String = speakUnits(listOfNotNull(time, row.title, row.detail).joinToString(", "))
+    ): String = speakUnits(listOfNotNull(time, row.title.ifEmpty { null }, row.detail).joinToString(", "))
 
     // What will happen: the dry run, the bid and the end.
     private fun futureRows(
@@ -266,7 +285,8 @@ object LotTimeline {
         leadSeconds: Long?,
         style: Style,
     ): Row {
-        val lead = leadSeconds?.let { "${secondsText(it)} lead" }
+        // "6 s lead" stays on one line.
+        val lead = leadSeconds?.let { "${secondsText(it)}${NO_BREAK_SPACE}lead" }
         return when {
             amount == null -> Row(at, StateNames.armed)
             style == Style.Live -> Row(at, StateNames.armed, listOfNotNull("$amount max", lead).joined())
@@ -388,9 +408,10 @@ object LotTimeline {
                 replyWithState(at, StateNames.outbid, repliedIn, style)
             }
 
+            // A refusal is a failure: its dot takes the Failed tone (DESIGN 3.10).
             "Rejected" -> {
                 val words = LotEvidence.quotedText(event.message)
-                Row(at, "eBay refused the bid", words?.let { "“$it”" }, tenths = true)
+                Row(at, "eBay refused the bid", words?.let { "“$it”" }, tone = StatusTone.Failed, tenths = true)
             }
 
             "Unconfirmed" -> {
@@ -445,9 +466,15 @@ object LotTimeline {
         return Row(at, "Auction ended", detail, kind = TimelineKind.ENDED)
     }
 
-    /** The end of an auction no ENDED event recorded (Kestrel stopped before it): it ended without Kestrel's bid. */
-    private fun endedWithoutReport(evidence: LotEvidence): String? =
-        if (evidence.sentAtMillis == null || evidence.replyType == "Rejected") "Without a bid from Kestrel" else null
+    /**
+     * The end of an auction no ENDED event recorded (Kestrel stopped before it): it ended without Kestrel's bid, so
+     * someone else bought it, at the final price when Kestrel read one.
+     */
+    private fun endedWithoutReport(evidence: LotEvidence): String? {
+        if (evidence.sentAtMillis != null && evidence.replyType != "Rejected") return null
+        val price = evidence.snipe.result?.finalPrice ?: return "Without a bid from Kestrel"
+        return "Sold for ${price.formatted()} to another bidder"
+    }
 
     private fun resultRow(
         event: TimelineEvent,
@@ -484,8 +511,9 @@ object LotTimeline {
                 failureRow(at, evidence, reason)
             }
 
+            // The engine's own words say it will check again; the receipt says it as the result card does.
             "UNKNOWN" -> {
-                Row(at, "Result not known", reason, tenths = true)
+                Row(at, "Result not known", ResultStateBuilder.UNKNOWN_NEXT.removeSuffix("."), tenths = true)
             }
 
             else -> {

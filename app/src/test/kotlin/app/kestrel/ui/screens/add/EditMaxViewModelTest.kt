@@ -149,7 +149,7 @@ class EditMaxViewModelTest {
                     .toString(),
             )
             assertEquals("£63.00", subject.state.max.minimum)
-            assertEquals(OddPence.Tip, subject.state.oddPence)
+            assertEquals(OddPence.Tip("GBP"), subject.state.oddPence)
             assertFalse(subject.state.primaryEnabled)
             subject.type("70.00")
             subject.viewModel.selectLead(2)
@@ -177,7 +177,10 @@ class EditMaxViewModelTest {
             assertTrue(state.blocked)
             assertFalse(state.primaryEnabled)
             assertEquals("Close", state.dismissLabel)
-            assertEquals("Too late to change: Kestrel bids £120.00 at 18:21:34.", state.line.text)
+            assertEquals(
+                "The bid window is open, so this can’t change now.\nKestrel bids £120.00 at 18:21:34.",
+                state.line.text,
+            )
             assertEquals(
                 "120.00",
                 subject.viewModel.maxField.text
@@ -240,11 +243,11 @@ class EditMaxViewModelTest {
             EditMaxPlanner.lotLine(canonAt1812, at("2025-11-09T18:21:12Z")),
         )
         assertEquals(
-            "£2,150.00 now · ends 21:02",
+            "£2,150.00 now · ends 21:02 GMT",
             EditMaxPlanner.lotLine(CatalogueFixture.omega, at("2025-11-09T18:08:40Z")),
         )
         assertEquals(
-            "£61.00 now · ends Thu 13 Nov, 19:30",
+            "£61.00 now · ends Thu 13 Nov, 19:30 GMT",
             EditMaxPlanner.lotLine(CatalogueFixture.polaroid, at("2025-11-09T18:09:10Z")),
         )
     }

@@ -76,9 +76,6 @@ class AddViewModel(
     private val eventChannel = Channel<AddEvent>(Channel.BUFFERED)
     private var fetchJob: Job? = null
 
-    /** The last max that was at least eBay's minimum, so the plan stays readable while a new one is typed. */
-    private var lastValidMax: Money? = null
-
     val events: Flow<AddEvent> = eventChannel.receiveAsFlow()
 
     private val groupOptions: Flow<List<GroupOption>> =
@@ -104,7 +101,8 @@ class AddViewModel(
     init {
         viewModelScope.launch {
             val lead = services.defaultLeadSeconds()
-            model.update { it.copy(leadSeconds = lead) }
+            val suggest = services.suggestOddPence()
+            model.update { it.copy(leadSeconds = lead, suggestOddPence = suggest) }
         }
         if (link != null) start(link, fromShare = true)
     }
@@ -132,7 +130,6 @@ class AddViewModel(
         fetchJob?.cancel()
         linkField.clearText()
         maxField.clearText()
-        lastValidMax = null
         model.update { it.copy(stage = Stage.LinkEntry, group = GroupChoice.None, checkingWords = false) }
     }
 
@@ -153,7 +150,8 @@ class AddViewModel(
     fun useOddPence() {
         val loaded = model.value.stage as? Stage.Loaded ?: return
         val typed = MaxRules.read(maxField.text.toString(), loaded.listing.currentPrice.currency, loaded.minimum)
-        val suggestion = MaxRules.oddPence(typed) as? OddPence.Suggestion ?: return
+        val currency = loaded.listing.currentPrice.currency
+        val suggestion = MaxRules.oddPence(typed, currency) as? OddPence.Suggestion ?: return
         maxField.setTextAndPlaceCursorAtEnd(MaxRules.fieldText(suggestion.amount))
     }
 
@@ -384,7 +382,6 @@ class AddViewModel(
             return Stage.CannotSnipe(listing, CannotSnipeReason.Ended)
         }
         maxField.clearText()
-        lastValidMax = null
         val signedIn = listing.signedIn ?: services.isSignedIn(listing.ref.site)
         model.update { it.copy(signedIn = signedIn) }
         return Stage.Loaded(listing, AddPlanner.minimum(listing))
@@ -482,11 +479,6 @@ class AddViewModel(
         groups: List<GroupOption>,
     ): AddPage.Ready {
         val typed = MaxRules.read(maxText, stage.listing.currentPrice.currency, stage.minimum)
-        when (typed) {
-            is TypedMax.Valid -> lastValidMax = typed.max
-            TypedMax.Empty -> lastValidMax = null
-            is TypedMax.TooLow -> Unit
-        }
         val openInGroup =
             (model.group as? GroupChoice.Existing)?.let { group ->
                 groups.firstOrNull {
@@ -499,13 +491,13 @@ class AddViewModel(
             minimum = stage.minimum,
             maxField = maxField,
             typed = typed,
-            lastValidMax = lastValidMax,
             leadSeconds = model.leadSeconds,
             group = AddPlanner.groupRow(model.group, openInGroup?.openSnipes ?: 0),
             signedIn = model.signedIn,
             checkingWords = model.checkingWords,
             busy = model.busy,
             now = now,
+            suggestOddPence = model.suggestOddPence,
         )
     }
 
@@ -519,6 +511,8 @@ class AddViewModel(
         val signedIn: Boolean = true,
         val checkingWords: Boolean = false,
         val busy: Boolean = false,
+        /** Settings "Suggest odd pence". */
+        val suggestOddPence: Boolean = true,
     )
 
     private sealed interface Stage {
@@ -560,14 +554,25 @@ class AddViewModel(
         const val WATCHING_MESSAGE = "Watching: no bid until you set a max"
         private const val STORE_FAILED = "Kestrel couldn’t save this snipe."
 
-        /** "ebay.co.uk/itm/127504318862", the address S2 shows while it loads. */
+        /**
+         * "ebay.co.uk/itm/…", the address S2 shows while it loads (DESIGN S2 "Fetching"): the host and the kind of
+         * page, without the scheme, the item number or the query.
+         */
         fun addressOf(link: ParsedLink): String =
             when (link) {
-                is ParsedLink.Item -> "${link.ref.site.host.removePrefix("www.")}/itm/${link.ref.itemId}"
-                is ParsedLink.ShortLink -> link.url.removePrefix("https://").removePrefix("http://")
-                is ParsedLink.NotAListing -> link.url.removePrefix("https://").removePrefix("http://")
+                is ParsedLink.Item -> "${link.ref.site.host.removePrefix("www.")}/itm/…"
+                is ParsedLink.ShortLink -> "${hostOf(link.url)}/…"
+                is ParsedLink.NotAListing -> "${hostOf(link.url)}/…"
                 ParsedLink.NotEbay -> ""
             }
+
+        /** "ebay.us" from "https://ebay.us/m/abc?x=1". */
+        private fun hostOf(url: String): String =
+            url
+                .substringAfter("://")
+                .substringBefore('/')
+                .substringBefore('?')
+                .removePrefix("www.")
 
         /**
          * The web layer explains a failed load in its own words; S2 says it plainly. Unknown failures are a page that

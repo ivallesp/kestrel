@@ -20,11 +20,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.unit.dp
 import app.kestrel.model.EbaySite
 import app.kestrel.ui.components.KestrelBottomSheet
 import app.kestrel.ui.components.PrimaryButton
+import app.kestrel.ui.format.noWidow
 
 /**
  * eBay's sign-in page inside Kestrel (DESIGN S6, sign-in page): the host bar with its progress line, the page
@@ -69,14 +69,14 @@ internal fun BrowserSheetContent(
     onDismiss: () -> Unit,
 ) {
     val words = sheetWords(sheet)
-    // Balanced lines, so a sentence never ends with one word alone on the last line.
-    val body = MaterialTheme.typography.bodyLarge.copy(lineBreak = LineBreak.Heading)
-    val note = MaterialTheme.typography.bodyMedium.copy(lineBreak = LineBreak.Heading)
+    // Body copy keeps the paragraph measure; the last two words stay together, so no line holds one word alone.
+    val body = MaterialTheme.typography.bodyLarge
+    val note = MaterialTheme.typography.bodyMedium
     KestrelBottomSheet(title = words.title, onDismissRequest = onDismiss) {
-        Text(words.body, style = body, color = MaterialTheme.colorScheme.onSurface)
+        Text(words.body.noWidow(), style = body, color = MaterialTheme.colorScheme.onSurface)
         words.note?.let { text ->
             Spacer(Modifier.height(8.dp))
-            Text(text, style = note, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(text.noWidow(), style = note, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.height(24.dp))
         PrimaryButton(words.action, onClick = onAction)

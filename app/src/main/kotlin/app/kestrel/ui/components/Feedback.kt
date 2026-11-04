@@ -1,5 +1,6 @@
 package app.kestrel.ui.components
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.LoadingIndicator
@@ -27,14 +29,20 @@ import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import app.kestrel.ui.format.noWidow
 import app.kestrel.ui.theme.KestrelTheme
 import app.kestrel.ui.theme.SheetShape
 
@@ -61,7 +69,11 @@ fun OfflineBanner(
         Spacer(Modifier.width(12.dp))
         Column {
             Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-            Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                detail.noWidow(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -118,6 +130,7 @@ fun KestrelBottomSheet(
     sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val insets = LocalSheetInsets.current ?: WindowInsets.ime.union(WindowInsets.navigationBars)
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         modifier = modifier,
@@ -128,13 +141,37 @@ fun KestrelBottomSheet(
         dragHandle = { SheetDragHandle() },
         contentWindowInsets = { WindowInsets(0) },
     ) {
-        SheetLayout(
-            title = title,
-            windowInsets = WindowInsets.ime.union(WindowInsets.navigationBars),
-            content = content,
-        )
+        SheetLayout(title = title, windowInsets = insets, content = content)
     }
 }
+
+/**
+ * The insets a sheet keeps clear of at its foot; null means the window's own (the keyboard and the navigation bar).
+ * Screenshot tests set the phone's, because their sheet windows report no navigation bar.
+ */
+val LocalSheetInsets = staticCompositionLocalOf<WindowInsets?> { null }
+
+/**
+ * Scrolls a sheet's long text and, while more of it is below, fades its last 24 dp into [sheetColour] (the sheet's
+ * surfaceContainerLow), so a sheet that scrolls looks like one.
+ */
+fun Modifier.sheetTextScroll(
+    state: ScrollState,
+    sheetColour: Color,
+): Modifier =
+    drawWithContent {
+        drawContent()
+        if (state.canScrollForward) {
+            val fade = SheetTextFade.toPx()
+            drawRect(
+                brush = Brush.verticalGradient(listOf(Color.Transparent, sheetColour), startY = size.height - fade),
+                topLeft = Offset(0f, size.height - fade),
+                size = Size(size.width, fade),
+            )
+        }
+    }.verticalScroll(state)
+
+private val SheetTextFade = 24.dp
 
 /** The handle at the top of every sheet: 32 x 4 dp in the outline colour. */
 @Composable

@@ -64,6 +64,9 @@ object Symbols {
     /** The "Stop sniping" menu item. */
     @DrawableRes val DoNotDisturbOn = R.drawable.ic_do_not_disturb_on
 
+    /** The "Delete" menu item, after a divider; its snackbar offers Undo. */
+    @DrawableRes val Delete = R.drawable.ic_delete
+
     @DrawableRes val Check = R.drawable.ic_check
 
     // Facts.

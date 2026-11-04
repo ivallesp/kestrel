@@ -38,12 +38,16 @@ val GestureBarHeight = 24.dp
 val PhoneInsets = WindowInsets(top = StatusBarHeight, bottom = GestureBarHeight)
 
 private val LightChrome = Color(0xFFF7F3EC)
+
+/** The signal bars with no service: drawn faint, as Android draws an empty signal. */
+private const val NO_SIGNAL_ALPHA = 0.3f
 private val DarkChrome = Color(0xFF1E1B16)
 
 /**
  * Draws the status bar (clock, Wi-Fi, signal, battery) and the gesture handle over a screen, the way Android composites
  * them over an edge-to-edge app. [lightIcons] is for dark theme and screens with a photograph at the top (S3);
  * [lightHandle] follows the theme only, because S3 changes the status-bar icons and never the navigation bar's.
+ * Offline ([online] false), the bar shows no Wi-Fi and an empty signal, as the phone does without a connection.
  */
 @Composable
 fun DeviceChrome(
@@ -51,6 +55,7 @@ fun DeviceChrome(
     lightIcons: Boolean,
     modifier: Modifier = Modifier,
     lightHandle: Boolean = lightIcons,
+    online: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val iconColour = if (lightIcons) LightChrome else DarkChrome
@@ -72,8 +77,8 @@ fun DeviceChrome(
             )
             Spacer(Modifier.weight(1f))
             Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
-                WifiGlyph(iconColour)
-                SignalGlyph(iconColour)
+                if (online) WifiGlyph(iconColour)
+                SignalGlyph(if (online) iconColour else iconColour.copy(alpha = NO_SIGNAL_ALPHA))
                 BatteryGlyph(iconColour)
             }
         }

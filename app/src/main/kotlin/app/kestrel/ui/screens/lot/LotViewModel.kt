@@ -23,6 +23,7 @@ import app.kestrel.ui.model.Connectivity
 import app.kestrel.ui.model.GroupContext
 import app.kestrel.ui.model.LotPhoto
 import app.kestrel.ui.model.LotTimes
+import app.kestrel.ui.model.UndoCancel
 import app.kestrel.ui.screens.result.ResultVariant
 import app.kestrel.ui.shell.ShellMessage
 import kotlinx.coroutines.CoroutineDispatcher
@@ -58,6 +59,12 @@ sealed interface LotEffect {
 
     /** Leaves a snackbar for the next screen and goes back, after the snipe was deleted. */
     data class LeaveAndClose(
+        val message: ShellMessage,
+    ) : LotEffect
+
+    /** Opens [snipeId] in place of this screen with [message]: the snipe a group cancelled, armed again. */
+    data class Reopen(
+        val snipeId: Long,
         val message: ShellMessage,
     ) : LotEffect
 }
@@ -221,6 +228,12 @@ class LotViewModel(
             }
         }
         sheet.value = SheetRequest(kind, leadSeconds = if (kind == SheetKind.Set) snipe.leadSeconds else null)
+        if (kind == SheetKind.Set) {
+            viewModelScope.launch {
+                val suggest = data.suggestOddPence()
+                sheet.update { it?.copy(suggestOddPence = suggest) }
+            }
+        }
     }
 
     fun closeSheet() {
@@ -344,6 +357,31 @@ class LotViewModel(
                             Unit
                         }
                     }
+                }
+
+                EditResult.NotFound -> {
+                    return@launch
+                }
+            }
+        }
+    }
+
+    /**
+     * "Undo cancel" (DESIGN S4 "Cancelled by group"): arms the listing again on its own and opens the snipe that bids
+     * now, with "Sniping Sony Walkman again, on its own".
+     */
+    fun undoCancel() {
+        val snipe = latest ?: return
+        viewModelScope.launch {
+            when (val result = data.undoCancel(snipeId)) {
+                is EditResult.Done -> {
+                    closing.value = true
+                    val message = ShellMessage(UndoCancel.message(shortTitle(snipe.title)))
+                    effectChannel.send(LotEffect.Reopen(result.snipe.id, message))
+                }
+
+                is EditResult.NotAllowed -> {
+                    effectChannel.send(LotEffect.Show(ShellMessage(result.reason.withCurlyQuotes())))
                 }
 
                 EditResult.NotFound -> {

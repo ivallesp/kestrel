@@ -155,13 +155,18 @@ private fun PillContent(
         modifier =
             Modifier
                 .defaultMinSize(minHeight = PillHeight)
-                .padding(start = 12.dp, end = if (action != null) 8.dp else 12.dp, top = 4.dp, bottom = 4.dp),
+                .padding(
+                    start = 12.dp,
+                    end = if (action != null && action != PillAction.Review) 8.dp else 12.dp,
+                    top = 4.dp,
+                    bottom = 4.dp,
+                ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         SymbolIcon(pill.icon, tint = iconTint, size = 22.dp)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f).clearAndSetSemantics {}) {
-            Text(pill.title, style = KestrelTheme.type.stateWord, color = titleColour)
+            Text(pill.title, style = KestrelTheme.type.stateWord, color = titleColour, maxLines = 1)
             Text(
                 text = pill.detail,
                 style = MaterialTheme.typography.bodySmall,
@@ -170,15 +175,28 @@ private fun PillContent(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        if (action != null) {
-            Spacer(Modifier.width(Spacing.Small))
-            Button(
-                onClick = { onAction(action) },
-                shapes = ButtonDefaults.shapes(),
-                contentPadding = PaddingValues(horizontal = 12.dp),
-                modifier = Modifier.heightIn(min = Spacing.InlineButtonHeight),
-            ) {
-                Text(action.label, style = MaterialTheme.typography.labelLarge)
+        when (action) {
+            null -> {
+                Unit
+            }
+
+            // "Review" would only repeat what a tap on the pill does (open S5), so a chevron says it instead and
+            // line 1 keeps its width.
+            PillAction.Review -> {
+                Spacer(Modifier.width(Spacing.Small))
+                SymbolIcon(Symbols.ChevronRight, tint = titleColour, size = 20.dp)
+            }
+
+            else -> {
+                Spacer(Modifier.width(Spacing.Small))
+                Button(
+                    onClick = { onAction(action) },
+                    shapes = ButtonDefaults.shapes(),
+                    contentPadding = PaddingValues(horizontal = 12.dp),
+                    modifier = Modifier.heightIn(min = Spacing.InlineButtonHeight),
+                ) {
+                    Text(action.label, style = MaterialTheme.typography.labelLarge)
+                }
             }
         }
     }

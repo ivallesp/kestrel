@@ -22,18 +22,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.kestrel.ui.components.SymbolIcon
+import app.kestrel.ui.theme.KestrelTheme
 import app.kestrel.ui.theme.Spacing
 
 // Small pieces the setup screens share (S5, S6, the eBay pages, Settings and Onboarding).
 
 /**
  * A screen's top bar: the back or close button at the start (48 dp, 4 dp from the edge) and optional actions at the
- * end. Flat on the page colour; the screen pads it below the status bar.
+ * end. Flat on the page colour; the screen pads it below the status bar. [ruled] draws a 1 dp rule under it while the
+ * page is scrolled, so content never meets the bar without an edge.
  */
 @Composable
 internal fun SetupTopBar(
@@ -41,10 +45,22 @@ internal fun SetupTopBar(
     navigationLabel: String,
     onNavigate: () -> Unit,
     modifier: Modifier = Modifier,
+    ruled: () -> Boolean = { false },
     actions: @Composable RowScope.() -> Unit = {},
 ) {
+    val rule = KestrelTheme.catalogue.rule
     Row(
-        modifier = modifier.fillMaxWidth().height(TopBarHeight).padding(horizontal = 4.dp),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(TopBarHeight)
+                .drawBehind {
+                    // Read while drawing, so scrolling redraws the rule without composing the bar again.
+                    if (ruled()) {
+                        val y = size.height - 0.5.dp.toPx()
+                        drawLine(rule, Offset(0f, y), Offset(size.width, y), strokeWidth = 1.dp.toPx())
+                    }
+                }.padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onNavigate) { SymbolIcon(navigationIcon, contentDescription = navigationLabel) }

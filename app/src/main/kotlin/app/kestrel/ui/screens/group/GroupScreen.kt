@@ -1,5 +1,6 @@
 package app.kestrel.ui.screens.group
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -15,12 +16,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -37,18 +41,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.LineBreak
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.kestrel.ui.components.BottomFade
 import app.kestrel.ui.components.KestrelBottomSheet
+import app.kestrel.ui.components.KestrelMenu
 import app.kestrel.ui.components.LotPlate
 import app.kestrel.ui.components.OutlinedActionButton
+import app.kestrel.ui.components.PrimaryButton
 import app.kestrel.ui.components.SectionHead
 import app.kestrel.ui.components.StateLabel
 import app.kestrel.ui.components.SymbolIcon
 import app.kestrel.ui.components.Symbols
+import app.kestrel.ui.format.NO_BREAK_SPACE
+import app.kestrel.ui.format.absoluteTimeInSentence
 import app.kestrel.ui.format.forDisplay
+import app.kestrel.ui.format.noWidow
 import app.kestrel.ui.format.plural
 import app.kestrel.ui.model.LotAction
 import app.kestrel.ui.model.label
@@ -71,6 +81,9 @@ interface GroupActions {
         action: LotAction,
     ) {}
 
+    /** "Rename": opens the sheet with the name field. */
+    fun rename() {}
+
     fun ungroup() {}
 
     /** "Add a snipe to this group": opens the picker of armed snipes. */
@@ -78,9 +91,9 @@ interface GroupActions {
 }
 
 /**
- * One "win 1 of N" group (DESIGN Group screen): the top bar with the group's name and Ungroup, the rule card, and
- * its lots in a segmented block, with "Add a snipe to this group". Stateless; [menuOpen] opens the overflow menu
- * at first, for screenshots.
+ * One "win 1 of N" group (DESIGN Group screen): the top bar with the group's name and its overflow (Rename, and
+ * Ungroup while a member is open), the rule card, and its lots in a segmented block, with "Add a snipe to this
+ * group". Stateless; [menuOpen] opens the overflow menu at first, for screenshots.
  */
 @Composable
 fun GroupScreen(
@@ -152,12 +165,20 @@ private fun GroupTopBar(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f).semantics { heading() },
         )
-        if (canUngroup) {
-            Box {
-                IconButton(onClick = { expanded = true }) {
-                    SymbolIcon(Symbols.MoreVert, contentDescription = "More options")
-                }
-                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        // Always there: an empty group and a group after its win can still be renamed.
+        Box {
+            IconButton(onClick = { expanded = true }) {
+                SymbolIcon(Symbols.MoreVert, contentDescription = "More options")
+            }
+            KestrelMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                DropdownMenuItem(
+                    text = { Text("Rename", style = MaterialTheme.typography.bodyLarge) },
+                    onClick = {
+                        expanded = false
+                        actions.rename()
+                    },
+                )
+                if (canUngroup) {
                     DropdownMenuItem(
                         text = { Text("Ungroup", style = MaterialTheme.typography.bodyLarge) },
                         onClick = {
@@ -196,8 +217,8 @@ private fun EmptyGroup(onAdd: () -> Unit) {
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "Add two or more snipes, and Kestrel wins one and cancels the rest.",
-            style = MaterialTheme.typography.bodyLarge.copy(lineBreak = LineBreak.Heading),
+            text = "Add two or more snipes. Once one is won, Kestrel cancels the${NO_BREAK_SPACE}rest.",
+            style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(24.dp))
@@ -296,10 +317,11 @@ private fun RuleCardView(rule: RuleCard) {
                 Text(rule.headline, style = MaterialTheme.typography.headlineSmall)
             }
             Spacer(Modifier.height(8.dp))
-            Text(rule.body, style = MaterialTheme.typography.bodyMedium.copy(lineBreak = LineBreak.Heading))
+            // Body copy keeps the paragraph measure; only titles balance their lines.
+            Text(rule.body.noWidow(), style = MaterialTheme.typography.bodyMedium)
             rule.note?.let {
                 Spacer(Modifier.height(4.dp))
-                Text(it, style = MaterialTheme.typography.bodySmall.copy(lineBreak = LineBreak.Heading))
+                Text(it.noWidow(), style = MaterialTheme.typography.bodySmall)
             }
         }
     }
@@ -319,6 +341,80 @@ fun SnipePickerSheet(
 ) {
     KestrelBottomSheet(title = "Add to $groupName", onDismissRequest = onDismiss, modifier = modifier) {
         SnipePickerBody(candidates, now, onPick)
+    }
+}
+
+/**
+ * Under a candidate's title: its state, when it ends ("Ends Sun 9 Nov, 18:21"), and a warning when it ends so close
+ * to a member that Kestrel may not know the first result in time.
+ */
+@Composable
+private fun CandidateLines(
+    candidate: GroupCandidate,
+    now: Instant,
+) {
+    val inkSoft = MaterialTheme.colorScheme.onSurfaceVariant
+    Column(Modifier.padding(top = 2.dp)) {
+        StateLabel(candidate.status.tone, candidate.status.label(now))
+        candidate.endsAt?.let { end ->
+            Text(
+                text = "Ends ${absoluteTimeInSentence(now, end)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = inkSoft,
+            )
+        }
+        if (candidate.endsCloseToAMember) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SymbolIcon(Symbols.Warning, tint = KestrelTheme.status.attention.accent, size = 16.dp)
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    text = "Ends close to a snipe in this group",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = KestrelTheme.status.attention.accent,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * "Rename": a sheet with the group's name in a field, prefilled, and "Save". A blank name cannot be saved.
+ */
+@Composable
+fun RenameGroupSheet(
+    name: TextFieldState,
+    onSave: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    KestrelBottomSheet(title = "Rename group", onDismissRequest = onDismiss, modifier = modifier) {
+        RenameGroupBody(name, onSave)
+    }
+}
+
+/** The inside of [RenameGroupSheet], below its title; screenshot tests draw it in a sheet frame. */
+@Composable
+fun RenameGroupBody(
+    name: TextFieldState,
+    onSave: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            state = name,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Group name") },
+            lineLimits = TextFieldLineLimits.SingleLine,
+            keyboardOptions =
+                KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Sentences,
+                    imeAction = ImeAction.Done,
+                ),
+            onKeyboardAction = { if (name.text.isNotBlank()) onSave() },
+            shape = MaterialTheme.shapes.medium,
+        )
+        Spacer(Modifier.height(16.dp))
+        PrimaryButton(text = "Save", onClick = onSave, enabled = name.text.isNotBlank())
     }
 }
 
@@ -355,11 +451,17 @@ fun SnipePickerBody(
                         ),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                     leadingContent = {
-                        LotPlate(candidate.photo, Modifier.size(40.dp), shape = PlateShapes.Sheet, cutoutInset = 4.dp)
+                        // A 1 dp rule keeps the paper plate apart from the row's own paper (DESIGN 2.4).
+                        LotPlate(
+                            candidate.photo,
+                            Modifier
+                                .size(40.dp)
+                                .border(1.dp, KestrelTheme.catalogue.rule, PlateShapes.Sheet),
+                            shape = PlateShapes.Sheet,
+                            cutoutInset = 4.dp,
+                        )
                     },
-                    supportingContent = {
-                        StateLabel(candidate.status.tone, candidate.status.label(now), Modifier.padding(top = 2.dp))
-                    },
+                    supportingContent = { CandidateLines(candidate, now) },
                 ) {
                     Text(
                         text = candidate.title.forDisplay(),

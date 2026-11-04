@@ -30,8 +30,8 @@ class HistoryStateBuilderTest {
     fun olderMonthsFollowAndAPastYearIsNamed() {
         val state = HistoryFixtures.olderHistory
         assertEquals(listOf("November", "October", "December 2024"), state.months.map { it.title })
-        // Spread over months, so the summary names no month.
-        assertEquals(HistorySummary("Won 2 of 4", "£30.37 under your max in total"), state.summary)
+        // Spread over months, so the summary names when it starts.
+        assertEquals(HistorySummary("Won 2 of 4 since December 2024", "£30.37 under your max in total"), state.summary)
     }
 
     @Test

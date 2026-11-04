@@ -10,6 +10,7 @@ import app.kestrel.ui.components.appendFigure
 import app.kestrel.ui.components.figureSentence
 import app.kestrel.ui.format.AuctionZone
 import app.kestrel.ui.format.NARROW_NO_BREAK_SPACE
+import app.kestrel.ui.format.NO_BREAK_SPACE
 import app.kestrel.ui.format.clock
 import app.kestrel.ui.format.clockFor
 import app.kestrel.ui.format.clockWithSeconds
@@ -26,13 +27,13 @@ import app.kestrel.ui.format.timeLeft
 import app.kestrel.ui.format.zoneName
 import app.kestrel.ui.format.zoneOverline
 import app.kestrel.ui.model.LotStatus
+import app.kestrel.ui.model.LotTimes
 import app.kestrel.ui.model.detail
+import app.kestrel.ui.model.label
 import app.kestrel.ui.model.spokenLabel
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 /** A row flag (DESIGN 3.5): a 16 dp glyph and one line of ink-soft text, with the sentence TalkBack reads. */
 @Immutable
@@ -55,11 +56,6 @@ data class EndedPrice(
  * tested. Status words themselves always come from LotStatusWords; this only adds money, time and flags.
  */
 internal object HomeText {
-    /** Small caps hold at most this many characters (DESIGN SC1). */
-    private const val SMALL_CAPS_LIMIT = 32
-
-    private val ShortWeekdayLongMonth = DateTimeFormatter.ofPattern("EEE d MMMM", Locale.UK)
-
     private val QuoteMarks = setOf('“', '”', '"', '‘', '’')
 
     /** Double quotes only: an apostrophe inside a word is read correctly. */
@@ -69,20 +65,15 @@ internal object HomeText {
     // The header.
 
     /**
-     * "SUNDAY 9 NOVEMBER · TIMES IN GMT". The longest dates ("Wednesday 24 September") would pass the small-caps
-     * limit, so they shorten the weekday: "WED 24 SEPTEMBER · TIMES IN BST".
+     * "SUNDAY 9 NOVEMBER · GMT": one format on every day, because the longest date ("WEDNESDAY 24 SEPTEMBER · BST",
+     * 28 characters) stays inside the small-caps limit.
      */
     fun overline(
         now: Instant,
         zone: ZoneId = AuctionZone,
-    ): String {
-        val full = zoneOverline(now, zone)
-        if (full.length <= SMALL_CAPS_LIMIT) return full
-        val date = ShortWeekdayLongMonth.format(now.atZone(zone))
-        return "$date · times in ${now.zoneName(zone)}".uppercase(Locale.UK)
-    }
+    ): String = zoneOverline(now, zone)
 
-    /** The account button: "Settings and eBay account, lot.42". */
+    /** The account button: "Settings and eBay account, ivan.v". */
     fun accountDescription(name: String?): String =
         if (name == null) "Settings and eBay account, signed out" else "Settings and eBay account, $name"
 
@@ -103,6 +94,19 @@ internal object HomeText {
 
     /** The row's price, or null when Kestrel has not read one. */
     fun price(lot: HomeLot): String? = lot.snipe.lastPrice?.formatted()
+
+    /**
+     * The hero's price label while the price is old (offline): "Last read 18:02 · 14 bids" instead of "Current", so
+     * an old price never reads as the current one.
+     */
+    fun lastRead(
+        asOf: Instant,
+        bids: Int,
+        now: Instant,
+    ): String {
+        val count = if (bids == 0) "" else " · ${plural(bids, "bid", "bids")}"
+        return "Last read ${moment(now, asOf)}$count"
+    }
 
     /** "5 bids · £3.49 postage", plus " · as of 18:02" while offline. */
     fun priceMeta(
@@ -325,27 +329,67 @@ internal object HomeText {
     ): String = "${dayLabel(now, end)} · ${end.zoneName()}"
 
     /**
-     * The second line of the time block. Armed: when Kestrel bids ("Bids at 18:21:34, 6 s before",
-     * "Bids Mon 10 Nov at 20:10"). Every other status: its detail line from the status model, with the ticking figure
-     * of the final minute in tabular figures.
+     * The second line of the time block (DESIGN 3.3 and 3.4), always one short line: when Kestrel bids ("Bids at
+     * 18:21:34, 6 s before", "Bids Mon 10 Nov at 20:10"), and in the bidding and sign-in variants the bid sentence
+     * ("Kestrel bids £120.00 in 30 s", "Bid sent · waiting for eBay", "In the lead · not won until 18:21:40",
+     * "Outbid · another max is higher", "Sign in before 18:21:34 to keep this bid"). The other attention cases keep
+     * when Kestrel bids; their chip and button say what is wrong. Ticking figures carry tabular figures.
      */
     fun heroLine(
         lot: HomeLot,
         now: Instant,
-    ): AnnotatedString =
-        when (val status = lot.status) {
+    ): AnnotatedString {
+        val end = Instant.ofEpochMilli(lot.snipe.endTimeUtcMillis)
+        return when (val status = lot.status) {
             is LotStatus.Armed -> {
                 bidsAt(now, status.bidAt, status.leadSeconds)
             }
 
             is LotStatus.FinalMinute -> {
-                spanFigure(status.detail(now), timeLeft(now, status.bidAt))
+                if (now < status.bidAt) {
+                    figureSentence("Kestrel bids ${status.max.formatted()} in ", timeLeft(now, status.bidAt))
+                } else {
+                    AnnotatedString("Kestrel bids ${status.max.formatted()} now")
+                }
+            }
+
+            is LotStatus.BidSent, is LotStatus.NoReply -> {
+                AnnotatedString(status.label(now).text)
+            }
+
+            is LotStatus.InTheLead -> {
+                figureSentence("In the lead · not won until ", clockFor(now, end))
+            }
+
+            is LotStatus.Outbid -> {
+                AnnotatedString(OUTBID_HERO_LINE)
+            }
+
+            is LotStatus.Extended -> {
+                AnnotatedString("Kestrel is still following")
+            }
+
+            is LotStatus.ReadingResult -> {
+                AnnotatedString(status.detail(now))
+            }
+
+            is LotStatus.SignInNeeded -> {
+                val bidAt = status.bidAt
+                if (bidAt == null) {
+                    AnnotatedString("Sign in to keep watching")
+                } else {
+                    figureSentence("Sign in before ", clockFor(now, bidAt), " to keep this bid")
+                }
             }
 
             else -> {
-                AnnotatedString(status.detail(now))
+                bidsAt(now, LotTimes.bidAt(lot.snipe), lot.snipe.leadSeconds)
             }
         }
+    }
+
+    /** The hero line of an outbid lot (DESIGN 3.4). */
+    const val OUTBID_HERO_LINE = "Outbid · another max is higher"
 
     /** One sentence for the whole time block, which is not a live region. */
     fun heroSpokenTime(
@@ -402,24 +446,14 @@ internal object HomeText {
         leadSeconds: Int,
     ): AnnotatedString =
         if (isSameDay(now, bidAt)) {
-            figureSentence("Bids at ", clockFor(now, bidAt), ", ${secondsText(leadSeconds.toLong())} before")
+            figureSentence(
+                "Bids at ",
+                clockFor(now, bidAt),
+                ", ${secondsText(leadSeconds.toLong())}${NO_BREAK_SPACE}before",
+            )
         } else {
             figureSentence("Bids ${bidAt.dayDate()} at ", clockFor(now, bidAt))
         }
-
-    /** [text] with tabular figures on the first [figure] it contains. */
-    private fun spanFigure(
-        text: String,
-        figure: String,
-    ): AnnotatedString {
-        val start = text.indexOf(figure)
-        if (start < 0) return AnnotatedString(text)
-        return buildAnnotatedString {
-            append(text.substring(0, start))
-            appendFigure(figure)
-            append(text.substring(start + figure.length))
-        }
-    }
 
     /**
      * "Today 18:21:40 GMT", "Today 21:02", "Mon 10 Nov, 20:10" (absoluteTime's form) with the clock as a figure.

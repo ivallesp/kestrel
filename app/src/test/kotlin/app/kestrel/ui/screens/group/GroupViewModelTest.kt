@@ -73,6 +73,24 @@ class GroupViewModelTest {
             return EditResult.Done(snipe)
         }
 
+        val undoCancels = mutableListOf<Long>()
+        val renames = mutableListOf<String>()
+
+        override suspend fun undoCancel(snipeId: Long): EditResult {
+            undoCancels += snipeId
+            val snipe = snipeList.value.first { it.id == snipeId }
+            return EditResult.Done(snipe.copy(id = snipeId + 100, groupId = null))
+        }
+
+        override suspend fun renameGroup(
+            groupId: Long,
+            name: String,
+        ): String? {
+            renames += name
+            groupList.value = groupList.value.map { if (it.id == groupId) it.copy(name = name) else it }
+            return null
+        }
+
         override fun runDetached(work: suspend () -> Unit) {
             detached += work
         }
@@ -100,7 +118,7 @@ class GroupViewModelTest {
         val rule = (GroupFixtures.closeEndings.content as GroupContent.Members).rule
         assertEquals(RuleTone.Attention, rule.tone)
         assertEquals(
-            "Sony MiniDisc Walkman MZ-N707 and Sony Walkman WM-FX421 bid 1\u202Fm 55\u202Fs apart. " +
+            "MiniDisc and Walkman bid 2\u202Fmin apart. " +
                 "Kestrel may not know the first result in time, so you could win both.",
             rule.body,
         )
@@ -122,8 +140,8 @@ class GroupViewModelTest {
         val cancelled = content.rows.single { it.snipeId == 4L }.status as LotStatus.CancelledByGroup
         assertEquals("Portable audio", cancelled.groupName)
         assertEquals("Sony MiniDisc Walkman MZ-N707", cancelled.wonTitle)
-        // The data layer has no un-cancel yet, so the row offers none.
-        assertEquals(null, content.rows.single { it.snipeId == 4L }.rowAction(state.now))
+        // While the Walkman's auction runs, its row offers to bid on it again.
+        assertEquals(LotAction.UNDO_CANCEL, content.rows.single { it.snipeId == 4L }.rowAction(state.now))
         assertFalse(content.canAdd)
         assertTrue(state.candidates.isEmpty())
         assertFalse(state.canUngroup)

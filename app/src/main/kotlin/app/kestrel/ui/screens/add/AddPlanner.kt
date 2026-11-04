@@ -115,17 +115,15 @@ object AddPlanner {
             buyerProtectionIncluded = listing.buyerProtectionFee != null,
         ) ?: listing.currentPrice
 
-    /** The sum row for what is typed: dashes while empty, the typed amount otherwise (DESIGN 3.11). */
+    /**
+     * The sum row for what is typed (DESIGN 3.11): the valid max plus postage, and dashes while the field is empty or
+     * too low, so the row never adds up an amount that cannot be armed.
+     */
     fun worstCase(
         typed: TypedMax,
         postage: Money?,
     ): WorstCase {
-        val max =
-            when (typed) {
-                TypedMax.Empty -> null
-                is TypedMax.TooLow -> typed.typed
-                is TypedMax.Valid -> typed.max
-            }
+        val max = (typed as? TypedMax.Valid)?.max
         if (postage == null) {
             return WorstCase.Sentence(
                 max?.let { "You pay at most ${it.formatted()}, plus any postage." }
@@ -180,12 +178,11 @@ object AddPlanner {
         if (lots <= 2) "Once one is won, Kestrel cancels the other." else "Once one is won, Kestrel cancels the rest."
 
     /**
-     * The pinned bar: the exact plan when the max is valid, the last valid plan greyed while it is too low, and the
-     * watch sentence while it is empty.
+     * The pinned bar: the exact plan when the max is valid, what to type while it is too low ("Set at least £66.08 to
+     * arm"), and the watch sentence while it is empty.
      */
     fun bar(
         typed: TypedMax,
-        lastValidMax: Money?,
         bidAt: Instant,
         now: Instant,
         signedIn: Boolean,
@@ -202,8 +199,7 @@ object AddPlanner {
                 }
 
                 is TypedMax.TooLow -> {
-                    lastValidMax?.let { plan(it, bidAt, now).copy(greyed = true) }
-                        ?: ArmSummary("", greyed = true)
+                    ArmSummary(tooLowSummary(typed.minimum))
                 }
             }
         val button =
@@ -216,6 +212,9 @@ object AddPlanner {
             }
         return ArmBar(summary = summary, signInNeeded = !signedIn && typed != TypedMax.Empty, button = button)
     }
+
+    /** The bar while the max is below eBay's minimum: "Set at least £66.08 to arm". */
+    fun tooLowSummary(minimum: Money): String = "Set at least ${minimum.formatted()} to arm"
 
     /** "Bids £90.00 on Thu 13 Nov at 20:04:12 GMT", with the clock time marked for tabular figures. */
     fun plan(
@@ -252,13 +251,13 @@ object AddPlanner {
         minimum: Money,
         maxField: TextFieldState,
         typed: TypedMax,
-        lastValidMax: Money?,
         leadSeconds: Int,
         group: GroupRowState,
         signedIn: Boolean,
         checkingWords: Boolean,
         busy: Boolean,
         now: Instant,
+        suggestOddPence: Boolean = true,
     ): AddPage.Ready {
         val timing = timing(leadSeconds, listing.extendedBidding)
         return AddPage.Ready(
@@ -273,10 +272,10 @@ object AddPlanner {
                     error = (typed as? TypedMax.TooLow)?.let { MaxRules.tooLowMessage(it.minimum) },
                 ),
             worstCase = worstCase(typed, listing.postage),
-            oddPence = MaxRules.oddPence(typed),
+            oddPence = MaxRules.oddPence(typed, listing.currentPrice.currency).takeIf { suggestOddPence },
             timing = timing,
             group = group,
-            bar = bar(typed, lastValidMax, bidAt(listing, timing.selectedSeconds), now, signedIn, busy),
+            bar = bar(typed, bidAt(listing, timing.selectedSeconds), now, signedIn, busy),
             wordsCheck =
                 (typed as? TypedMax.Valid)
                     ?.takeIf { checkingWords }

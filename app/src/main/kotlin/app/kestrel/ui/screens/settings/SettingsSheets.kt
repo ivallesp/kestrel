@@ -8,8 +8,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -22,9 +20,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.DialogProperties
 import app.kestrel.ui.components.KestrelBottomSheet
+import app.kestrel.ui.components.KestrelDialog
 import app.kestrel.ui.components.OutlinedActionButton
+import app.kestrel.ui.components.SmallCaps
+import app.kestrel.ui.components.SmallCapsRules
+import app.kestrel.ui.components.sheetTextScroll
 import app.kestrel.ui.format.secondsText
 import app.kestrel.ui.theme.Spacing
 import kotlinx.coroutines.Dispatchers
@@ -33,14 +34,14 @@ import java.io.IOException
 
 /**
  * The sign-out confirmation (DESIGN Settings and 3.17: sign-out is the one destructive action behind a dialog
- * rather than a menu with undo). 24 dp from each side, as on the phone, whatever window the dialog gets.
+ * rather than a menu with undo), in Kestrel's one dialog style.
  */
 @Composable
 internal fun SignOutDialog(
     armedSnipes: Int,
     actions: SettingsActions,
 ) {
-    AlertDialog(
+    KestrelDialog(
         onDismissRequest = actions::cancelSignOut,
         title = { Text("Sign out of eBay?") },
         text = { Text(signOutText(armedSnipes)) },
@@ -52,11 +53,6 @@ internal fun SignOutDialog(
         dismissButton = {
             TextButton(onClick = actions::cancelSignOut) { Text("Cancel", style = MaterialTheme.typography.labelLarge) }
         },
-        modifier = Modifier.padding(horizontal = 24.dp),
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        titleContentColor = MaterialTheme.colorScheme.onSurface,
-        textContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
     )
 }
 
@@ -77,7 +73,10 @@ internal fun SettingsSheetContent(
         SettingsSheet.HowKestrelBids -> {
             KestrelBottomSheet(title = "How Kestrel bids", onDismissRequest = actions::closeSheet) {
                 Column(
-                    modifier = Modifier.heightIn(max = SheetTextMaxHeight).verticalScroll(rememberScrollState()),
+                    modifier =
+                        Modifier
+                            .heightIn(max = SheetTextMaxHeight)
+                            .sheetTextScroll(rememberScrollState(), sheetColour()),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     HowItWorks.forEach { (title, detail) -> Paragraph(title, detail) }
@@ -88,10 +87,14 @@ internal fun SettingsSheetContent(
         SettingsSheet.Licences -> {
             KestrelBottomSheet(title = "Licences", onDismissRequest = actions::closeSheet) {
                 Column(
-                    modifier = Modifier.heightIn(max = SheetTextMaxHeight).verticalScroll(rememberScrollState()),
+                    modifier =
+                        Modifier
+                            .heightIn(max = SheetTextMaxHeight)
+                            .sheetTextScroll(rememberScrollState(), sheetColour()),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Licences.forEach { Paragraph(it.name, "${it.licence} · ${it.holder}") }
+                    // The licence and the holder on lines of their own, so neither breaks in the middle.
+                    Licences.forEach { Paragraph(it.name, "${it.licence}\n${it.holder}") }
                 }
                 Spacer(Modifier.height(16.dp))
                 OutlinedActionButton(
@@ -105,32 +108,30 @@ internal fun SettingsSheetContent(
 
         SettingsSheet.FontLicence -> {
             val context = LocalContext.current
-            val text by produceState(initialValue = "", context) {
+            val licence by produceState(initialValue = FontLicenceText(), context) {
                 value =
                     withContext(Dispatchers.IO) {
                         try {
-                            reflowLicence(
-                                context.assets
-                                    .open(FONT_LICENCE)
-                                    .bufferedReader()
-                                    .use { it.readText() },
+                            FontLicenceText.of(
+                                FONT_LICENCES.map { file ->
+                                    context.assets
+                                        .open(file)
+                                        .bufferedReader()
+                                        .use { it.readText() }
+                                },
                             )
                         } catch (error: IOException) {
-                            ""
+                            FontLicenceText()
                         }
                     }
             }
             KestrelBottomSheet(title = "SIL Open Font License 1.1", onDismissRequest = actions::closeSheet) {
-                Text(
-                    text = text,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .heightIn(
-                                max = SheetTextMaxHeight,
-                            ).verticalScroll(rememberScrollState()),
+                FontLicenceView(
+                    licence,
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = SheetTextMaxHeight)
+                        .sheetTextScroll(rememberScrollState(), sheetColour()),
                 )
             }
         }
@@ -150,6 +151,62 @@ private fun Paragraph(
             modifier = Modifier.semantics { heading() },
         )
         Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/**
+ * Both fonts' licence: each font's own copyright line, then the licence text they share, once. [paragraphs] come from
+ * [reflowLicence]; a paragraph that starts with a section name keeps it on its own first line.
+ */
+@Immutable
+internal data class FontLicenceText(
+    val notices: List<String> = emptyList(),
+    val paragraphs: List<String> = emptyList(),
+) {
+    companion object {
+        /** From the font files' texts: their first lines, and the rest of the first one. */
+        fun of(files: List<String>): FontLicenceText {
+            if (files.isEmpty()) return FontLicenceText()
+            val notices =
+                files.map {
+                    it
+                        .replace("\r\n", "\n")
+                        .lineSequence()
+                        .first()
+                        .trim()
+                }
+            val paragraphs = reflowLicence(files.first()).split("\n\n").drop(1)
+            return FontLicenceText(notices, paragraphs)
+        }
+    }
+}
+
+/**
+ * The font licence as a page: the copyright lines in ink, then the paragraphs in bodySmall, ink soft, each section
+ * name (PREAMBLE, DEFINITIONS…) in small caps and ink with 12 dp above, so the long text has a visible structure.
+ */
+@Composable
+private fun FontLicenceView(
+    licence: FontLicenceText,
+    modifier: Modifier = Modifier,
+) {
+    val ink = MaterialTheme.colorScheme.onSurface
+    val inkSoft = MaterialTheme.colorScheme.onSurfaceVariant
+    val body = MaterialTheme.typography.bodySmall
+    Column(modifier) {
+        licence.notices.forEach { Text(it, style = body, color = ink) }
+        licence.paragraphs.forEach { paragraph ->
+            val lines = paragraph.split('\n', limit = 2)
+            if (lines.size == 2 && SmallCapsRules.allows(lines[0])) {
+                Spacer(Modifier.height(12.dp))
+                SmallCaps(lines[0], color = ink, modifier = Modifier.semantics { heading() })
+                Spacer(Modifier.height(4.dp))
+                Text(lines[1], style = body, color = inkSoft)
+            } else {
+                Spacer(Modifier.height(8.dp))
+                Text(paragraph, style = body, color = inkSoft)
+            }
+        }
     }
 }
 
@@ -181,6 +238,10 @@ private const val SECTION_NAME_LENGTH = 30
  * text scrolls inside this height instead of growing the sheet to the top of the screen.
  */
 private val SheetTextMaxHeight = 560.dp
+
+/** The sheet's own colour, for the fade at the foot of its text. */
+@Composable
+private fun sheetColour() = MaterialTheme.colorScheme.surfaceContainerLow
 
 private val HowItWorks: List<Pair<String, String>> =
     listOf(
@@ -217,5 +278,5 @@ private val Licences: List<Licence> =
         Licence("OkHttp", "Apache License 2.0", "© Square, Inc."),
     )
 
-/** The OFL text the fonts ship with (assets/licenses); both files carry the same licence under their own notice. */
-private const val FONT_LICENCE = "licenses/newsreader_OFL.txt"
+/** The OFL texts the fonts ship with (assets/licenses); both carry the same licence under their own notice. */
+private val FONT_LICENCES = listOf("licenses/newsreader_OFL.txt", "licenses/google_sans_flex_OFL.txt")

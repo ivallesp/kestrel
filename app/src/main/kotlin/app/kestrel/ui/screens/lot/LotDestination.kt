@@ -72,12 +72,21 @@ fun LotDestination(
                     navigator.leaveMessage(effect.message)
                     navigator.back()
                 }
+
+                is LotEffect.Reopen -> {
+                    navigator.leaveMessage(effect.message)
+                    navigator.replace(Destination.Lot(effect.snipeId))
+                }
             }
         }
     }
     val onAction: (LotAction) -> Unit = { action ->
         val status = (page as? LotPage.Live)?.state?.status
-        routeAction(action, status, id, navigator, viewModel::openSheet)
+        if (action == LotAction.UNDO_CANCEL) {
+            viewModel.undoCancel()
+        } else {
+            routeAction(action, status, id, navigator, viewModel::openSheet)
+        }
     }
     val reduceMotion = KestrelTheme.reduceMotion
     val fade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
@@ -200,7 +209,7 @@ internal fun routeAction(
             navigator.open(Destination.Result(id))
         }
 
-        // There is no way to restore a cancelled snipe yet, so the action is never offered.
+        // The destinations hand "Undo cancel" to the lot's ViewModel before routing; nothing to open here.
         LotAction.UNDO_CANCEL -> {
             Unit
         }

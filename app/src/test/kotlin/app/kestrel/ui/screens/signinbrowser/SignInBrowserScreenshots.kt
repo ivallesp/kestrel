@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import app.kestrel.ui.fixture.CatalogueFixture
 import app.kestrel.ui.harness.PhoneInsets
 import app.kestrel.ui.harness.ScreenshotTest
 import app.kestrel.ui.screens.signin.SignInHost
@@ -47,13 +48,13 @@ class SignInBrowserScreenshots : ScreenshotTest() {
     @Test
     fun signedInLight() =
         capture("S6-browser-signed-in", darkTheme = false, time = "18:06", wholeScreen = true) {
-            Browser(state(BrowserSheet.SignedIn("lot.42"), progress = null))
+            Browser(state(BrowserSheet.SignedIn(CatalogueFixture.ACCOUNT), progress = null))
         }
 
     @Test
     fun signedInDark() =
         capture("S6-browser-signed-in", darkTheme = true, time = "18:06", wholeScreen = true) {
-            Browser(state(BrowserSheet.SignedIn("lot.42"), progress = null))
+            Browser(state(BrowserSheet.SignedIn(CatalogueFixture.ACCOUNT), progress = null))
         }
 
     @Test
@@ -64,7 +65,7 @@ class SignInBrowserScreenshots : ScreenshotTest() {
 
     @Test
     fun offlineLight() =
-        capture("S6-browser-offline", darkTheme = false, time = "18:05", wholeScreen = true) {
+        capture("S6-browser-offline", darkTheme = false, time = "18:05", wholeScreen = true, online = false) {
             Browser(state(BrowserSheet.Offline, progress = null))
         }
 

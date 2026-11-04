@@ -34,6 +34,25 @@ class FormattersTest {
     }
 
     @Test
+    fun countdownCountsAPartialSecondAsAWholeOne() {
+        assertEquals("1${thin}s", Duration.ofMillis(400).countdown())
+        assertEquals("6${thin}s", Duration.ofMillis(5_600).countdown())
+        assertEquals("13${thin}m 07${thin}s", Duration.ofMillis((13 * 60 + 6) * 1_000L + 500).countdown())
+        assertEquals("0${thin}s", Duration.ZERO.countdown())
+        assertEquals("1 second", Duration.ofMillis(300).spoken())
+    }
+
+    @Test
+    fun noWidowJoinsTheLastTwoWords() {
+        assertEquals(
+            "Kestrel can’t bid until the phone\u00A0reconnects.",
+            "Kestrel can’t bid until the phone reconnects.".noWidow(),
+        )
+        assertEquals("Alone", "Alone".noWidow())
+        assertEquals("Two\u00A0words ", "Two words ".noWidow())
+    }
+
+    @Test
     fun countdownsOfTheFixtureMatchTheDesign() {
         assertEquals("13${thin}m 07${thin}s", timeLeft(now, at("2025-11-09T18:21:40Z")))
         assertEquals("2${thin}h 53${thin}m", timeLeft(now, at("2025-11-09T21:02:15Z")))
@@ -57,6 +76,13 @@ class FormattersTest {
         assertEquals("Mon 10 Nov, 20:10", absoluteTime(now, at("2025-11-10T20:10:05Z")))
         assertEquals("18:21:34", clockFor(now, at("2025-11-09T18:21:34Z")))
         assertEquals("21:02", clockFor(now, at("2025-11-09T21:02:09Z")))
+    }
+
+    @Test
+    fun insideASentenceTodayIsLowerCaseAndKeepsTheComma() {
+        assertEquals("today, 18:21:40 GMT", absoluteTimeInSentence(now, at("2025-11-09T18:21:40Z")))
+        assertEquals("today, 21:02", absoluteTimeInSentence(now, at("2025-11-09T21:02:15Z")))
+        assertEquals("Sun 16 Nov, 21:43", absoluteTimeInSentence(now, at("2025-11-16T21:43:00Z")))
     }
 
     @Test
@@ -102,12 +128,12 @@ class FormattersTest {
         val summer = Instant.parse("2025-07-01T12:00:00Z")
         assertEquals("BST", summer.zoneName())
         assertEquals("13:00", summer.clock())
-        assertEquals("TUESDAY 1 JULY · TIMES IN BST", zoneOverline(summer))
+        assertEquals("TUESDAY 1 JULY · BST", zoneOverline(summer))
     }
 
     @Test
     fun theOverlineNamesTheDayAndTheZone() {
-        assertEquals("SUNDAY 9 NOVEMBER · TIMES IN GMT", zoneOverline(now))
+        assertEquals("SUNDAY 9 NOVEMBER · GMT", zoneOverline(now))
     }
 
     @Test

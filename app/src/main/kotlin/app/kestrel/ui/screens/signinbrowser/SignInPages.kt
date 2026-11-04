@@ -19,7 +19,7 @@ import java.net.URLEncoder
 data class HeaderReading(
     /** GHpre.userAuth; null when the header did not say. */
     val signedIn: Boolean?,
-    /** GHpre.userId, the eBay user name ("lot.42"); blank when signed out. */
+    /** GHpre.userId, the eBay user name ("oakshelf"); blank when signed out. */
     val userId: String?,
     /** GHpre.fn, the first name in the header greeting. */
     val firstName: String?,
@@ -94,7 +94,7 @@ object SignInPages {
 
     /**
      * The page's own flag decides; the session cookie is only a hint, used when the page has no header at all.
-     * The user name is the one eBay shows ("Signed in as lot.42"); the first name stands in when it is missing.
+     * The user name is the one eBay shows ("Signed in as oakshelf"); the first name stands in when it is missing.
      */
     fun evidence(
         header: HeaderReading?,

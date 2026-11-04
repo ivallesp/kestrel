@@ -2,6 +2,7 @@ package app.kestrel.ui.screens.lot
 
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,7 +21,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
@@ -31,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -40,8 +41,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
@@ -50,6 +55,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.kestrel.ui.components.BottomFade
+import app.kestrel.ui.components.KestrelMenu
 import app.kestrel.ui.components.LotPlate
 import app.kestrel.ui.components.MoneyBlock
 import app.kestrel.ui.components.OfflineBanner
@@ -58,7 +64,9 @@ import app.kestrel.ui.components.StateChip
 import app.kestrel.ui.components.SymbolIcon
 import app.kestrel.ui.components.Symbols
 import app.kestrel.ui.components.Timeline
+import app.kestrel.ui.format.noWidow
 import app.kestrel.ui.model.LotAction
+import app.kestrel.ui.model.LotPhoto
 import app.kestrel.ui.model.PhotoStyle
 import app.kestrel.ui.shell.StatusBarIconsEffect
 import app.kestrel.ui.theme.KestrelTheme
@@ -101,8 +109,9 @@ fun LotScreen(
     val collapsed by remember(barHeight, density) {
         derivedStateOf { scrollState.value >= with(density) { (sheetTop - barHeight).toPx() } }
     }
-    // Light icons over the photograph (DESIGN Q23); the theme's own once the bar covers it.
-    StatusBarIconsEffect(lightIcons = KestrelTheme.isDark || !collapsed)
+    // Light icons over a photograph and in dark theme (DESIGN Q23); dark ones over a light cutout plate, which has no
+    // scrim, and the theme's own once the bar covers the band.
+    StatusBarIconsEffect(lightIcons = lightStatusBarIcons(state.photo, KestrelTheme.isDark, collapsed))
     // A Surface, so anything that takes the content colour is ink on the page in both themes.
     Surface(modifier.fillMaxSize(), color = page) {
         Box(Modifier.fillMaxSize()) {
@@ -113,7 +122,7 @@ fun LotScreen(
                     .verticalScroll(scrollState),
             ) {
                 Spacer(Modifier.height(sheetTop))
-                LotSheet(state, windowInsets, onAction)
+                LotSheet(state, windowInsets, barHeight, onAction)
             }
             if (collapsed) {
                 Box(
@@ -122,6 +131,13 @@ fun LotScreen(
                         .height(barHeight)
                         .background(page),
                 ) {
+                    CollapsedBarWords(
+                        state,
+                        Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(start = CollapsedWordsStart, end = CollapsedWordsStart, bottom = 8.dp)
+                            .height(Spacing.TouchTarget),
+                    )
                     HorizontalDivider(
                         Modifier.align(Alignment.BottomCenter),
                         thickness = 1.dp,
@@ -144,8 +160,51 @@ fun LotScreen(
 }
 
 /**
+ * Whether the status-bar icons are light: over a scene photograph (under its scrim) and in dark theme, but dark over
+ * a light-theme cutout plate, whose paper would leave white icons near 2.6:1 (DESIGN Q23). Once the bar covers the
+ * band they follow the theme.
+ */
+fun lightStatusBarIcons(
+    photo: LotPhoto,
+    darkTheme: Boolean,
+    collapsed: Boolean = false,
+): Boolean = darkTheme || (!collapsed && photo.style == PhotoStyle.Scene)
+
+/** The words start after the back button: 8 dp in, the 48 dp button, 8 dp. */
+private val CollapsedWordsStart = 64.dp
+
+/**
+ * Once the sheet is scrolled under the bar, the bar keeps what the scrolled-away header said: the lot's short title
+ * and its countdown ("Canon AE-1" over "36 s left"). Not read separately: the sheet speaks for both.
+ */
+@Composable
+private fun CollapsedBarWords(
+    state: LotUiState,
+    modifier: Modifier = Modifier,
+) {
+    val countdown = state.countdown
+    val time = if (countdown.figure.isEmpty()) countdown.unit else "${countdown.figure} ${countdown.unit}"
+    Column(modifier.clearAndSetSemantics {}, verticalArrangement = Arrangement.Center) {
+        Text(
+            text = state.shortTitle,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = time,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+        )
+    }
+}
+
+/**
  * The photograph: a scene fills the band (cropped on its focus); a studio cutout sits on the plate, clear of the
- * status bar and of the sheet. A top gradient keeps the status bar and the buttons legible.
+ * status bar and of the sheet. Over a scene, and over the darker dark-theme plate, a top gradient keeps the status
+ * bar legible; a light cutout plate needs none, because the icons turn dark over it.
  */
 @Composable
 private fun PhotoBand(
@@ -172,12 +231,14 @@ private fun PhotoBand(
                 sharedElementKey = key,
             )
         }
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(96.dp)
-                .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.45f), Color.Transparent))),
-        )
+        if (lightStatusBarIcons(state.photo, KestrelTheme.isDark)) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(96.dp)
+                    .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.45f), Color.Transparent))),
+            )
+        }
     }
 }
 
@@ -203,7 +264,7 @@ private fun PhotoButtons(
         Spacer(Modifier.weight(1f))
         Box {
             PhotoButton(Symbols.MoreVert, "More options", overPhoto, onClick = { expanded = true })
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            KestrelMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 DropdownMenuItem(
                     text = { Text(LotAction.OPEN_ON_EBAY.label) },
                     leadingIcon = { SymbolIcon(Symbols.OpenInNew) },
@@ -224,10 +285,11 @@ private fun PhotoButtons(
                     )
                 }
                 if (menu.canDelete) {
+                    // The destructive item comes last, after a divider; its snackbar offers Undo (DESIGN 3.17, Q22).
+                    HorizontalDivider()
                     DropdownMenuItem(
                         text = { Text("Delete") },
-                        // No glyph for delete yet; the space keeps the words in line with the items above.
-                        leadingIcon = { Spacer(Modifier.size(24.dp)) },
+                        leadingIcon = { SymbolIcon(Symbols.Delete) },
                         onClick = {
                             expanded = false
                             onDelete()
@@ -263,9 +325,15 @@ private fun PhotoButton(
 private fun LotSheet(
     state: LotUiState,
     windowInsets: WindowInsets,
+    barHeight: Dp,
     onAction: (LotAction) -> Unit,
 ) {
     val inkSoft = MaterialTheme.colorScheme.onSurfaceVariant
+    val density = LocalDensity.current
+    val barBottom = with(density) { barHeight.toPx() }
+    val trackHeight = with(density) { FinalMinuteScaleTrackHeight.toPx() }
+    // Where the scale's track ends on screen: once it has gone under the collapsed bar, its labels go with it.
+    var scaleTrackBottom by remember { mutableFloatStateOf(Float.MAX_VALUE) }
     Column(
         Modifier
             .fillMaxWidth()
@@ -291,7 +359,12 @@ private fun LotSheet(
         CountdownRow(state.countdown, state.times)
         state.scale?.let { scale ->
             Spacer(Modifier.height(20.dp))
-            FinalMinuteScale(scale)
+            FinalMinuteScale(
+                scale,
+                Modifier
+                    .onGloballyPositioned { scaleTrackBottom = it.positionInRoot().y + trackHeight }
+                    .graphicsLayer { alpha = if (scaleTrackBottom <= barBottom) 0f else 1f },
+            )
         }
         state.card?.let { card ->
             Spacer(Modifier.height(20.dp))
@@ -299,11 +372,11 @@ private fun LotSheet(
         }
         state.note?.let { note ->
             Spacer(Modifier.height(16.dp))
-            Text(note, style = MaterialTheme.typography.bodyMedium, color = inkSoft)
+            Text(note.noWidow(), style = MaterialTheme.typography.bodyMedium, color = inkSoft)
         }
         state.extendedNote?.let { note ->
             Spacer(Modifier.height(12.dp))
-            Text(note, style = MaterialTheme.typography.bodySmall, color = inkSoft)
+            Text(note.noWidow(), style = MaterialTheme.typography.bodySmall, color = inkSoft)
         }
         Spacer(Modifier.height(20.dp))
         MoneyBlock(state.money)

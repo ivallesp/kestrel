@@ -205,7 +205,7 @@ class AddViewModelTest {
         }
 
     @Test
-    fun aMaxBelowEbaysMinimumCannotArmAndKeepsTheLastPlanGreyed() =
+    fun aMaxBelowEbaysMinimumCannotArmAndSaysWhatToType() =
         runTest(dispatcher) {
             val services = FakeAddServices()
             val subject = subject(services)
@@ -214,8 +214,8 @@ class AddViewModelTest {
             val page = subject.page as AddPage.Ready
             assertEquals("Too low: eBay needs at least £66.08", page.max.error)
             assertEquals(ArmButton.Arm(enabled = false), page.bar.button)
-            assertTrue(page.bar.summary.greyed)
-            assertEquals("Bids £90.00 on Thu 13 Nov at 20:04:12 GMT", page.bar.summary.text)
+            assertEquals("Set at least £66.08 to arm", page.bar.summary.text)
+            assertEquals(WorstCase.Sum(AddPlanner.NO_AMOUNT, "£8.95", AddPlanner.NO_AMOUNT), page.worstCase)
             subject.viewModel.arm()
             assertTrue(services.added.isEmpty())
         }
@@ -358,7 +358,7 @@ class AddViewModelTest {
         assertEquals("That link isn’t an eBay listing.", AddViewModel.reasonFor("This is not an eBay link"))
         assertEquals("eBay has no listing at this link.", AddViewModel.reasonFor("eBay has no listing at this link"))
         assertEquals("eBay didn’t respond.", AddViewModel.reasonFor("The page could not be loaded"))
-        assertEquals("ebay.co.uk/itm/127504318862", AddViewModel.addressOf(ParsedLink.Item(AddFixtures.sonyA700.ref)))
-        assertEquals("ebay.us/m/AbC123", AddViewModel.addressOf(ParsedLink.ShortLink("https://ebay.us/m/AbC123")))
+        assertEquals("ebay.co.uk/itm/…", AddViewModel.addressOf(ParsedLink.Item(AddFixtures.sonyA700.ref)))
+        assertEquals("ebay.us/…", AddViewModel.addressOf(ParsedLink.ShortLink("https://ebay.us/m/AbC123?x=1")))
     }
 }

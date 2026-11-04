@@ -29,6 +29,7 @@ import app.kestrel.ui.format.secondsWithHundredths
 import app.kestrel.ui.format.secondsWithTenths
 import app.kestrel.ui.format.spoken
 import app.kestrel.ui.format.timeLeft
+import app.kestrel.ui.format.wholeSecondsLeft
 import app.kestrel.ui.format.zoneName
 import app.kestrel.ui.model.Connectivity
 import app.kestrel.ui.model.DryRunCause
@@ -42,6 +43,7 @@ import app.kestrel.ui.model.action
 import app.kestrel.ui.model.chipText
 import app.kestrel.ui.model.detail
 import app.kestrel.ui.model.label
+import app.kestrel.ui.screens.add.MaxRules
 import app.kestrel.ui.screens.result.ResultInputs
 import app.kestrel.ui.screens.result.ResultStateBuilder
 import app.kestrel.ui.theme.StatusTone
@@ -66,13 +68,17 @@ data class LotInputs(
     val status: LotStatus get() = LotStatusMapper.statusOf(snipe, events, now, connectivity, group)
 }
 
-/** An open edit sheet: which one, the lead the user picked in it, why the last save was refused, and a save running. */
+/**
+ * An open edit sheet: which one, the lead the user picked in it, why the last save was refused, a save running, and
+ * whether it suggests odd pence (Settings).
+ */
 @Immutable
 data class SheetRequest(
     val kind: SheetKind,
     val leadSeconds: Int? = null,
     val error: String? = null,
     val saving: Boolean = false,
+    val suggestOddPence: Boolean = true,
 )
 
 /** Picks the page of the lot destination: the live detail, or the result once it is known (S3 crossfades into S4). */
@@ -160,14 +166,20 @@ object LotStateBuilder {
             now = now,
             id = snipe.id,
             title = snipe.title.forDisplay(),
+            shortTitle = shortTitle(snipe.title).forDisplay(),
             photo = inputs.photo,
             status = status,
             chipText = status.chipText(zone),
             countdown = countdown(status, now, end, bidAt, zone),
             times = times(status, evidence, now, end, bidAt, zone),
-            money = money(snipe, status, inputs.prices, now),
+            money =
+                money(snipe, status, inputs.prices, now).let { figures ->
+                    priceReadAt(inputs, status)?.let { readAt ->
+                        figures.copy(startLabel = lastRead(readAt, snipe.lastBidCount ?: 0, now, zone))
+                    } ?: figures
+                },
             menu = menu(snipe, status, evidence),
-            offline = offline(inputs.connectivity, zone),
+            offline = offline(inputs.connectivity, status, zone),
             scale = scale(status, evidence, now, end, bidAt),
             card = card(status, evidence, now, bidAt, zone),
             note = note(status, evidence, now, end, zone),
@@ -185,7 +197,9 @@ object LotStateBuilder {
         "This listing uses extended bidding. Any bid in the last 60\u202Fs, including Kestrel’s, resets the clock to " +
             "60\u202Fs, so others get a minute to respond. Your max still caps what you pay."
 
-    // The countdown: seconds in the final minute, otherwise the precision of Duration.countdown().
+    // The countdown: seconds in the final minute, otherwise the precision of Duration.countdown(). A partial second
+    // counts as a whole one, so "0 s left" never shows: from the end on it reads "Ended". Once the bid failed nothing
+    // more can happen, so the end time replaces the ticking figure.
     private fun countdown(
         status: LotStatus,
         now: Instant,
@@ -193,7 +207,16 @@ object LotStateBuilder {
         bidAt: Instant,
         zone: ZoneId,
     ): CountdownText {
-        val left = Duration.between(now, end).let { if (it.isNegative) Duration.ZERO else it }
+        val endsAt = "${clockFor(now, end, zone)} ${end.zoneName(zone)}"
+        if (now >= end) {
+            val ended = LotStatus.ReadingResult(end).label(now, zone).words
+            return CountdownText(figure = "", unit = ended, finalMinute = true, spoken = "$ended at $endsAt.")
+        }
+        if (status is LotStatus.BidNotSent || status is LotStatus.BidFailed) {
+            val ends = "Ends ${clockFor(now, end, zone)}"
+            return CountdownText(figure = "", unit = ends, finalMinute = true, spoken = "Ends at $endsAt.")
+        }
+        val left = Duration.between(now, end)
         val bidSentence =
             when (status) {
                 is LotStatus.FinalMinute -> {
@@ -210,7 +233,12 @@ object LotStateBuilder {
             }
         val spoken = "${left.spoken()} left.$bidSentence"
         return if (left.toMillis() <= FINAL_MINUTE_MILLIS) {
-            CountdownText(figure = left.seconds.toString(), unit = "s left", finalMinute = true, spoken = spoken)
+            CountdownText(
+                figure = left.wholeSecondsLeft().toString(),
+                unit = "s left",
+                finalMinute = true,
+                spoken = spoken,
+            )
         } else {
             CountdownText(figure = left.countdown(), unit = "left", finalMinute = false, spoken = spoken)
         }
@@ -226,14 +254,23 @@ object LotStateBuilder {
         zone: ZoneId,
     ): TimesColumnText {
         val sentAt = evidence.sentAt
+        // More than an hour out the clocks have no seconds, so "BIDS" and "ENDS" would read the same: the bid goes
+        // under the end time in words instead.
+        val close = isWithinAnHour(now, end)
         val rows =
             buildList {
                 when {
                     sentAt != null -> add(TimeRowText("Sent", sentAt.clockWithTenths(zone)))
-                    status.plansABid() -> add(TimeRowText("Bids", clockFor(now, bidAt, zone)))
+                    status.plansABid() && close -> add(TimeRowText("Bids", clockFor(now, bidAt, zone)))
                 }
                 add(TimeRowText("Ends", clockFor(now, end, zone)))
-                if (isWithinAnHour(now, end)) add(TimeRowText("Now", now.clockWithSeconds(zone), ticks = true))
+                if (close) add(TimeRowText("Now", now.clockWithSeconds(zone), ticks = true))
+            }
+        val note =
+            if (sentAt == null && status.plansABid() && !close) {
+                "Bids ${secondsText(evidence.snipe.leadSeconds.toLong())} before"
+            } else {
+                null
             }
         val sameDay = isSameDay(now, end, zone)
         val ends =
@@ -245,10 +282,18 @@ object LotStateBuilder {
         val bid =
             when {
                 sentAt != null -> " Bid sent at ${sentAt.clockWithTenths(zone)}."
+
+                note != null -> " Kestrel bids ${plural(
+                    evidence.snipe.leadSeconds,
+                    "second",
+                    "seconds",
+                )} before the end."
+
                 status.plansABid() -> " Kestrel bids at ${clockFor(now, bidAt, zone)}."
+
                 else -> ""
             }
-        return TimesColumnText("${dayLabel(now, end, zone)} · ${end.zoneName(zone)}", rows, ends + bid)
+        return TimesColumnText("${dayLabel(now, end, zone)} · ${end.zoneName(zone)}", rows, ends + bid, note)
     }
 
     private fun money(
@@ -282,6 +327,44 @@ object LotStateBuilder {
             endValue = postage?.formatted().orEmpty(),
             spoken = (spokenPrice ?: "Your max ${max?.formatted().orEmpty()}.") + spokenPostage,
         )
+    }
+
+    /**
+     * When the price shown was read, if it is old: offline (the banner's time) or after three failed checks. Null
+     * while the price is current.
+     */
+    private fun priceReadAt(
+        inputs: LotInputs,
+        status: LotStatus,
+    ): Instant? {
+        val connectivity = inputs.connectivity
+        return when {
+            connectivity is Connectivity.Offline -> connectivity.sinceUtcMillis?.let(Instant::ofEpochMilli)
+            status is LotStatus.Unreachable -> inputs.snipe.lastCheckedAtUtcMillis?.let(Instant::ofEpochMilli)
+            else -> null
+        }
+    }
+
+    /** "Last read 18:02 · 16 bids": an old price never reads as the current one. */
+    private fun lastRead(
+        readAt: Instant,
+        bids: Int,
+        now: Instant,
+        zone: ZoneId,
+    ): String {
+        val count = if (bids == 0) "" else " · ${plural(bids, "bid", "bids")}"
+        val at =
+            if (isSameDay(
+                    now,
+                    readAt,
+                    zone,
+                )
+            ) {
+                readAt.clock(zone)
+            } else {
+                "${readAt.dayDate(zone)} ${readAt.clock(zone)}"
+            }
+        return "Last read $at$count"
     }
 
     /** The price before the latest rise, when that rise came within the hour: "Up £8.00 from £88.00". */
@@ -323,16 +406,20 @@ object LotStateBuilder {
         return LotMenuState(stop, canDelete = !windowOpen)
     }
 
+    // The banner says the phone is offline once. When a bid is due within the hour its card says what that does to
+    // the bid, so the banner keeps only how old the prices are.
     private fun offline(
         connectivity: Connectivity,
+        status: LotStatus,
         zone: ZoneId,
     ): OfflineNote? {
         if (connectivity !is Connectivity.Offline) return null
         val since = connectivity.sinceUtcMillis?.let { Instant.ofEpochMilli(it).clock(zone) }
+        val consequence = "Kestrel can’t bid until the phone reconnects.".takeIf { status !is LotStatus.OfflineNearBid }
         return if (since != null) {
-            OfflineNote("Offline since $since", "Prices are from $since. Kestrel can’t bid until the phone reconnects.")
+            OfflineNote("Offline since $since", listOfNotNull("Prices are from $since.", consequence).joinToString(" "))
         } else {
-            OfflineNote("Offline", "Kestrel can’t bid until the phone reconnects.")
+            OfflineNote("Offline", consequence ?: "Prices may be out of date.")
         }
     }
 
@@ -354,17 +441,17 @@ object LotStateBuilder {
                 status is LotStatus.ReadingResult
         val leftMillis = end.toEpochMilli() - now.toEpochMilli()
         if (!live || leftMillis > FINAL_MINUTE_MILLIS) return null
-        val leftSeconds = leftMillis.coerceAtLeast(0) / 1_000
+        val leftSeconds = Duration.ofMillis(leftMillis).wholeSecondsLeft()
         val elapsed = (FINAL_MINUTE_SECONDS - leftSeconds).coerceIn(0, FINAL_MINUTE_SECONDS).toInt()
         val startMillis = end.toEpochMilli() - FINAL_MINUTE_MILLIS
         val bidMillis = evidence.sentAtMillis ?: bidAt.toEpochMilli()
         val fraction = (bidMillis - startMillis).toFloat() / FINAL_MINUTE_MILLIS
         val extended = evidence.extensions.isNotEmpty() || status is LotStatus.Extended
         val startLabel =
-            if (extended) {
-                LotStatus.Extended(end).label(now).words
-            } else {
-                LotStatus.FinalMinute(Money.zero("GBP"), bidAt, 0, bidAt).chipText()
+            when {
+                leftMillis <= 0 -> LotStatus.ReadingResult(end).label(now).words
+                extended -> LotStatus.Extended(end).label(now).words
+                else -> LotStatus.FinalMinute(Money.zero("GBP"), bidAt, 0, bidAt).chipText()
             }
         val sent = evidence.sentAtMillis != null
         val left = Duration.ofSeconds(leftSeconds).spoken()
@@ -433,13 +520,9 @@ object LotStateBuilder {
             }
 
             is LotStatus.Outbid -> {
-                val quote = status.ebayText?.let { "“$it” " } ?: ""
-                StatusCard(
-                    StatusTone.Bidding,
-                    CardGlyph.Gavel,
-                    replied(chip, status.replyMillis),
-                    "${quote}Someone’s max is higher than yours.",
-                )
+                // eBay's sentence already says why; Kestrel adds its own words only when eBay gave none.
+                val detail = status.ebayText?.let { "“$it”" } ?: status.detail(now, zone)
+                StatusCard(StatusTone.Bidding, CardGlyph.Gavel, replied(chip, status.replyMillis), detail)
             }
 
             is LotStatus.NoReply -> {
@@ -455,14 +538,16 @@ object LotStateBuilder {
                 val sentAt = evidence.sentAt
                 val resetAt = status.newEnd.toEpochMilli() - FINAL_MINUTE_MILLIS
                 val ownBid = sentAt != null && abs(resetAt - sentAt.toEpochMilli()) <= OWN_EXTENSION_TOLERANCE_MILLIS
-                val detail =
+                val reset =
                     if (ownBid) {
                         "Kestrel’s bid at ${sentAt.clockWithSeconds(zone)} reset the clock to " +
-                            "${secondsText(FINAL_MINUTE_SECONDS)}. It is still following."
+                            "${secondsText(FINAL_MINUTE_SECONDS)}. Kestrel is still following."
                     } else {
                         status.detail(now, zone)
                     }
-                StatusCard(StatusTone.Bidding, CardGlyph.Gavel, AnnotatedString(chip), detail)
+                val leading = if (evidence.replyType == "Leading") " You’re in the lead so far." else ""
+                val title = AnnotatedString(status.label(now, zone).text)
+                StatusCard(StatusTone.Bidding, CardGlyph.Gavel, title, reset + leading)
             }
 
             is LotStatus.ReadingResult -> {
@@ -480,8 +565,14 @@ object LotStateBuilder {
             }
 
             is LotStatus.OfflineNearBid -> {
-                val detail = "The ${momentText(now, status.bidAt, zone)} bid can’t go out until it reconnects."
-                attentionCard(chip, detail, null)
+                // The offline banner above says the phone is offline; the card says what that does to the bid.
+                val title = "The ${momentText(now, status.bidAt, zone)} bid can’t go out"
+                attentionCard(title, "Kestrel bids once the phone reconnects.", null)
+            }
+
+            // The chip already says "Needs you"; the card says what to do.
+            is LotStatus.NeedsYou -> {
+                attentionCard(NEEDS_YOU_CARD_TITLE, status.detail(now, zone), status.action(now))
             }
 
             is LotStatus.OverMax,
@@ -489,7 +580,6 @@ object LotStateBuilder {
             is LotStatus.PhoneCheck,
             is LotStatus.DryRunFailed,
             is LotStatus.Unreachable,
-            is LotStatus.NeedsYou,
             -> {
                 attentionCard(chip, status.detail(now, zone), status.action(now))
             }
@@ -512,6 +602,9 @@ object LotStateBuilder {
 
     /** An extension this close to Kestrel's bid plus 60 s was caused by Kestrel's bid. */
     private const val OWN_EXTENSION_TOLERANCE_MILLIS = 1_500L
+
+    /** The first line of the card of a page Kestrel handed over (DESIGN 6.1 NeedsYou). */
+    const val NEEDS_YOU_CARD_TITLE = "Look at the listing on eBay"
 
     /** "In the lead · eBay replied in 0.8 s". */
     private fun replied(
@@ -696,7 +789,7 @@ object LotStateBuilder {
         val lotLine = listOfNotNull(snipe.lastPrice?.let { "${it.formatted()} now" }, endsAt).joinToString(" · ")
         val locked =
             if (request.kind != SheetKind.Set && max != null && now >= lockAt && !status.kind.isFinal) {
-                "Too late to change: Kestrel bids ${max.formatted()} at ${bidAt.clockWithSeconds(zone)}."
+                "${MaxRules.LOCKED_SENTENCE} Kestrel bids ${max.formatted()} at ${bidAt.clockWithSeconds(zone)}."
             } else {
                 null
             }
@@ -735,6 +828,7 @@ object LotStateBuilder {
             leadHint = if (setting) leadHint(snipe) else null,
             error = request.error,
             saving = request.saving,
+            suggestOddPence = request.suggestOddPence,
         )
     }
 
@@ -743,6 +837,6 @@ object LotStateBuilder {
             "This listing uses extended bidding: any bid in the last 60\u202Fs, Kestrel’s too, resets the clock " +
                 "to 60\u202Fs."
         } else {
-            "${secondsText(6)} suits most connections. Choose ${secondsText(10)} on a weak signal."
+            "${secondsText(6)} suits most connections. Choose ${secondsText(10)} on a\u00A0weak\u00A0signal."
         }
 }

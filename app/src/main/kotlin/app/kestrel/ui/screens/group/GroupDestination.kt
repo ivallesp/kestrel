@@ -3,6 +3,8 @@ package app.kestrel.ui.screens.group
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -42,6 +44,8 @@ fun GroupDestination(
     var picking by rememberSaveable { mutableStateOf(false) }
     var editingId by rememberSaveable { mutableStateOf<Long?>(null) }
     var editingMode by rememberSaveable { mutableStateOf<EditMaxMode?>(null) }
+    var renaming by rememberSaveable { mutableStateOf(false) }
+    val nameField = rememberTextFieldState()
 
     LaunchedEffect(navigator) { navigator.messages.collect { snackbarHostState.show(it) } }
     LaunchedEffect(viewModel, navigator) {
@@ -101,9 +105,15 @@ fun GroupDestination(
                             navigator.open(Destination.Result(snipeId))
                         }
 
-                        // The data layer has no un-cancel yet, so rows never offer it.
-                        LotAction.UNDO_CANCEL -> {}
+                        LotAction.UNDO_CANCEL -> {
+                            viewModel.undoCancel(snipeId)
+                        }
                     }
+                }
+
+                override fun rename() {
+                    nameField.setTextAndPlaceCursorAtEnd(viewModel.uiState.value.title)
+                    renaming = true
                 }
 
                 override fun ungroup() = viewModel.ungroup()
@@ -130,6 +140,16 @@ fun GroupDestination(
                     viewModel.add(snipeId)
                 },
                 onDismiss = { picking = false },
+            )
+        }
+        if (renaming) {
+            RenameGroupSheet(
+                name = nameField,
+                onSave = {
+                    renaming = false
+                    viewModel.rename(nameField.text.toString())
+                },
+                onDismiss = { renaming = false },
             )
         }
         editingId?.let { snipeId ->

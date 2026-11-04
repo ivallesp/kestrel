@@ -3,6 +3,7 @@ package app.kestrel.ui.gallery
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import app.kestrel.R
 import app.kestrel.ui.components.SmallCaps
 import app.kestrel.ui.harness.PhoneInsets
+import app.kestrel.ui.theme.KestrelTheme
 import app.kestrel.ui.theme.LightStatusPalette
 import app.kestrel.ui.theme.Spacing
 
@@ -75,25 +77,28 @@ fun IconBoard(modifier: Modifier = Modifier) {
             Spacer(Modifier.height(12.dp))
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { AdaptiveIcon(size = 200.dp) }
             Spacer(Modifier.height(16.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Labelled("Circle") { AdaptiveIcon(64.dp) }
-                Labelled("Squircle") { AdaptiveIcon(64.dp, shape = Squircle) }
-                Labelled("Rounded square") { AdaptiveIcon(64.dp, shape = RoundedSquare) }
-                Labelled("Cookie") { AdaptiveIcon(64.dp, shape = MaterialShapes.Cookie12Sided.toShape()) }
+            // Equal cells, each centred, so the gaps between the masks are equal whatever their labels.
+            Row(Modifier.fillMaxWidth()) {
+                Labelled("Circle", Modifier.weight(1f)) { AdaptiveIcon(64.dp) }
+                Labelled("Squircle", Modifier.weight(1f)) { AdaptiveIcon(64.dp, shape = Squircle) }
+                Labelled("Rounded square", Modifier.weight(1f)) { AdaptiveIcon(64.dp, shape = RoundedSquare) }
+                Labelled("Cookie", Modifier.weight(1f)) {
+                    AdaptiveIcon(64.dp, shape = MaterialShapes.Cookie12Sided.toShape())
+                }
             }
             Spacer(Modifier.height(16.dp))
             SmallCaps("Layers and safe zone")
-            Spacer(Modifier.height(6.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Labelled("Background") { LayerTile(R.drawable.ic_launcher_background) }
-                Labelled("Foreground") { LayerTile(R.drawable.ic_launcher_foreground) }
-                Labelled("Monochrome") {
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth()) {
+                Labelled("Background", Modifier.weight(1f)) { LayerTile(R.drawable.ic_launcher_background) }
+                Labelled("Foreground", Modifier.weight(1f)) { LayerTile(R.drawable.ic_launcher_foreground) }
+                Labelled("Monochrome", Modifier.weight(1f)) {
                     LayerTile(R.drawable.ic_launcher_monochrome, tint = MaterialTheme.colorScheme.onSurface)
                 }
             }
             Spacer(Modifier.height(16.dp))
             SmallCaps("Themed icons")
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 HomeScreenStrip(
                     wallpaper = Brush.linearGradient(listOf(Color(0xFFE8E2D6), Color(0xFFC9D3DC))),
@@ -110,8 +115,8 @@ fun IconBoard(modifier: Modifier = Modifier) {
             }
             Spacer(Modifier.height(16.dp))
             SmallCaps("Small sizes")
-            Spacer(Modifier.height(6.dp))
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 AdaptiveIcon(48.dp)
                 AdaptiveIcon(36.dp)
                 AdaptiveIcon(24.dp)
@@ -185,9 +190,10 @@ private fun LayerTile(
 @Composable
 private fun Labelled(
     label: String,
+    modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         content()
         Spacer(Modifier.height(4.dp))
         Text(
@@ -236,6 +242,8 @@ private fun StatusBarStrip() {
             Modifier
                 .clip(RoundedCornerShape(12.dp))
                 .background(Color(0xFF1A1B21))
+                // A 1 dp rule keeps the near-black strip visible on the dark page.
+                .border(1.dp, KestrelTheme.catalogue.rule, RoundedCornerShape(12.dp))
                 .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),

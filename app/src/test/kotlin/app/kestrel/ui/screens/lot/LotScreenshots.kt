@@ -26,6 +26,7 @@ import app.kestrel.ui.harness.GestureBarHeight
 import app.kestrel.ui.harness.PhoneInsets
 import app.kestrel.ui.harness.ScreenshotSurface
 import app.kestrel.ui.harness.ScreenshotTest
+import app.kestrel.ui.model.Connectivity
 import app.kestrel.ui.screens.lot.LotFixtures.lotState
 import app.kestrel.ui.theme.SheetShape
 import com.github.takahirom.roborazzi.captureScreenRoboImage
@@ -49,9 +50,10 @@ class LotScreenshots : ScreenshotTest() {
         name,
         darkTheme = darkTheme,
         time = time,
-        lightIcons = true,
+        lightIcons = lightStatusBarIcons(moment.photo, darkTheme),
         reduceMotion = reduceMotion,
         fontScale = fontScale,
+        online = moment.connectivity !is Connectivity.Offline,
     ) {
         LotScreen(moment.lotState(), windowInsets = PhoneInsets)
     }
@@ -217,7 +219,7 @@ class LotScreenshots : ScreenshotTest() {
         time: String,
         darkTheme: Boolean = false,
         selectAll: Boolean = false,
-    ) = capture(name, darkTheme = darkTheme, time = time, lightIcons = true) {
+    ) = capture(name, darkTheme = darkTheme, time = time, lightIcons = lightStatusBarIcons(moment.photo, darkTheme)) {
         val state =
             moment.lotState(
                 SheetRequest(

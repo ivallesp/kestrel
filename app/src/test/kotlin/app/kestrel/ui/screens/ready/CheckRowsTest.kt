@@ -30,7 +30,7 @@ class CheckRowsTest {
         val rows = rows()
         val battery = rows.getValue(ReadinessKey.BATTERY)
         assertEquals(CheckStanding.Problem, battery.standing)
-        assertEquals("Restricted", battery.stateWords)
+        assertEquals("Optimised", battery.stateWords)
         assertEquals("Android may pause Kestrel when the screen is off, so a bid could go out late.", battery.detail)
         assertEquals(CheckAction.SystemPage(ReadinessKey.BATTERY, "Fix"), battery.action)
         assertEquals(Symbols.BatteryAlert, battery.icon)
@@ -42,7 +42,7 @@ class CheckRowsTest {
         assertEquals("Turn on", live.action?.label)
 
         assertEquals(
-            "Signed in as lot.42\u00A0· checked 2\u202Fmin ago",
+            "Signed in as oakshelf\u00A0· checked 2\u202Fmin ago",
             rows.getValue(ReadinessKey.EBAY_SESSION).detail,
         )
         assertEquals("On", rows.getValue(ReadinessKey.NOTIFICATIONS).detail)

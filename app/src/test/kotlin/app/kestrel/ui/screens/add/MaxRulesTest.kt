@@ -48,10 +48,13 @@ class MaxRulesTest {
 
     @Test
     fun oddPenceOnlySuggestsForARoundValidMax() {
-        assertEquals(OddPence.Suggestion(gbp("90.37"), gbp("90.00")), MaxRules.oddPence(TypedMax.Valid(gbp("90.00"))))
-        assertNull(MaxRules.oddPence(TypedMax.Valid(gbp("90.37"))))
-        assertNull(MaxRules.oddPence(TypedMax.TooLow(gbp("66.08"), gbp("60.00"))))
-        assertEquals(OddPence.Tip, MaxRules.oddPence(TypedMax.Empty))
+        assertEquals(
+            OddPence.Suggestion(gbp("90.37"), gbp("90.00")),
+            MaxRules.oddPence(TypedMax.Valid(gbp("90.00")), "GBP"),
+        )
+        assertNull(MaxRules.oddPence(TypedMax.Valid(gbp("90.37")), "GBP"))
+        assertNull(MaxRules.oddPence(TypedMax.TooLow(gbp("66.08"), gbp("60.00")), "GBP"))
+        assertEquals(OddPence.Tip("GBP"), MaxRules.oddPence(TypedMax.Empty, "GBP"))
     }
 
     @Test

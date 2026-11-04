@@ -46,13 +46,13 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.unit.dp
 import app.kestrel.data.Settings
 import app.kestrel.ui.components.PrimaryButton
 import app.kestrel.ui.components.SmallCaps
 import app.kestrel.ui.components.SymbolIcon
 import app.kestrel.ui.components.Symbols
+import app.kestrel.ui.format.noWidow
 import app.kestrel.ui.format.secondsText
 import app.kestrel.ui.screens.ready.EdgeFade
 import app.kestrel.ui.screens.ready.TopBarHeight
@@ -263,10 +263,13 @@ private fun PageWords(page: Page) {
             modifier = Modifier.semantics { heading() },
         )
         Spacer(Modifier.height(12.dp))
+        // Body copy keeps the paragraph measure. Three lines at least on every page, so the words never jump
+        // between pages whose paragraphs are two or three lines long.
         Text(
-            text = page.body,
-            style = MaterialTheme.typography.bodyLarge.copy(lineBreak = LineBreak.Heading),
+            text = page.body.noWidow(),
+            style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            minLines = BODY_LINES,
         )
     }
 }
@@ -343,6 +346,9 @@ private fun CentredContent(
 }
 
 private val ArtHeight = 196.dp
+
+/** Every page's paragraph takes at least this many lines (the longest at font scale 1). */
+private const val BODY_LINES = 3
 private const val OPTICAL_CENTRE = -0.3f
 private val BadgeSize = 144.dp
 

@@ -1,5 +1,6 @@
 package app.kestrel.ui.harness
 
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
@@ -8,6 +9,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.Density
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.kestrel.ui.components.LocalLotPhotoLoader
+import app.kestrel.ui.components.LocalSheetInsets
 import app.kestrel.ui.theme.KestrelTheme
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -45,6 +47,7 @@ abstract class ScreenshotTest {
     /**
      * Renders [content] and records `src/test/screenshots/<name>-light.png` or `-dark.png` (plus `-font130` at font
      * scale 1.3). [time] is the status-bar clock; [lightIcons] defaults to the theme (pass true over a photograph).
+     * [online] false draws the status bar without Wi-Fi or signal, for the offline states.
      * [wholeScreen] captures every window, for bottom sheets, menus and dialogs.
      */
     protected fun capture(
@@ -56,6 +59,7 @@ abstract class ScreenshotTest {
         fontScale: Float = 1f,
         advanceMillis: Long = DEFAULT_ADVANCE_MILLIS,
         wholeScreen: Boolean = false,
+        online: Boolean = true,
         content: @Composable () -> Unit,
     ) {
         composeRule.mainClock.autoAdvance = false
@@ -66,6 +70,7 @@ abstract class ScreenshotTest {
                 lightIcons = lightIcons,
                 reduceMotion = reduceMotion,
                 fontScale = fontScale,
+                online = online,
                 content = content,
             )
         }
@@ -91,7 +96,10 @@ abstract class ScreenshotTest {
     }
 }
 
-/** The theme, fixture photos, density and device chrome a screenshot draws in. Also usable in UI tests. */
+/**
+ * The theme, fixture photos, density and device chrome a screenshot draws in. Also usable in UI tests. Sheets get the
+ * phone's navigation-bar inset, which Robolectric's sheet windows lack.
+ */
 @Composable
 fun ScreenshotSurface(
     darkTheme: Boolean,
@@ -99,15 +107,23 @@ fun ScreenshotSurface(
     lightIcons: Boolean = darkTheme,
     reduceMotion: Boolean = false,
     fontScale: Float = 1f,
+    online: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val density = LocalDensity.current
     CompositionLocalProvider(
         LocalLotPhotoLoader provides FixturePhotos,
         LocalDensity provides Density(density.density, fontScale),
+        LocalSheetInsets provides WindowInsets(bottom = GestureBarHeight),
     ) {
         KestrelTheme(darkTheme = darkTheme, reduceMotion = reduceMotion) {
-            DeviceChrome(time = time, lightIcons = lightIcons, lightHandle = darkTheme, content = content)
+            DeviceChrome(
+                time = time,
+                lightIcons = lightIcons,
+                lightHandle = darkTheme,
+                online = online,
+                content = content,
+            )
         }
     }
 }

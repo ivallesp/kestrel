@@ -29,8 +29,14 @@ data class StateWords(
     val words: String,
     val detail: String? = null,
 ) {
-    /** "Armed · max £45.00". */
-    val text: String get() = if (detail == null) words else "$words · $detail"
+    /** "Armed · max £45.00"; only the detail when there are no words (an S4 line under a headline that has them). */
+    val text: String
+        get() =
+            when {
+                detail == null -> words
+                words.isEmpty() -> detail
+                else -> "$words · $detail"
+            }
 }
 
 /** The one action a status offers. Screens decide where it goes and what it opens. */
@@ -64,7 +70,11 @@ fun LotStatus.spokenLabel(
     return prefix + if (label.detail == null) label.words else "${label.words}, ${label.detail}"
 }
 
-/** The words of the state chip (hero plate, S3 header, S5 header): "Armed", "Final minute", "Over your max". */
+/**
+ * The words of the state chip (hero plate, S3 header, S5 header): "Armed", "Final minute", "Over your max". A chip is
+ * short; the time block, the bid card and the offline banner carry the details ("now ends 19:56:42", "offline").
+ */
+@Suppress("UNUSED_PARAMETER")
 fun LotStatus.chipText(zone: ZoneId = AuctionZone): String =
     when (this) {
         LotStatus.Watching -> "Watching"
@@ -74,7 +84,7 @@ fun LotStatus.chipText(zone: ZoneId = AuctionZone): String =
         is LotStatus.Captcha -> "eBay wants a quick check"
         is LotStatus.PhoneCheck -> "eBay wants to verify you"
         is LotStatus.DryRunFailed -> "Dry run failed"
-        is LotStatus.OfflineNearBid -> "Phone offline"
+        is LotStatus.OfflineNearBid -> "Bid at risk"
         is LotStatus.Unreachable -> "Can’t reach the listing"
         is LotStatus.NeedsYou -> "Needs you"
         is LotStatus.FinalMinute -> "Final minute"
@@ -82,7 +92,7 @@ fun LotStatus.chipText(zone: ZoneId = AuctionZone): String =
         is LotStatus.InTheLead -> "In the lead"
         is LotStatus.Outbid -> "Outbid"
         is LotStatus.NoReply -> "No reply yet"
-        is LotStatus.Extended -> "Extended · now ends ${newEnd.clockWithSeconds(zone)}"
+        is LotStatus.Extended -> "Extended"
         is LotStatus.ReadingResult -> "Reading the result"
         is LotStatus.Won -> "Won"
         is LotStatus.Lost -> "Lost"
@@ -175,9 +185,9 @@ fun LotStatus.detail(
             }
         }
 
+        // eBay's sentence already says why; Kestrel's own words stand in only when eBay gave none.
         is LotStatus.Outbid -> {
-            val quote = ebayText?.let { "eBay replied: “$it” " } ?: ""
-            "${quote}Someone’s max is higher than yours."
+            ebayText?.let { "eBay replied: “$it”" } ?: "Another bidder’s max is higher than yours."
         }
 
         is LotStatus.NoReply -> {
@@ -251,7 +261,8 @@ fun LotStatus.action(now: Instant): LotAction? =
 
         is LotStatus.PhoneCheck -> LotAction.OPEN_EBAY_PAGE
 
-        is LotStatus.DryRunFailed -> LotAction.FIX
+        // A dry run that met eBay's sign-in page is fixed by signing in, so the button says so.
+        is LotStatus.DryRunFailed -> if (cause == DryRunCause.SIGN_IN_PAGE) LotAction.SIGN_IN else LotAction.FIX
 
         is LotStatus.OfflineNearBid -> null
 
@@ -332,6 +343,7 @@ private fun labelOf(
             StateWords("Can’t reach the listing")
         }
 
+        // Not one of eBay's named checks: a page Kestrel doesn't know, so the user looks (DESIGN 6.1 NeedsYou).
         is LotStatus.NeedsYou -> {
             StateWords("Needs you", "open the listing")
         }
@@ -374,7 +386,7 @@ private fun labelOf(
         }
 
         is LotStatus.EndedEarly -> {
-            StateWords("Ended early by the seller")
+            StateWords("Ended early by the seller", status.endedAt.dayDate(zone))
         }
 
         is LotStatus.CancelledByYou -> {
@@ -391,11 +403,11 @@ private fun labelOf(
         }
 
         is LotStatus.BidNotSent -> {
-            StateWords("Bid not sent")
+            StateWords("Bid not sent", status.at.dayDate(zone))
         }
 
         is LotStatus.BidFailed -> {
-            StateWords("Bid failed")
+            StateWords("Bid failed", status.at.dayDate(zone))
         }
     }
 

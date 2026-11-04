@@ -33,9 +33,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.LineBreak
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import app.kestrel.ui.components.BottomFade
 import app.kestrel.ui.components.SectionHead
@@ -48,6 +50,7 @@ import app.kestrel.ui.format.clockFor
 import app.kestrel.ui.format.dayDate
 import app.kestrel.ui.format.dayLabel
 import app.kestrel.ui.format.isSameDay
+import app.kestrel.ui.format.noWidow
 import app.kestrel.ui.theme.KestrelTheme
 import app.kestrel.ui.theme.Spacing
 import app.kestrel.ui.theme.StatusTone
@@ -76,6 +79,7 @@ fun ReadyScreen(
                     navigationIcon = Symbols.ArrowBack,
                     navigationLabel = "Back",
                     onNavigate = onBack,
+                    ruled = { listState.canScrollBackward },
                     actions = { CheckAgainButton(checking = state.checkInProgress, onClick = onCheckAgain) },
                 )
                 LazyColumn(
@@ -84,7 +88,11 @@ fun ReadyScreen(
                     contentPadding = PaddingValues(bottom = bottomInset + Spacing.ScreenEnd),
                 ) {
                     item(key = "header") { Header(state) }
-                    sectionsOf(state.rows).forEach { section ->
+                    // While a check runs every row says "Checking…"; before the first one the rows are the checks
+                    // themselves, so the page never goes blank (DESIGN S5).
+                    val checking = state.checkInProgress
+                    val rows = state.rows.ifEmpty { if (checking) CheckRows.pending() else emptyList() }
+                    sectionsOf(rows, checkingFirstTime = state.rows.isEmpty()).forEach { section ->
                         item(key = "head-${section.standing}", contentType = "head") {
                             SectionHead(
                                 title = section.title,
@@ -108,6 +116,7 @@ fun ReadyScreen(
                                 row = row,
                                 index = index,
                                 count = section.rows.size,
+                                checking = checking,
                                 onAction = onAction,
                                 modifier =
                                     rowMotion()
@@ -162,9 +171,10 @@ private fun Header(state: ReadyUiState) {
     val checkedAt = state.checkedAt
     val problems = state.problems.size
     Column(Modifier.padding(horizontal = Spacing.ColumnA)) {
-        SmallCaps(if (checkedAt == null) "Checking this phone" else checkedOverline(state.now, checkedAt))
+        SmallCaps(if (checkedAt == null) "Checking now" else checkedOverline(state.now, checkedAt))
+        // A neutral title: the chip under it gives the verdict, so the page never says ready while it is not.
         Text(
-            text = "Ready to snipe",
+            text = "This phone",
             style = MaterialTheme.typography.headlineLarge,
             color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.semantics { heading() },
@@ -191,25 +201,31 @@ private fun Header(state: ReadyUiState) {
     }
 }
 
-/** One check (DESIGN 3.9): a 40 dp glyph circle, the name, the state line and detail, and its button or tick. */
+/**
+ * One check (DESIGN 3.9): a 40 dp glyph circle, the name, the state line and detail, and its button or tick. A button
+ * sits at the end of the name's line, so the state line and the detail run the full width under both (3.9: three
+ * lines at most, also with large text). While [checking], the state line reads "Checking…" in ink soft and the
+ * verdict waits.
+ */
 @Composable
 private fun CheckRowItem(
     row: CheckRow,
     index: Int,
     count: Int,
+    checking: Boolean,
     onAction: (CheckAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
     val attention = KestrelTheme.status.attention
-    val problem = row.standing == CheckStanding.Problem
-    val hasStateLine = row.stateWords != null
+    val problem = row.standing == CheckStanding.Problem && !checking
+    val button = row.action != null && !checking
     SegmentedListItem(
         shapes = ListItemDefaults.segmentedShapes(index = index, count = count),
         modifier = modifier,
         colors = ListItemDefaults.segmentedColors(containerColor = KestrelTheme.catalogue.card),
         contentPadding = PaddingValues(16.dp),
-        verticalAlignment = if (hasStateLine) Alignment.Top else Alignment.CenterVertically,
+        verticalAlignment = Alignment.Top,
         leadingContent = {
             GlyphCircle(
                 icon = row.icon,
@@ -217,17 +233,38 @@ private fun CheckRowItem(
                 tint = if (problem) attention.accent else scheme.onSurfaceVariant,
             )
         },
-        trailingContent = { Trailing(row, onAction) },
-        supportingContent = { Supporting(row) },
+        trailingContent = { if (!checking && !button) Trailing(row, onAction) },
+        supportingContent = { Supporting(row, checking) },
     ) {
-        Text(row.name, style = MaterialTheme.typography.titleMedium, color = scheme.onSurface)
+        if (button) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    row.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = scheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(8.dp))
+                Trailing(row, onAction)
+            }
+        } else {
+            Text(row.name, style = MaterialTheme.typography.titleMedium, color = scheme.onSurface)
+        }
     }
 }
 
 @Composable
-private fun Supporting(row: CheckRow) {
+private fun Supporting(
+    row: CheckRow,
+    checking: Boolean,
+) {
     val inkSoft = MaterialTheme.colorScheme.onSurfaceVariant
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        if (checking) {
+            Text(CHECKING, style = MaterialTheme.typography.labelLarge, color = inkSoft)
+            if (row.detail.isNotEmpty()) DetailText(row.detail, inkSoft)
+            return@Column
+        }
         when (row.standing) {
             CheckStanding.Problem -> {
                 val accent = KestrelTheme.status.attention.accent
@@ -244,14 +281,53 @@ private fun Supporting(row: CheckRow) {
 
             CheckStanding.Passed, CheckStanding.NotYet -> {}
         }
-        // Balanced lines, so a two-line detail never leaves one word alone ("synced 1 min / ago").
-        Text(
-            row.detail,
-            style = MaterialTheme.typography.bodyMedium.copy(lineBreak = LineBreak.Heading),
-            color = inkSoft,
-        )
+        DetailText(row.detail, inkSoft)
     }
 }
+
+/**
+ * A row's detail. A two-part detail ("0.04 s off Google time · synced 1 min ago") stays on one line when it fits;
+ * otherwise its parts go on lines of their own without the dot, so no line ends on a separator. Body breaks on the
+ * whole measure, with no lone word on the last line.
+ */
+@Composable
+private fun DetailText(
+    detail: String,
+    color: Color,
+) {
+    val style = MaterialTheme.typography.bodyMedium
+    val parts = detail.split(DETAIL_SEPARATOR)
+    if (parts.size < 2) {
+        Text(detail.noWidow(), style = style, color = color)
+        return
+    }
+    Layout(
+        content = {
+            Text(detail, style = style, color = color, maxLines = 1, softWrap = false)
+            parts.forEach { Text(it.noWidow(), style = style, color = color) }
+        },
+    ) { measurables, constraints ->
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val whole = measurables.first().measure(loose.copy(maxWidth = Constraints.Infinity))
+        if (whole.width <= constraints.maxWidth) {
+            layout(whole.width, whole.height) { whole.place(0, 0) }
+        } else {
+            val lines = measurables.drop(1).map { it.measure(loose) }
+            layout(lines.maxOf { it.width }, lines.sumOf { it.height }) {
+                var y = 0
+                lines.forEach { line ->
+                    line.place(0, y)
+                    y += line.height
+                }
+            }
+        }
+    }
+}
+
+/** How the rows join the two parts of a detail: a no-break space keeps the dot with the words before it. */
+private const val DETAIL_SEPARATOR = "\u00A0· "
+
+private const val CHECKING = "Checking…"
 
 @Composable
 private fun Trailing(
@@ -300,12 +376,15 @@ private data class CheckSection(
     val rows: List<CheckRow>,
 )
 
-private fun sectionsOf(rows: List<CheckRow>): List<CheckSection> =
+private fun sectionsOf(
+    rows: List<CheckRow>,
+    checkingFirstTime: Boolean,
+): List<CheckSection> =
     listOf(
         CheckStanding.Problem to "Needs attention",
         CheckStanding.Optional to "Recommended",
         CheckStanding.Passed to "All good",
-        CheckStanding.NotYet to "Later",
+        CheckStanding.NotYet to if (checkingFirstTime) "Checks" else "Later",
     ).mapNotNull { (standing, title) ->
         rows.filter { it.standing == standing }.takeIf { it.isNotEmpty() }?.let { CheckSection(standing, title, it) }
     }
@@ -336,7 +415,7 @@ internal fun deadlineSentence(
 }
 
 /**
- * The cadence footer. DESIGN's "re-checks every 15 minutes" is not what the platform does: the checks run when this
+ * The cadence footer (DESIGN S5 item 10). The platform has no timed re-check: the checks run when this
  * page opens and when you come back to it, and the dry run before each bid.
  */
 private const val CADENCE =

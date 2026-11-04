@@ -7,6 +7,7 @@ import app.kestrel.ui.format.clock
 import app.kestrel.ui.format.clockFor
 import app.kestrel.ui.format.dayDate
 import app.kestrel.ui.format.isSameDay
+import java.time.Duration
 import java.time.Instant
 
 /**
@@ -25,25 +26,31 @@ import java.time.Instant
 internal object ReadinessPills {
     const val CHECKING = "Checking…"
 
-    /** The order problems are named in on the second line. */
+    /**
+     * The order problems are named in on the second line, most serious first: signed out pauses every snipe and
+     * offline stops every bid, so an ellipsis never hides them behind a battery setting.
+     */
     private val dockOrder =
         listOf(
+            ReadinessKey.EBAY_SESSION,
+            ReadinessKey.NETWORK,
             ReadinessKey.BATTERY,
             ReadinessKey.EXACT_ALARMS,
             ReadinessKey.BACKGROUND,
             ReadinessKey.UNUSED_APP_PAUSE,
             ReadinessKey.NOTIFICATIONS,
             ReadinessKey.CLOCK,
-            ReadinessKey.NETWORK,
             ReadinessKey.DRY_RUN,
-            ReadinessKey.EBAY_SESSION,
         )
+
+    /** A pass older than this is shown as when the phone was last checked, not as a pass. */
+    private val PASS_STAYS_FRESH: Duration = Duration.ofMinutes(30)
 
     private val notCounted = setOf(ReadinessKey.LIVE_UPDATES, ReadinessKey.NETWORK)
 
-    /** Before the first check has answered. */
+    /** Before the first check has answered. Line 2 says how long, rather than saying "checking" twice. */
     fun checkingFirstTime(): ReadinessPill =
-        ReadinessPill(PillKind.Checking, Symbols.HourglassTop, "Checking this phone", CHECKING)
+        ReadinessPill(PillKind.Checking, Symbols.HourglassTop, "Checking this phone", "This takes a few seconds")
 
     /**
      * [items] are the latest checks (null before the first one), made at [checkedAt]; [checking] is true while a new
@@ -76,7 +83,7 @@ internal object ReadinessPills {
                 }
 
                 problems.isEmpty() -> {
-                    ReadinessPill(PillKind.Ready, Symbols.CheckCircle, "Ready to snipe", passedLine(checkedAt, now))
+                    passed(checkedAt, now)
                 }
 
                 problems.size == 1 -> {
@@ -116,14 +123,47 @@ internal object ReadinessPills {
         return dockOrder.filter { it in failing }
     }
 
-    private fun passedLine(
+    /**
+     * Every check passed: "All checks passed at 18:06". Never "passed" without a check to show for it, and a pass
+     * older than half an hour says only when the phone was last checked, in ink soft, while it is checked again.
+     */
+    private fun passed(
         checkedAt: Instant?,
         now: Instant,
-    ): String =
+    ): ReadinessPill =
         when {
-            checkedAt == null -> "All checks passed"
-            isSameDay(now, checkedAt) -> "All checks passed at ${checkedAt.clock()}"
-            else -> "All checks passed ${checkedAt.dayDate()} at ${checkedAt.clock()}"
+            checkedAt == null -> {
+                checkingFirstTime()
+            }
+
+            Duration.between(checkedAt, now) > PASS_STAYS_FRESH -> {
+                ReadinessPill(PillKind.Checking, Symbols.Info, "Ready to snipe", lastChecked(checkedAt, now))
+            }
+
+            else -> {
+                ReadinessPill(PillKind.Ready, Symbols.CheckCircle, "Ready to snipe", passedLine(checkedAt, now))
+            }
+        }
+
+    private fun passedLine(
+        checkedAt: Instant,
+        now: Instant,
+    ): String =
+        if (isSameDay(now, checkedAt)) {
+            "All checks passed at ${checkedAt.clock()}"
+        } else {
+            "All checks passed ${checkedAt.dayDate()} at ${checkedAt.clock()}"
+        }
+
+    /** "Last checked at 07:00", "Last checked Sat 8 Nov at 21:40": an old pass, while the phone is checked again. */
+    private fun lastChecked(
+        checkedAt: Instant,
+        now: Instant,
+    ): String =
+        if (isSameDay(now, checkedAt)) {
+            "Last checked at ${checkedAt.clock()}"
+        } else {
+            "Last checked ${checkedAt.dayDate()} at ${checkedAt.clock()}"
         }
 
     private fun single(key: ReadinessKey): ReadinessPill =

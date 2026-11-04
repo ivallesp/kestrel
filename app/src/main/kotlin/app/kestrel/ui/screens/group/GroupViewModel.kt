@@ -17,7 +17,10 @@ import app.kestrel.ui.model.GroupContext
 import app.kestrel.ui.model.LotPhoto
 import app.kestrel.ui.model.LotStatusMapper
 import app.kestrel.ui.model.LotTimes
+import app.kestrel.ui.model.UndoCancel
 import app.kestrel.ui.screens.add.AddPlanner
+import app.kestrel.ui.screens.lot.minutesText
+import app.kestrel.ui.screens.lot.shortTitle
 import app.kestrel.ui.shell.ShellMessage
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
@@ -112,6 +115,38 @@ class GroupViewModel(
         }
     }
 
+    /**
+     * "Undo cancel" on a member the group cancelled while its auction runs: it bids again, on its own, so it leaves
+     * the group (whose rule would cancel it again).
+     */
+    fun undoCancel(snipeId: Long) {
+        viewModelScope.launch {
+            val title =
+                services
+                    .snipes()
+                    .first()
+                    .firstOrNull { it.id == snipeId }
+                    ?.title ?: return@launch
+            val text =
+                when (val result = services.undoCancel(snipeId)) {
+                    is EditResult.Done -> UndoCancel.message(shortTitle(title))
+                    is EditResult.NotAllowed -> result.reason.withCurlyQuotes()
+                    EditResult.NotFound -> return@launch
+                }
+            eventChannel.trySend(GroupEvent.Message(text))
+        }
+    }
+
+    /** "Rename": a blank name is refused in the sheet; the store says whether it kept the new one. */
+    fun rename(name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return
+        viewModelScope.launch {
+            val refusal = services.renameGroup(groupId, trimmed)
+            eventChannel.trySend(GroupEvent.Message(refusal ?: "Renamed to $trimmed"))
+        }
+    }
+
     /** Adds [snipeId] from the picker. */
     fun add(snipeId: Long) {
         viewModelScope.launch {
@@ -143,6 +178,7 @@ object GroupPlanner {
     ): GroupUiState {
         if (group == null) return GroupUiState(now, GroupViewModel.GENERIC_TITLE, GroupContent.Missing)
         val members = snipes.filter { it.groupId == groupId }.sortedWith(compareBy({ it.endTimeUtcMillis }, { it.id }))
+        val openMembers = members.filter { !it.status.isFinal }
         val candidates =
             snipes
                 .filter { it.groupId != groupId && it.maxBid != null && it.status.canJoinAGroup }
@@ -153,6 +189,12 @@ object GroupPlanner {
                         title = snipe.title,
                         photo = LotPhoto.of(snipe),
                         status = LotStatusMapper.statusOf(snipe, emptyList(), now, connectivity),
+                        endsAt = Instant.ofEpochMilli(snipe.endTimeUtcMillis),
+                        endsCloseToAMember =
+                            GroupPolicy.closeEndings(openMembers + snipe).any {
+                                snipe.id in
+                                    setOf(it.earlier.id, it.later.id)
+                            },
                     )
                 }
         val canUngroup = members.any { !it.status.isFinal }
@@ -202,16 +244,14 @@ object GroupPlanner {
         val headline = "Win $target of ${members.size}"
         val open = members.filter { !it.status.isFinal }
         GroupPolicy.closeEndings(open).firstOrNull()?.let { close ->
-            val gap =
-                Duration.ofMillis(
-                    abs(LotTimes.bidAtUtcMillis(close.later) - LotTimes.bidAtUtcMillis(close.earlier)),
-                )
+            val gapMillis = abs(LotTimes.bidAtUtcMillis(close.later) - LotTimes.bidAtUtcMillis(close.earlier))
+            val (earlier, later) = distinctNames(close.earlier.title, close.later.title)
             return RuleCard(
                 tone = RuleTone.Attention,
                 headline = headline,
                 body =
-                    "${close.earlier.title} and ${close.later.title} bid ${gap.countdown()} apart. Kestrel may not " +
-                        "know the first result in time, so you could win both.",
+                    "$earlier and $later bid ${apart(gapMillis)} apart. Kestrel may not know the first result in " +
+                        "time, so you could win both.",
             )
         }
         val body =
@@ -222,6 +262,34 @@ object GroupPlanner {
             }
         return RuleCard(RuleTone.Neutral, headline, body, gapNote(open))
     }
+
+    /**
+     * The words that tell two titles apart: the first word after what they share ("Sony MiniDisc Walkman MZ-N707" and
+     * "Sony Walkman WM-FX421" give "MiniDisc" and "Walkman"), or their first two words when they share nothing.
+     */
+    fun distinctNames(
+        first: String,
+        second: String,
+    ): Pair<String, String> {
+        val firstWords = first.split(' ').filter { it.isNotBlank() }
+        val secondWords = second.split(' ').filter { it.isNotBlank() }
+        val shared = firstWords.zip(secondWords).takeWhile { (a, b) -> a.equals(b, ignoreCase = true) }.size
+        if (shared == 0 || shared >= firstWords.size || shared >= secondWords.size) {
+            return shortTitle(first) to shortTitle(second)
+        }
+        val clean: (String) -> String = { it.trim('“', '”', '"', ',', '.') }
+        return clean(firstWords[shared]) to clean(secondWords[shared])
+    }
+
+    /** "2 min", rounded to whole minutes, or "under a minute". */
+    private fun apart(gapMillis: Long): String =
+        if (gapMillis < MINUTE_MILLIS) {
+            "under a minute"
+        } else {
+            minutesText((gapMillis + MINUTE_MILLIS / 2) / MINUTE_MILLIS)
+        }
+
+    private const val MINUTE_MILLIS = 60_000L
 
     /** "They end 23 h 45 m apart, so Kestrel will know the first result in time." */
     private fun gapNote(open: List<Snipe>): String? {

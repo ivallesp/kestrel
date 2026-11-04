@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItemDefaults
@@ -60,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import app.kestrel.model.Money
 import app.kestrel.ui.components.CalmLoadingIndicator
 import app.kestrel.ui.components.Figure
+import app.kestrel.ui.components.KestrelMenu
 import app.kestrel.ui.components.LotPlate
 import app.kestrel.ui.components.MoneyBlock
 import app.kestrel.ui.components.MoneyFigures
@@ -150,7 +150,7 @@ internal fun HeroCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.height(8.dp))
-                MoneyBlock(heroMoney(lot))
+                MoneyBlock(heroMoney(lot, now))
                 Spacer(Modifier.height(12.dp))
                 HeroTimeBlock(lot, now)
                 lot.action?.let { action ->
@@ -164,14 +164,25 @@ internal fun HeroCard(
 
 private val HeroPlateHeight = 128.dp
 
-/** The hero's money: the price against the max with the headroom rule, or the plain grid before a max. */
-private fun heroMoney(lot: HomeLot): MoneyFigures {
+private val HeroTimerSize = 22.dp
+
+/**
+ * The hero's money: the price against the max with the headroom rule, or the plain grid before a max. While offline
+ * the price is labelled with when it was read.
+ */
+private fun heroMoney(
+    lot: HomeLot,
+    now: Instant,
+): MoneyFigures {
     val snipe = lot.snipe
     val price = snipe.lastPrice
     val max = snipe.maxBid
     return when {
         price != null && max != null -> {
-            lotMoneyFigures(price, snipe.lastBidCount ?: 0, max, snipe.postage, lot.status.tone)
+            val figures = lotMoneyFigures(price, snipe.lastBidCount ?: 0, max, snipe.postage, lot.status.tone)
+            lot.pricesAsOf?.let { asOf ->
+                figures.copy(startLabel = HomeText.lastRead(asOf, snipe.lastBidCount ?: 0, now))
+            } ?: figures
         }
 
         max != null -> {
@@ -197,8 +208,9 @@ private fun heroMoney(lot: HomeLot): MoneyFigures {
 }
 
 /**
- * The hero's time block (DESIGN 3.3): "Ends in 13 m 07 s" over when Kestrel bids, against the end clock over
- * "Today · GMT". Only the changed digits of the countdown roll. One sentence for TalkBack, not a live region.
+ * The hero's time block (DESIGN 3.3), always two lines and 42 dp: "Ends in 13 m 07 s" over one short line of when
+ * Kestrel bids (or the bid sentence), against the end clock over "Today · GMT". The timer sits on line 1. Only the
+ * changed digits of the countdown roll. One sentence for TalkBack, not a live region.
  */
 @Composable
 private fun HeroTimeBlock(
@@ -211,8 +223,15 @@ private fun HeroTimeBlock(
     val inkSoft = MaterialTheme.colorScheme.onSurfaceVariant
     val lineOne = MaterialTheme.typography.titleMedium
     val spoken = HomeText.heroSpokenTime(lot, now)
+    // Centred on line 1's line box (22 dp at font scale 1), whatever line 2 holds.
+    val timerTop = with(LocalDensity.current) { ((lineOne.lineHeight.toDp() - HeroTimerSize) / 2).coerceAtLeast(0.dp) }
     Row(modifier.fillMaxWidth().clearAndSetSemantics { contentDescription = spoken }) {
-        SymbolIcon(Symbols.Timer, tint = ink, size = 22.dp, modifier = Modifier.align(Alignment.CenterVertically))
+        SymbolIcon(
+            Symbols.Timer,
+            tint = ink,
+            size = HeroTimerSize,
+            modifier = Modifier.align(Alignment.Top).padding(top = timerTop),
+        )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f).alignBy(FirstBaseline)) {
             val countdown = HomeText.heroCountdown(now, end)
@@ -224,11 +243,17 @@ private fun HeroTimeBlock(
                     RollingDigits(countdown, style = lineOne, color = ink, modifier = Modifier.alignByBaseline())
                 }
             }
-            Row {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 if (lot.status is LotStatus.BidSent || lot.status is LotStatus.ReadingResult) {
                     CalmLoadingIndicator(size = 20.dp, modifier = Modifier.padding(end = 6.dp))
                 }
-                Text(HomeText.heroLine(lot, now), style = MaterialTheme.typography.bodyMedium, color = inkSoft)
+                Text(
+                    text = HomeText.heroLine(lot, now),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = inkSoft,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
         Spacer(Modifier.width(12.dp))
@@ -469,7 +494,7 @@ private fun RaiseMaxButton(
                 }
             },
         )
-        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+        KestrelMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
             RaiseMaxMenuItems(
                 minimum = minimum,
                 onQuickRaise = {

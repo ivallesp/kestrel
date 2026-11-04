@@ -71,4 +71,8 @@ data class GroupCandidate(
     val title: String,
     val photo: LotPhoto,
     val status: LotStatus,
+    /** When it ends, so the user can see the group's timing before adding it. */
+    val endsAt: Instant? = null,
+    /** True when it ends so close to a member that Kestrel may not know the first result in time. */
+    val endsCloseToAMember: Boolean = false,
 )
