@@ -177,13 +177,22 @@ internal class NotificationTexts(
         val prefix =
             when (result.outcome) {
                 SnipeOutcome.WON -> "Won"
+
                 SnipeOutcome.LOST -> result.finalPrice?.let { "Sold for ${formatMoney(it)}" } ?: "Not won"
+
                 SnipeOutcome.ENDED_EARLY -> "Ended early"
+
                 SnipeOutcome.PRICE_PASSED_MAX -> "Over your max"
+
                 SnipeOutcome.NOT_PLACED -> "Bid not placed"
-                SnipeOutcome.FAILED -> "Bid failed"
+
+                // DESIGN MF24: "Bid failed" means eBay had the bid; one that never left the phone was not sent.
+                SnipeOutcome.FAILED -> if (result.bidSentAtUtcMillis == null) "Bid not sent" else "Bid failed"
+
                 SnipeOutcome.CANCELLED -> "Cancelled"
+
                 SnipeOutcome.SKIPPED_BY_GROUP -> "Skipped"
+
                 SnipeOutcome.UNKNOWN -> "Result unknown"
             }
         return fitWithItem(prefix, snipe.title)

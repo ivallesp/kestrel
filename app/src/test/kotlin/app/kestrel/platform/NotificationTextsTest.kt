@@ -109,7 +109,12 @@ class NotificationTextsTest {
         )
         assertEquals("Sold for GBP 131.00 · Canon…", texts.resultTitle(snipe, result(SnipeOutcome.LOST, gbp("131.00"))))
         assertEquals("Your max was GBP 120.00", texts.resultText(snipe, result(SnipeOutcome.LOST, gbp("131.00"))))
-        assertEquals("Bid failed · Canon AE-1", texts.resultTitle(snipe, result(SnipeOutcome.FAILED)))
+        // DESIGN 5.3 and MF24: "Bid not sent" when the bid never left the phone, "Bid failed" once eBay had it.
+        assertEquals("Bid not sent · Canon AE-1", texts.resultTitle(snipe, result(SnipeOutcome.FAILED)))
+        assertEquals(
+            "Bid failed · Canon AE-1",
+            texts.resultTitle(snipe, result(SnipeOutcome.FAILED).copy(bidSentAtUtcMillis = TEST_NOW - 6_000)),
+        )
         assertEquals(
             "eBay session expired",
             texts.resultText(snipe, result(SnipeOutcome.FAILED, reason = "eBay session expired")),
