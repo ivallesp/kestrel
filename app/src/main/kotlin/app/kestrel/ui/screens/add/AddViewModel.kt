@@ -259,13 +259,11 @@ class AddViewModel(
         viewModelScope.launch {
             try {
                 val lead = model.value.leadSeconds
-                val groupId =
-                    when (val group = model.value.group) {
-                        GroupChoice.None -> null
-                        is GroupChoice.Existing -> group.group.id
-                        is GroupChoice.New -> services.createGroup(group.name).id
-                    }
-                when (val result = services.add(listing, max, lead, groupId)) {
+                val group = model.value.group
+                val groupId = (group as? GroupChoice.Existing)?.group?.id
+                // A new group is stored with the snipe, so a refused or repeated Arm never leaves an empty one.
+                val newGroupName = (group as? GroupChoice.New)?.name
+                when (val result = services.add(listing, max, lead, groupId, newGroupName)) {
                     is AddResult.Added -> {
                         val now = Instant.ofEpochMilli(services.nowUtcMillis())
                         val message =

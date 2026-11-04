@@ -31,13 +31,15 @@ class SnipeActions internal constructor(
         clearNotifications = { container.notifications.cancelForSnipe(it) },
     )
 
+    /** [newGroupName] stores a new group with the snipe; see [SnipeRepository.addFromListing]. */
     suspend fun add(
         listing: Listing,
         maxBid: Money?,
         leadSeconds: Int,
         groupId: Long? = null,
+        newGroupName: String? = null,
     ): AddResult =
-        repository.addFromListing(listing, maxBid, leadSeconds, groupId).also { result ->
+        repository.addFromListing(listing, maxBid, leadSeconds, groupId, newGroupName).also { result ->
             if (result is AddResult.Added) reschedule(result.snipe)
         }
 

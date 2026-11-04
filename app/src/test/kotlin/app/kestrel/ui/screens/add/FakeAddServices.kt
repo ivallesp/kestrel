@@ -20,6 +20,7 @@ data class AddCall(
     val maxBid: Money?,
     val leadSeconds: Int,
     val groupId: Long?,
+    val newGroupName: String? = null,
 )
 
 /**
@@ -39,7 +40,6 @@ class FakeAddServices(
     val clock = MutableStateFlow(Instant.ofEpochMilli(nowMillis))
     val fetched = mutableListOf<ParsedLink>()
     val added = mutableListOf<AddCall>()
-    val createdGroups = mutableListOf<String>()
     var addResult: (
         AddCall,
     ) -> AddResult = { call -> AddResult.Added(AddFixtures.added(id = 42, listing = call.listing, max = call.maxBid)) }
@@ -55,20 +55,14 @@ class FakeAddServices(
 
     override fun groups(): Flow<List<SnipeGroup>> = groupList
 
-    override suspend fun createGroup(name: String): SnipeGroup {
-        createdGroups += name
-        val group = SnipeGroup(id = 100L + createdGroups.size, name = name)
-        groupList.value = groupList.value + group
-        return group
-    }
-
     override suspend fun add(
         listing: Listing,
         maxBid: Money?,
         leadSeconds: Int,
         groupId: Long?,
+        newGroupName: String?,
     ): AddResult {
-        val call = AddCall(listing, maxBid, leadSeconds, groupId)
+        val call = AddCall(listing, maxBid, leadSeconds, groupId, newGroupName)
         added += call
         return addResult(call)
     }

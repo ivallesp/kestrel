@@ -33,13 +33,13 @@ interface AddServices {
 
     fun groups(): Flow<List<SnipeGroup>>
 
-    suspend fun createGroup(name: String): SnipeGroup
-
+    /** Stores the snipe; [newGroupName] creates its group with it, only if the snipe is added. */
     suspend fun add(
         listing: Listing,
         maxBid: Money?,
         leadSeconds: Int,
         groupId: Long?,
+        newGroupName: String? = null,
     ): AddResult
 
     suspend fun defaultLeadSeconds(): Int
@@ -101,14 +101,13 @@ internal class ContainerAddServices(
 
     override fun groups(): Flow<List<SnipeGroup>> = container.repository.observeGroups()
 
-    override suspend fun createGroup(name: String): SnipeGroup = container.repository.createGroup(name)
-
     override suspend fun add(
         listing: Listing,
         maxBid: Money?,
         leadSeconds: Int,
         groupId: Long?,
-    ): AddResult = container.snipeActions.add(listing, maxBid, leadSeconds, groupId)
+        newGroupName: String?,
+    ): AddResult = container.snipeActions.add(listing, maxBid, leadSeconds, groupId, newGroupName)
 
     override suspend fun defaultLeadSeconds(): Int = container.settings.current().defaultLeadSeconds
 

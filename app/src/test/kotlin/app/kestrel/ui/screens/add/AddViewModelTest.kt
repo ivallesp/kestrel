@@ -329,15 +329,15 @@ class AddViewModelTest {
             subject.viewModel.newGroupName.setTextAndPlaceCursorAtEnd("Sony bodies")
             subject.viewModel.confirmGroup()
             assertNull(subject.viewModel.uiState.value.groups)
-            assertTrue(services.createdGroups.isEmpty())
+            assertTrue(services.added.isEmpty())
             assertEquals(
                 GroupRowState.Chosen("Sony bodies: win 1 of 1", "A new group. Add more snipes to it later."),
                 (subject.page as AddPage.Ready).group,
             )
             subject.type("90.00")
             subject.viewModel.arm()
-            assertEquals(listOf("Sony bodies"), services.createdGroups)
-            assertEquals(101L, services.added.single().groupId)
+            assertEquals("Sony bodies", services.added.single().newGroupName)
+            assertNull(services.added.single().groupId)
         }
 
     @Test

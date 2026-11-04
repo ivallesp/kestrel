@@ -95,6 +95,32 @@ class SnipeRepositoryTest {
         }
 
     @Test
+    fun aNewGroupIsStoredOnlyWithTheSnipeThatJoinsIt() =
+        runTest {
+            val ended =
+                repository.addFromListing(
+                    testListing(itemId = "1", endTimeUtcMillis = now - MINUTE),
+                    gbp("48.00"),
+                    leadSeconds = 6,
+                    newGroupName = "Christmas",
+                )
+            assertTrue(ended is AddResult.Rejected)
+            addArmed(testListing(itemId = "2"))
+            val again =
+                repository.addFromListing(testListing(itemId = "2"), gbp("48.00"), 6, newGroupName = "Christmas")
+            assertTrue(again is AddResult.AlreadyAdded)
+            assertTrue("a refused add leaves no empty group", repository.observeGroups().first().isEmpty())
+
+            val added =
+                repository.addFromListing(testListing(itemId = "3"), gbp("48.00"), 6, newGroupName = " Christmas ")
+                    as AddResult.Added
+
+            val group = repository.observeGroups().first().single()
+            assertEquals("Christmas", group.name)
+            assertEquals(group.id, added.snipe.groupId)
+        }
+
+    @Test
     fun addingTheSameListingTwiceReturnsTheOpenSnipe() =
         runTest {
             val first = addArmed()

@@ -86,16 +86,22 @@ class SnipeRepository(
 
     // Operations for the UI.
 
-    /** Adds a snipe for [listing]. A null [maxBid] watches the listing without ever bidding. */
+    /**
+     * Adds a snipe for [listing]. A null [maxBid] watches the listing without ever bidding. [newGroupName] creates a
+     * group for it in the same transaction, so a refused or repeated add never leaves an empty group behind.
+     */
     suspend fun addFromListing(
         listing: Listing,
         maxBid: Money?,
         leadSeconds: Int,
         groupId: Long? = null,
+        newGroupName: String? = null,
     ): AddResult {
         val now = nowUtcMillis()
         val refusal = addRefusal(listing, maxBid, leadSeconds, now)
         if (refusal != null) return AddResult.Rejected(refusal)
+        val newGroup = newGroupName?.trim()
+        if (newGroup != null && newGroup.isEmpty()) return AddResult.Rejected("A group needs a name.")
         val ref = listing.relistedItemId?.let { ItemRef(listing.ref.site, it) } ?: listing.ref
         val result =
             database.withTransaction {
@@ -104,7 +110,11 @@ class SnipeRepository(
                 }
                 val existing = snipes.findOpen(ref.site, ref.itemId, SnipeRules.FINAL_STATUS_NAMES)
                 if (existing != null) return@withTransaction AddResult.AlreadyAdded(existing.toSnipe())
-                val watching = newSnipe(listing, ref, maxBid, leadSeconds, groupId, now)
+                val joins =
+                    newGroup?.let {
+                        groups.insert(GroupEntity(name = it, targetWins = 1, createdAtUtcMillis = now))
+                    } ?: groupId
+                val watching = newSnipe(listing, ref, maxBid, leadSeconds, joins, now)
                 val entity = watching.copy(status = SnipeRules.statusForMax(watching.toSnipe(), maxBid))
                 val id = snipes.insert(entity)
                 timeline.insert(event(id, now, TimelineKind.ADDED, addedMessage(maxBid, leadSeconds)))
