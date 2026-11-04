@@ -25,7 +25,10 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -49,6 +52,7 @@ import kotlinx.coroutines.launch
 
 /**
  * S3, one snipe's detail and final minute: Destination.Lot. Once the result is known it crossfades in place into S4.
+ * [editMax] opens the edit sheet once the lot has loaded (the Live Update's "Edit max", DESIGN 5.1).
  */
 @Composable
 fun LotDestination(
@@ -56,9 +60,18 @@ fun LotDestination(
     navigator: KestrelNavigator,
     modifier: Modifier = Modifier,
     windowInsets: WindowInsets = WindowInsets.safeDrawing,
+    editMax: Boolean = false,
     viewModel: LotViewModel = kestrelViewModel(key = "lot-$id") { LotViewModel(id, it) },
 ) {
     val page by viewModel.state.collectAsStateWithLifecycle()
+    var editMaxAsked by rememberSaveable { mutableStateOf(editMax) }
+    val live = page is LotPage.Live
+    LaunchedEffect(live, editMaxAsked) {
+        if (live && editMaxAsked) {
+            viewModel.openSheet(SheetKind.Edit)
+            editMaxAsked = false
+        }
+    }
     val snackbars = remember { SnackbarHostState() }
     val context = LocalContext.current
     LaunchedEffect(navigator) { navigator.messages.collect { snackbars.show(it) } }
@@ -157,13 +170,13 @@ fun LotDestination(
                 .padding(horizontal = 8.dp, vertical = 8.dp),
         )
     }
-    val live = (page as? LotPage.Live)?.state
-    val sheet = live?.sheet
-    if (live != null && sheet != null) {
+    val livePage = (page as? LotPage.Live)?.state
+    val sheet = livePage?.sheet
+    if (livePage != null && sheet != null) {
         EditMaxSheet(
             state = sheet,
             input = viewModel.maxInput,
-            now = live.now,
+            now = livePage.now,
             onSave = viewModel::save,
             onDismiss = viewModel::closeSheet,
             onUseAmount = viewModel::useAmount,

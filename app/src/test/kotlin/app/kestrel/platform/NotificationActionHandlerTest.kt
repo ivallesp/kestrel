@@ -229,41 +229,6 @@ class NotificationActionHandlerTest {
         }
 
     @Test
-    fun cancelStopsTheJobsTheAlarmsAndTheNotifications() =
-        runTest {
-            val snipe = overMaxSnipe()
-            val job = Job()
-            registry.register(
-                JobKey(snipe.id, JobKind.WINDOW),
-                SnipeRequest(SnipeAction.WINDOW, snipe.id, null, null),
-                job,
-            )
-            notifications.windowOpened(snipe, snipe.endTimeUtcMillis - 6_000)
-
-            handler.handle(NotificationActions.cancelSnipe(context, snipe.id))
-
-            assertEquals(SnipeStatus.CANCELLED, repository.snipe(snipe.id)?.status)
-            assertTrue(job.isCancelled)
-            assertEquals(listOf(snipe.id), cancelled)
-            assertNull(shadowOf(manager).getNotification(NotificationIds.window(snipe.id)))
-        }
-
-    @Test
-    fun cancelAfterTheBidWentOutIsRefusedWithAnExplanation() =
-        runTest {
-            val snipe = overMaxSnipe()
-            repository.update(repository.snipe(snipe.id)!!.copy(status = SnipeStatus.BID_SENT))
-
-            handler.handle(NotificationActions.cancelSnipe(context, snipe.id))
-
-            assertEquals(SnipeStatus.BID_SENT, repository.snipe(snipe.id)?.status)
-            assertTrue(cancelled.isEmpty())
-            val refusal = shadowOf(manager).getNotification(NotificationIds.needsUser(snipe.id))
-            assertNotNull(refusal)
-            assertEquals("Can't cancel now", refusal.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString())
-        }
-
-    @Test
     fun aDismissedLiveUpdateStaysDismissed() =
         runTest {
             val snipe = overMaxSnipe()
@@ -279,7 +244,7 @@ class NotificationActionHandlerTest {
     @Test
     fun intentsWithoutASnipeAreIgnored() =
         runTest {
-            handler.handle(Intent(NotificationActions.ACTION_CANCEL_SNIPE))
+            handler.handle(Intent(NotificationActions.ACTION_RAISE_MAX))
 
             assertTrue(cancelled.isEmpty())
         }

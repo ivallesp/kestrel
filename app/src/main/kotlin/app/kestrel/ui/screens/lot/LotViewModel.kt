@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import app.kestrel.AppContainer
 import app.kestrel.data.EditResult
 import app.kestrel.data.PricePoint
+import app.kestrel.data.SnipeRules
 import app.kestrel.ebay.MoneyText
 import app.kestrel.model.Money
 import app.kestrel.model.Snipe
@@ -357,7 +358,8 @@ class LotViewModel(
 
     /**
      * "Stop sniping": the lot goes back to watching, with Undo. Inside the bid window the data layer refuses a new max,
-     * so the snipe is cancelled instead; a cancel cannot be undone yet.
+     * so the snipe is cancelled instead, with Undo while it can still come back (SnipeRules.uncancelRefusal: a minute
+     * before the end; the scheduler then opens its window at once).
      */
     fun stopSniping() {
         val snipe = latest ?: return
@@ -373,7 +375,7 @@ class LotViewModel(
                 is EditResult.NotAllowed -> {
                     when (val cancelled = data.cancel(snipeId)) {
                         is EditResult.Done -> {
-                            effectChannel.send(LotEffect.Show(ShellMessage(text)))
+                            effectChannel.send(LotEffect.Show(cancelledMessage(text, cancelled.snipe)))
                         }
 
                         is EditResult.NotAllowed -> {
@@ -393,6 +395,19 @@ class LotViewModel(
                 }
             }
         }
+    }
+
+    /** "Stopped sniping …" with Undo for as long as the snipe can still come back, or without it after that. */
+    private fun cancelledMessage(
+        text: String,
+        cancelled: Snipe,
+    ): ShellMessage {
+        val undoFor =
+            cancelled.endTimeUtcMillis - data.nowUtcMillis() - SnipeRules.UNCANCEL_MINIMUM_LEFT_MILLIS -
+                UNDO_MARGIN_MILLIS
+        if (undoFor < MINIMUM_UNDO_MILLIS) return ShellMessage(text)
+        val undo: () -> Unit = { data.runDetached { data.undoCancel(snipeId) } }
+        return ShellMessage(text, UNDO, minOf(ShellMessage.UNDO_MILLIS, undoFor), undo)
     }
 
     /**

@@ -265,8 +265,6 @@ internal class NotificationTexts(
             ScheduleProblem.BACKGROUND_CHECK_FAILED -> "Price checks may not run. Open Kestrel."
         }
 
-    fun cancelRefusedTitle(): String = "Can't cancel now"
-
     // The quiet notification while a check or a dry run runs.
 
     fun serviceTitle(action: SnipeAction?): String =

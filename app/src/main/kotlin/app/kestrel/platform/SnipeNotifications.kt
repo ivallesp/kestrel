@@ -197,8 +197,14 @@ class SnipeNotifications internal constructor(
                 .setPublicVersion(windowPublicVersion(bidAt))
                 .setContentIntent(openSnipe(state.snipeId))
                 .setDeleteIntent(broadcast(dismissed, state.snipeId, NotificationIds.Slot.WINDOW_DISMISSED))
-                .addAction(cancelAction(state.snipeId))
                 .setStyle(progressStyle(state))
+        // DESIGN 5.1: "Edit max" until the edits lock, then only "Open". There is no cancel action: a stop is a
+        // destructive change, made in the app with its Undo (MF39).
+        val editable =
+            snipe?.maxBid != null && state.outcome == null &&
+                SnipeRules.maxOrLeadRefusal(snipe, clock.nowUtcMillis()) == null
+        if (editable) builder.addAction(editMaxAction(state.snipeId))
+        builder.addAction(openAction(state.snipeId))
         requestPromotion(builder)
         state.endTimeUtcMillis?.let { end ->
             // A Live Update left behind by a killed process must not count down forever.
@@ -303,20 +309,6 @@ class SnipeNotifications internal constructor(
                 .setCategory(Notification.CATEGORY_ERROR)
                 .addAction(openAction(snipe.id))
         post(NotificationIds.needsUser(snipe.id), builder.build())
-    }
-
-    internal fun showCancelRefused(
-        snipe: Snipe,
-        reason: String,
-    ) {
-        val notification =
-            alert(snipe.id, R.drawable.ic_notification_error)
-                .setContentTitle(texts.cancelRefusedTitle())
-                .setContentText(reason)
-                .setStyle(Notification.BigTextStyle().bigText("$reason\n${snipe.title}"))
-                .setCategory(Notification.CATEGORY_STATUS)
-                .build()
-        post(NotificationIds.needsUser(snipe.id), notification)
     }
 
     /** Android blocked the service from starting in the background; a tap starts it, which Android allows. */
@@ -494,10 +486,17 @@ class SnipeNotifications internal constructor(
             .Builder(Icon.createWithResource(context, R.drawable.ic_action_open), OPEN_LABEL, openSnipe(snipeId))
             .build()
 
-    private fun cancelAction(snipeId: Long): Notification.Action {
-        val cancel = broadcast(NotificationActions.cancelSnipe(context, snipeId), snipeId, NotificationIds.Slot.CANCEL)
+    /** Opens S3 with the edit sheet; its own link address keeps it apart from [openSnipe] under the same code. */
+    private fun editMaxAction(snipeId: Long): Notification.Action {
+        val edit =
+            PendingIntent.getActivity(
+                context,
+                NotificationIds.requestCode(snipeId, NotificationIds.Slot.OPEN),
+                AppLinks.openSnipe(context, snipeId, editMax = true),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
         return Notification.Action
-            .Builder(Icon.createWithResource(context, R.drawable.ic_action_close), CANCEL_LABEL, cancel)
+            .Builder(Icon.createWithResource(context, R.drawable.ic_action_edit), EDIT_MAX_LABEL, edit)
             .build()
     }
 
@@ -573,7 +572,7 @@ class SnipeNotifications internal constructor(
         const val TAG = "SnipeNotifications"
         const val RAISE_MAX_LABEL = "Raise max"
         const val OPEN_LABEL = "Open"
-        const val CANCEL_LABEL = "Cancel snipe"
+        const val EDIT_MAX_LABEL = "Edit max"
         const val CONFIRMATION_TIMEOUT_MILLIS = 5 * 60_000L
         const val WINDOW_NOTIFICATION_LINGER_MILLIS = 60 * 60_000L
         const val MINIMUM_TIMEOUT_MILLIS = 5 * 60_000L

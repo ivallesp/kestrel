@@ -34,6 +34,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.time.Instant
 
 /** The lot ViewModel over a fake [LotData]: what it shows, how often it ticks, and what each action does. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -241,7 +242,7 @@ class LotViewModelTest {
         }
 
     @Test
-    fun insideTheWindowStoppingCancelsWithoutAnUndo() =
+    fun inTheFinalMinuteStoppingCancelsWithoutAnUndo() =
         runTest(dispatcher) {
             val data = FakeLotData(fixture.canonFinalMinute, testScheduler::currentTime)
             data.updateMaxResult = { EditResult.NotAllowed("The bid window is open, so this can't change now.") }
@@ -251,7 +252,31 @@ class LotViewModelTest {
             assertEquals(1, data.cancels)
             val message = (data.effects.single() as LotEffect.Show).message
             assertEquals("Stopped sniping Canon AE-1", message.text)
+            // Less than a minute is left, so the snipe could not come back (SnipeRules.uncancelRefusal).
             assertNull(message.actionLabel)
+        }
+
+    @Test
+    fun insideTheWindowStoppingCancelsWithAnUndoWhileItCanComeBack() =
+        runTest(dispatcher) {
+            val data =
+                FakeLotData(
+                    fixture.canonFinalMinute.copy(
+                        now = Instant.ofEpochMilli(fixture.canonFinalMinute.snipe.endTimeUtcMillis - 110_000),
+                    ),
+                    testScheduler::currentTime,
+                )
+            data.updateMaxResult = { EditResult.NotAllowed("The bid window is open, so this can't change now.") }
+            val viewModel = viewModelFor(data)
+            viewModel.stopSniping()
+            runCurrent()
+            assertEquals(1, data.cancels)
+            val message = (data.effects.single() as LotEffect.Show).message
+            assertEquals("Stopped sniping Canon AE-1", message.text)
+            assertEquals("Undo", message.actionLabel)
+            message.onAction!!.invoke()
+            data.runDetached()
+            assertEquals(1, data.undoCancels)
         }
 
     @Test

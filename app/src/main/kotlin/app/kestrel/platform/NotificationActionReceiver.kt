@@ -11,7 +11,7 @@ import app.kestrel.model.Money
 import app.kestrel.model.Snipe
 import kotlinx.coroutines.launch
 
-/** Handles the buttons on Kestrel's notifications: Raise max (typed reply), Cancel snipe, and a dismissed Live Update. */
+/** Handles the buttons on Kestrel's notifications: Raise max (typed reply) and a dismissed Live Update. */
 class NotificationActionReceiver : BroadcastReceiver() {
     override fun onReceive(
         context: Context,
@@ -47,7 +47,6 @@ internal class NotificationActionHandler(
         if (snipeId <= 0L) return
         when (intent.action) {
             NotificationActions.ACTION_RAISE_MAX -> raiseMax(snipeId, intent)
-            NotificationActions.ACTION_CANCEL_SNIPE -> cancelSnipe(snipeId)
             NotificationActions.ACTION_WINDOW_DISMISSED -> notifications.onWindowDismissed(snipeId)
         }
     }
@@ -98,17 +97,6 @@ internal class NotificationActionHandler(
             EditResult.NotFound -> {
                 notifications.cancelPriceAlert(snipe.id)
             }
-        }
-    }
-
-    /** [SnipeActions.cancel] already stops everything; only a refusal or a vanished snipe needs more here. */
-    private suspend fun cancelSnipe(snipeId: Long) {
-        val result = actions.cancel(snipeId)
-        if (result is EditResult.NotAllowed) {
-            val snipe = repository.snipe(snipeId) ?: return
-            notifications.showCancelRefused(snipe, result.reason)
-        } else if (result == EditResult.NotFound) {
-            notifications.cancelForSnipe(snipeId)
         }
     }
 

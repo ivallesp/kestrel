@@ -18,6 +18,10 @@ class LaunchIntentsTest {
     @Test
     fun aNotificationLinkOpensTheSnipe() {
         assertEquals(Destination.Lot(42), LaunchIntents.destinationOf(AppLinks.openSnipe(context, 42)))
+        assertEquals(
+            Destination.Lot(42, editMax = true),
+            LaunchIntents.destinationOf(AppLinks.openSnipe(context, 42, editMax = true)),
+        )
     }
 
     @Test

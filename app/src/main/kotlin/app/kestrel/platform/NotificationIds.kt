@@ -33,6 +33,8 @@ internal object NotificationIds {
         TAP_TO_ARM,
         OPEN,
         RAISE_MAX,
+
+        // The Live Update no longer has a cancel button; the slot stays so the other request codes do not move.
         CANCEL,
         WINDOW_DISMISSED,
         ALARM_CHECK,

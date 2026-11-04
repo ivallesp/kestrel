@@ -19,10 +19,11 @@ sealed interface Destination : NavKey {
         val link: String? = null,
     ) : Destination
 
-    /** S3: one snipe's detail and its final minute. */
+    /** S3: one snipe's detail and its final minute; [editMax] opens its edit sheet (the Live Update's "Edit max"). */
     @Serializable
     data class Lot(
         val id: Long,
+        val editMax: Boolean = false,
     ) : Destination
 
     /** S4: one snipe's result and receipt. */

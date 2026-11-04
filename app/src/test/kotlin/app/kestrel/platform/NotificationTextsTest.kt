@@ -92,7 +92,6 @@ class NotificationTextsTest {
                     texts.priceOverMaxTitle(),
                     texts.raiseMaxDoneTitle(gbp("1234.56")),
                     texts.unlockTitle(),
-                    texts.cancelRefusedTitle(),
                     texts.preparingTitle(),
                 )
 

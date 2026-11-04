@@ -70,7 +70,9 @@ fun KestrelShell(
                     entry<Destination.Add> { key ->
                         Screen(sharedScope, navigator, key) { AddDestination(key.link, it) }
                     }
-                    entry<Destination.Lot> { key -> Screen(sharedScope, navigator, key) { LotDestination(key.id, it) } }
+                    entry<Destination.Lot> { key ->
+                        Screen(sharedScope, navigator, key) { LotDestination(key.id, it, editMax = key.editMax) }
+                    }
                     entry<Destination.Result> { key ->
                         Screen(sharedScope, navigator, key) { ResultDestination(key.id, it) }
                     }

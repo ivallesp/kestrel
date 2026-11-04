@@ -16,7 +16,10 @@ import app.kestrel.engine.WindowPhase
 import app.kestrel.model.Snipe
 import app.kestrel.model.SnipeOutcome
 import app.kestrel.model.SnipeResult
+import app.kestrel.model.SnipeStatus
 import app.kestrel.ui.MainActivity
+import app.kestrel.ui.shell.Destination
+import app.kestrel.ui.shell.LaunchIntents
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -97,12 +100,29 @@ class SnipeNotificationsTest {
         assertEquals("countdown on the phone's clock", bidAt - 2_500, live.`when`)
         assertNull(live.shortCriticalText)
         assertNotNull(live.deleteIntent)
-        assertEquals(listOf("Cancel snipe"), live.actions.map { it.title.toString() })
+        // DESIGN 5.1: "Edit max" and "Open", and no cancel action.
+        assertEquals(listOf("Edit max", "Open"), live.actions.map { it.title.toString() })
+        val editMax = shadowOf(live.actions[0].actionIntent).savedIntent
+        assertEquals(Destination.Lot(5, editMax = true), LaunchIntents.destinationOf(editMax))
+        assertEquals(
+            Destination.Lot(5),
+            LaunchIntents.destinationOf(shadowOf(live.actions[1].actionIntent).savedIntent),
+        )
 
         val style = live.progressStyle()
         assertEquals(listOf(25, 50, 75, 100), style.progressPoints.map { it.position })
         assertEquals(100, style.progressMax)
         assertEquals(10, style.progress)
+    }
+
+    @Test
+    fun theLiveUpdateDropsEditMaxOnceTheEditsLock() {
+        val bidAt = snipe.endTimeUtcMillis - 6_000
+        clock.now = bidAt - 2_000
+        notifications.windowOpened(snipe.copy(status = SnipeStatus.BIDDING), bidAt)
+
+        val live = posted(NotificationIds.window(snipe.id))!!
+        assertEquals(listOf("Open"), live.actions.map { it.title.toString() })
     }
 
     @Test
