@@ -65,7 +65,7 @@ internal class SnipeJobCoordinator(
             return Submission.ALREADY_RUNNING
         }
         job.start()
-        onJobsChanged()
+        safely("update the service") { onJobsChanged() }
         return Submission.STARTED
     }
 
@@ -74,8 +74,11 @@ internal class SnipeJobCoordinator(
         kind: JobKind,
         key: JobKey,
     ) {
-        val startedAt = nowUtcMillis()
-        val wakeLock = wakeLocks.acquire("kestrel:${kind.name.lowercase()}", kind.wakeLockMillis)
+        // Everything below is guarded: one failing job must never take the other windows down with the process,
+        // and its registry entry must always go, or the service would never stop.
+        val startedAt = safely("read the clock") { nowUtcMillis() } ?: System.currentTimeMillis()
+        val wakeLock =
+            safely("take a wake lock") { wakeLocks.acquire("kestrel:${kind.name.lowercase()}", kind.wakeLockMillis) }
         try {
             withTimeout(kind.timeoutMillis) { runner.run(kind, request.snipeId) }
         } catch (error: TimeoutCancellationException) {
@@ -87,8 +90,9 @@ internal class SnipeJobCoordinator(
             Log.e(TAG, "${kind.label} for snipe ${request.snipeId} failed", error)
             report(request.snipeId, kind, "${kind.label} stopped by an error: ${describe(error)}")
         } finally {
-            wakeLock.release()
-            registry.unregister(key, currentCoroutineContext().job)
+            safely("release the wake lock") { wakeLock?.release() }
+            // The job stays registered until its aftermath is done, so nothing reopens a window that is still
+            // settling its status.
             withContext(NonCancellable) {
                 try {
                     aftermath.jobFinished(request.snipeId, kind, startedAt)
@@ -96,9 +100,21 @@ internal class SnipeJobCoordinator(
                     Log.e(TAG, "Could not reschedule snipe ${request.snipeId} after ${kind.label}", error)
                 }
             }
-            onJobsChanged()
+            registry.unregister(key, currentCoroutineContext().job)
+            safely("update the service") { onJobsChanged() }
         }
     }
+
+    private inline fun <T> safely(
+        what: String,
+        action: () -> T,
+    ): T? =
+        try {
+            action()
+        } catch (error: RuntimeException) {
+            Log.e(TAG, "Could not $what", error)
+            null
+        }
 
     private suspend fun report(
         snipeId: Long,

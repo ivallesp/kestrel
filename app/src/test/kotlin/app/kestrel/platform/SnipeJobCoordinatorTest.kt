@@ -24,16 +24,18 @@ class SnipeJobCoordinatorTest {
     private val aftermath = RecordingAftermath()
     private var changes = 0
 
-    private fun TestScope.coordinator() =
-        SnipeJobCoordinator(
-            scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)),
-            runner = runner,
-            registry = registry,
-            wakeLocks = wakeLocks,
-            aftermath = aftermath,
-            nowUtcMillis = { 1_000L },
-            onJobsChanged = { changes++ },
-        )
+    private fun TestScope.coordinator(
+        locks: WakeLocks = wakeLocks,
+        onJobsChanged: () -> Unit = { changes++ },
+    ) = SnipeJobCoordinator(
+        scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)),
+        runner = runner,
+        registry = registry,
+        wakeLocks = locks,
+        aftermath = aftermath,
+        nowUtcMillis = { 1_000L },
+        onJobsChanged = onJobsChanged,
+    )
 
     private fun request(
         action: SnipeAction,
@@ -168,6 +170,77 @@ class SnipeJobCoordinatorTest {
 
             assertEquals(listOf(2L), registry.runningWindows().map { it.snipeId })
             assertEquals(1, wakeLocks.held)
+        }
+
+    @Test
+    fun aJobStillRunsAndCleansUpWhenNoWakeLockCanBeTaken() =
+        runTest {
+            runner.holdJobs = false
+            val coordinator = coordinator(locks = { _, _ -> throw SecurityException("WAKE_LOCK not granted") })
+
+            coordinator.submit(request(SnipeAction.WINDOW))
+            advanceUntilIdle()
+
+            assertEquals(listOf(JobKind.WINDOW to 1L), runner.runs)
+            assertEquals(listOf("finished 1 WINDOW at 1000"), aftermath.calls)
+            assertTrue(registry.isEmpty())
+        }
+
+    @Test
+    fun aFailingServiceCallbackDoesNotStrandTheJob() =
+        runTest {
+            runner.holdJobs = false
+            var calls = 0
+            val coordinator =
+                coordinator(onJobsChanged = {
+                    calls++
+                    if (calls > 1) throw IllegalStateException("notification could not be built")
+                })
+
+            coordinator.submit(request(SnipeAction.CHECK))
+            advanceUntilIdle()
+
+            assertEquals(2, calls)
+            assertEquals(listOf("finished 1 CHECK at 1000"), aftermath.calls)
+            assertTrue(registry.isEmpty())
+        }
+
+    @Test
+    fun aJobStaysRegisteredUntilItsAftermathIsDone() =
+        runTest {
+            runner.holdJobs = false
+            var registeredDuringAftermath: Set<JobKind>? = null
+            val coordinator =
+                SnipeJobCoordinator(
+                    scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)),
+                    runner = runner,
+                    registry = registry,
+                    wakeLocks = wakeLocks,
+                    aftermath =
+                        object : JobAftermath {
+                            override suspend fun jobFailed(
+                                snipeId: Long,
+                                kind: JobKind,
+                                message: String,
+                            ) = Unit
+
+                            override suspend fun jobFinished(
+                                snipeId: Long,
+                                kind: JobKind,
+                                startedAtUtcMillis: Long,
+                            ) {
+                                registeredDuringAftermath = registry.runningKinds(snipeId)
+                            }
+                        },
+                    nowUtcMillis = { 1_000L },
+                    onJobsChanged = {},
+                )
+
+            coordinator.submit(request(SnipeAction.WINDOW))
+            advanceUntilIdle()
+
+            assertEquals(setOf(JobKind.WINDOW), registeredDuringAftermath)
+            assertTrue(registry.isEmpty())
         }
 
     internal class RecordingAftermath : JobAftermath {

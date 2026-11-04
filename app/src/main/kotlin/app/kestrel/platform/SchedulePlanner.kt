@@ -59,11 +59,15 @@ internal data class SchedulePlan(
 internal class SchedulePlanner(
     private val policy: SchedulePolicy,
 ) {
-    /** [lastCheckAttemptUtcMillis] is when a check last ran, even if it failed, so a failing check cannot loop. */
+    /**
+     * [lastCheckAttemptUtcMillis] is when a check last ran, even if it failed, so a failing check cannot loop.
+     * [windowRunning] says whether this process is running the snipe's window right now.
+     */
     fun plan(
         snipe: Snipe,
         nowUtcMillis: Long,
         lastCheckAttemptUtcMillis: Long? = null,
+        windowRunning: Boolean = false,
     ): SchedulePlan {
         if (snipe.status.isFinal) return SchedulePlan.NOTHING
         val end = snipe.endTimeUtcMillis
@@ -71,7 +75,7 @@ internal class SchedulePlanner(
         return SchedulePlan(
             check = checkAt(snipe, nowUtcMillis, lastCheckAttemptUtcMillis),
             dryRunAtUtcMillis = if (willBid) policy.dryRunAt(end).takeIf { it > nowUtcMillis } else null,
-            windowAtUtcMillis = if (willBid) windowAt(snipe, nowUtcMillis) else null,
+            windowAtUtcMillis = if (willBid) windowAt(snipe, nowUtcMillis, windowRunning) else null,
             backupAtUtcMillis = if (willBid) policy.backupWindowAt(end).takeIf { it > nowUtcMillis } else null,
         )
     }
@@ -79,14 +83,21 @@ internal class SchedulePlanner(
     private fun windowAt(
         snipe: Snipe,
         now: Long,
+        windowRunning: Boolean,
     ): Long? {
         val opens = policy.windowOpensAt(snipe.endTimeUtcMillis)
         return when {
             opens > now -> opens
 
-            // Added late, or the max was raised after the window time: open it now while the auction runs.
-            // Only ARMED qualifies: every status the window leaves behind is something else, so this cannot loop.
-            snipe.status == SnipeStatus.ARMED && now < snipe.endTimeUtcMillis -> now
+            now >= snipe.endTimeUtcMillis -> null
+
+            // Added late, or the max was raised after the window time: open it now. Every status a window leaves
+            // behind is something else, so this cannot reopen a window that already ran.
+            snipe.status == SnipeStatus.ARMED -> now
+
+            // A window cut off before it sent the bid (the app was updated or killed): open it again. A retry can
+            // only use the same max, because the max cannot change while the window is open.
+            snipe.status == SnipeStatus.BIDDING && !windowRunning -> now
 
             else -> null
         }

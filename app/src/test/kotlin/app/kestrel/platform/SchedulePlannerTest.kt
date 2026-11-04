@@ -73,14 +73,35 @@ class SchedulePlannerTest {
 
     @Test
     fun aPassedWindowIsNotReopenedForASnipeTheWindowAlreadyHandled() {
-        for (status in listOf(
-            SnipeStatus.PRICE_OVER_MAX,
-            SnipeStatus.NEEDS_SIGN_IN,
-            SnipeStatus.NEEDS_YOU,
-            SnipeStatus.BIDDING,
-        )) {
+        for (status in listOf(SnipeStatus.PRICE_OVER_MAX, SnipeStatus.NEEDS_SIGN_IN, SnipeStatus.NEEDS_YOU)) {
             val plan = planner.plan(testSnipe(status = status, endTimeUtcMillis = now + 60_000), now)
             assertNull("$status", plan.windowAtUtcMillis)
+        }
+    }
+
+    @Test
+    fun aWindowCutOffBeforeItsBidReopensOnlyWhenNothingRunsIt() {
+        val interrupted = testSnipe(status = SnipeStatus.BIDDING, endTimeUtcMillis = now + 60_000)
+
+        assertEquals(now, planner.plan(interrupted, now, windowRunning = false).windowAtUtcMillis)
+        assertNull(planner.plan(interrupted, now, windowRunning = true).windowAtUtcMillis)
+        assertNull(
+            "too late once the auction ended",
+            planner.plan(interrupted, now + 60_000, windowRunning = false).windowAtUtcMillis,
+        )
+    }
+
+    @Test
+    fun aBidAlreadyWithEbayNeverOpensAnotherWindow() {
+        for (status in listOf(SnipeStatus.BID_SENT, SnipeStatus.LEADING, SnipeStatus.OUTBID, SnipeStatus.EXTENDED)) {
+            val plan =
+                planner.plan(
+                    testSnipe(status = status, endTimeUtcMillis = now + 60_000),
+                    now,
+                    windowRunning = false,
+                )
+            assertNull("$status", plan.windowAtUtcMillis)
+            assertNull("$status", plan.backupAtUtcMillis)
         }
     }
 

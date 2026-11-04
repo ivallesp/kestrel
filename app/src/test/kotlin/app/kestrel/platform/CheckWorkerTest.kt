@@ -1,5 +1,6 @@
 package app.kestrel.platform
 
+import android.app.AlarmManager
 import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -31,11 +32,14 @@ class CheckWorkerTest {
     private val app = ApplicationProvider.getApplicationContext<TestKestrelApp>()
 
     /** Runs the worker as WorkManager would, letting its main-thread part run on Robolectric's main looper. */
-    private fun runWorker(snipeId: Long?): ListenableWorker.Result {
-        val worker =
+    private fun runWorker(snipeId: Long?): ListenableWorker.Result =
+        finish(
             TestListenableWorkerBuilder<CheckWorker>(app)
                 .apply { if (snipeId != null) setInputData(workDataOf(CheckWorker.KEY_SNIPE_ID to snipeId)) }
-                .build()
+                .build(),
+        )
+
+    private fun finish(worker: ListenableWorker): ListenableWorker.Result {
         val outcome = worker.startWork()
         repeat(500) {
             if (outcome.isDone) return outcome.get()
@@ -81,6 +85,23 @@ class CheckWorkerTest {
             app.testContainer.fakeRunner.runs
                 .isEmpty(),
         )
+    }
+
+    @Test
+    fun theRescheduleFallbackRearmsEveryPendingSnipe() {
+        val listing = testListing(endTimeUtcMillis = TEST_NOW + 3 * HOUR)
+        val snipe =
+            runBlocking {
+                app.testContainer.repository.addFromListing(listing, gbp("48.00"), 6) as AddResult.Added
+            }.snipe
+
+        assertEquals(
+            ListenableWorker.Result.success(),
+            finish(TestListenableWorkerBuilder<RescheduleWorker>(app).build()),
+        )
+
+        val alarms = shadowOf(app.getSystemService(AlarmManager::class.java)).scheduledAlarms
+        assertTrue(alarms.any { SnipeRequest.from(it.savedIntent) == SnipeRequest.of(SnipeAction.WINDOW, snipe) })
     }
 
     @Test

@@ -20,6 +20,7 @@ import app.kestrel.model.Money
 import app.kestrel.model.Snipe
 import app.kestrel.model.SnipeOutcome
 import app.kestrel.model.SnipeResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -527,7 +528,16 @@ class SnipeNotifications internal constructor(
     ) {
         val url = snipe.imageUrl ?: return
         if (photos.cached(url) != null) return
-        scope.launch { photos.load(url)?.let(use) }
+        scope.launch {
+            try {
+                photos.load(url)?.let(use)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                // A photo is a nicety; failing to add one must never disturb a running snipe.
+                Log.w(TAG, "Could not add the item photo", error)
+            }
+        }
     }
 
     /** Converts true UTC to the phone's own clock, which is what notification times are drawn against. */

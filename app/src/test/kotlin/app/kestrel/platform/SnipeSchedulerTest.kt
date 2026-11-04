@@ -39,6 +39,7 @@ class SnipeSchedulerTest {
     private val systemClockSkewMillis = 2_500L
     private val problems = RecordingProblemNotifier()
     private var pending: List<Snipe> = emptyList()
+    private val runningWindows = mutableSetOf<Long>()
     private lateinit var scheduler: SnipeScheduler
 
     @Before
@@ -64,6 +65,7 @@ class SnipeSchedulerTest {
                 permissions = AndroidAlarmPermissions(context),
                 workManager = { WorkManager.getInstance(context) },
                 problemNotifier = problems,
+                isWindowRunning = { it in runningWindows },
             )
     }
 
@@ -237,6 +239,19 @@ class SnipeSchedulerTest {
         scheduler.schedule(snipe)
 
         assertEquals(clock.elapsed, alarmFor(SnipeAction.WINDOW, snipe.id)?.triggerAtMs)
+    }
+
+    @Test
+    fun aWindowCutOffBeforeItsBidOpensAgainUnlessItIsStillRunning() {
+        val interrupted = testSnipe(id = 6, status = SnipeStatus.BIDDING, endTimeUtcMillis = clock.now + 60_000)
+
+        runningWindows += interrupted.id
+        scheduler.schedule(interrupted)
+        assertNull("a running window is left alone", alarmFor(SnipeAction.WINDOW, interrupted.id))
+
+        runningWindows.clear()
+        scheduler.schedule(interrupted)
+        assertEquals(clock.elapsed, alarmFor(SnipeAction.WINDOW, interrupted.id)?.triggerAtMs)
     }
 
     @Test

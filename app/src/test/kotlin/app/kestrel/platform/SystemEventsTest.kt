@@ -25,11 +25,15 @@ import app.kestrel.data.gbp
 import app.kestrel.data.testFormatMoney
 import app.kestrel.data.testListing
 import app.kestrel.model.Snipe
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -97,6 +101,7 @@ class SystemEventsTest {
             permissions = AndroidAlarmPermissions(context),
             workManager = { WorkManager.getInstance(context) },
             problemNotifier = notifications,
+            isWindowRunning = { false },
         )
 
     private fun windowAlarmsFor(snipeId: Long) =
@@ -128,10 +133,12 @@ class SystemEventsTest {
                     rescheduleAll = { scheduler.rescheduleAll() },
                     purgeDeletedBefore = { purgedBefore = it },
                     cancelUnlockNotice = notifications::cancelUnlockToArm,
+                    finishLater = { throw AssertionError("everything fitted in the budget") },
                     nowUtcMillis = { clock.now },
                 )
 
-            handler.onRescheduleEvent(Intent.ACTION_BOOT_COMPLETED)
+            // Real time, not the test clock: the database answers on its own thread while the budget runs.
+            withContext(Dispatchers.IO) { handler.onRescheduleEvent(Intent.ACTION_BOOT_COMPLETED) }
 
             assertEquals(1, windowAlarmsFor(first.id).size)
             assertEquals(1, windowAlarmsFor(second.id).size)
@@ -145,7 +152,14 @@ class SystemEventsTest {
         runTest {
             var rescheduled = 0
             notifications.showUnlockToArm(1, TEST_NOW + HOUR)
-            val handler = SystemEventHandler({ rescheduled++ }, {}, notifications::cancelUnlockToArm, { clock.now })
+            val handler =
+                SystemEventHandler(
+                    rescheduleAll = { rescheduled++ },
+                    purgeDeletedBefore = {},
+                    cancelUnlockNotice = notifications::cancelUnlockToArm,
+                    finishLater = {},
+                    nowUtcMillis = { clock.now },
+                )
 
             handler.onRescheduleEvent(Intent.ACTION_TIME_CHANGED)
 
@@ -154,21 +168,51 @@ class SystemEventsTest {
         }
 
     @Test
-    fun aFailedRescheduleDoesNotStopThePurge() =
+    fun aFailedRescheduleIsHandedToWorkManager() =
         runTest {
+            var handedOver = false
             var purged = false
             val handler =
                 SystemEventHandler(
-                    { throw IllegalStateException("database locked") },
-                    { purged = true },
-                    {},
-                    { clock.now },
+                    rescheduleAll = { throw IllegalStateException("database locked") },
+                    purgeDeletedBefore = { purged = true },
+                    cancelUnlockNotice = {},
+                    finishLater = { handedOver = true },
+                    nowUtcMillis = { clock.now },
                 )
 
             handler.onRescheduleEvent(Intent.ACTION_MY_PACKAGE_REPLACED)
 
-            assertTrue(purged)
+            assertTrue(handedOver)
+            assertFalse("the purge can wait", purged)
         }
+
+    @Test
+    fun aRescheduleThatOverrunsTheBroadcastBudgetIsHandedToWorkManager() =
+        runTest {
+            var handedOver = false
+            val handler =
+                SystemEventHandler(
+                    rescheduleAll = { delay(60_000) },
+                    purgeDeletedBefore = {},
+                    cancelUnlockNotice = {},
+                    finishLater = { handedOver = true },
+                    nowUtcMillis = { clock.now },
+                    budgetMillis = 7_000,
+                )
+
+            handler.onRescheduleEvent(Intent.ACTION_TIME_CHANGED)
+
+            assertTrue(handedOver)
+        }
+
+    @Test
+    fun theWorkManagerFallbackIsQueuedAsUniqueExpeditedWork() {
+        RescheduleWorker.enqueue(context)
+
+        val queued = WorkManager.getInstance(context).getWorkInfosForUniqueWork(RescheduleWorker.UNIQUE_NAME).get()
+        assertEquals(1, queued.size)
+    }
 
     @Test
     fun beforeTheFirstUnlockTheNoticeCountsOnlyFutureSnipes() {

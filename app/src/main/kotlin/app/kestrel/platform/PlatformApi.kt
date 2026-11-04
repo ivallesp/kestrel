@@ -11,6 +11,8 @@ import app.kestrel.AppContainer
 import app.kestrel.engine.EngineClock
 import app.kestrel.model.Snipe
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,6 +35,7 @@ class SnipeScheduler internal constructor(
     private val permissions: AlarmPermissions,
     private val workManager: () -> WorkManager,
     private val problemNotifier: ScheduleProblemNotifier,
+    private val isWindowRunning: (snipeId: Long) -> Boolean,
 ) {
     constructor(context: Context) : this(context, context.kestrelContainer)
 
@@ -45,6 +48,7 @@ class SnipeScheduler internal constructor(
         permissions = AndroidAlarmPermissions(context),
         workManager = { WorkManager.getInstance(context) },
         problemNotifier = container.notifications,
+        isWindowRunning = container::isWindowRunning,
     )
 
     private val alarmManager: AlarmManager? = context.getSystemService(AlarmManager::class.java)
@@ -61,7 +65,7 @@ class SnipeScheduler internal constructor(
         lastCheckAttemptUtcMillis: Long?,
     ) {
         val now = clock.nowUtcMillis()
-        val plan = planner.plan(snipe, now, lastCheckAttemptUtcMillis)
+        val plan = planner.plan(snipe, now, lastCheckAttemptUtcMillis, windowRunning = isWindowRunning(snipe.id))
         if (plan.isEmpty) {
             cancel(snipe.id)
             return
@@ -98,6 +102,8 @@ class SnipeScheduler internal constructor(
     /** Re-arms everything from the database (boot, update, time change). One bad snipe never stops the rest. */
     suspend fun rescheduleAll() {
         for (snipe in pendingSnipes()) {
+            // Lets a caller with a time limit stop between snipes; scheduling one snipe is quick.
+            currentCoroutineContext().ensureActive()
             try {
                 schedule(snipe)
             } catch (error: CancellationException) {

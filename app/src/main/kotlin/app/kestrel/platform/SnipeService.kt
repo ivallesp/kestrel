@@ -10,7 +10,9 @@ import android.util.Log
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import app.kestrel.AppContainer
+import app.kestrel.R
 import app.kestrel.model.Snipe
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -22,7 +24,12 @@ import kotlinx.coroutines.cancel
  * foreground notification; otherwise a quiet notification on the background channel is.
  */
 class SnipeService : Service() {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    // A job that fails in a way nobody caught is logged, not allowed to kill the process and every other window.
+    private val scope =
+        CoroutineScope(
+            SupervisorJob() + Dispatchers.Main.immediate +
+                CoroutineExceptionHandler { _, error -> Log.e(TAG, "A snipe job failed unexpectedly", error) },
+        )
     private lateinit var container: AppContainer
     private lateinit var coordinator: SnipeJobCoordinator
     private var lastStartId = 0
@@ -77,7 +84,7 @@ class SnipeService : Service() {
     }
 
     private fun enterForeground(request: SnipeRequest?): Boolean {
-        val (id, notification) = foregroundNotification(request)
+        val (id, notification) = foregroundNotificationOrFallback(request)
         return try {
             ServiceCompat.startForeground(this, id, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
             foregroundNotificationId = id
@@ -89,6 +96,24 @@ class SnipeService : Service() {
             false
         }
     }
+
+    /**
+     * startForeground must be called whatever happens, or Android stops the app a few seconds later, so a
+     * notification that cannot be built falls back to a plain one.
+     */
+    private fun foregroundNotificationOrFallback(request: SnipeRequest?): Pair<Int, Notification> =
+        try {
+            foregroundNotification(request)
+        } catch (error: RuntimeException) {
+            Log.e(TAG, "Could not build the foreground notification", error)
+            NotificationIds.SERVICE to
+                Notification
+                    .Builder(this, NotificationChannels.BACKGROUND)
+                    .setSmallIcon(R.drawable.ic_notification_sync)
+                    .setContentTitle("Kestrel")
+                    .setOngoing(true)
+                    .build()
+        }
 
     /**
      * The first running window whose Live Update can still show owns the foreground notification; a window that is
@@ -113,7 +138,7 @@ class SnipeService : Service() {
             stopWhenIdle()
             return
         }
-        val (id, notification) = foregroundNotification(request = null)
+        val (id, notification) = foregroundNotificationOrFallback(request = null)
         // A window's Live Update is kept current by the notifier; only a change of owner needs startForeground.
         if (id == foregroundNotificationId && id != NotificationIds.SERVICE) return
         try {

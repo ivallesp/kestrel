@@ -12,7 +12,6 @@ import app.kestrel.engine.SnipeStore
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 
 /** The three kinds of work the service runs. A window outranks a dry run, which outranks a check. */
@@ -86,17 +85,28 @@ internal class EngineJobRunner(
     }
 }
 
-/** Creates a page on the main thread, uses it, and always closes it, even when the job fails or is cancelled. */
+/**
+ * Creates a page on the main thread, uses it, and always closes it, even when the job fails or is cancelled.
+ * Creation, use and closing share one block: a page handed back across a dispatcher switch can be dropped by a
+ * cancellation in between, and a dropped page would keep its WebView alive.
+ */
 internal suspend fun withPage(
     factory: BidPageFactory,
     mainDispatcher: CoroutineDispatcher = Dispatchers.Main,
     use: suspend (BidPage) -> Unit,
 ) {
-    val page = withContext(mainDispatcher) { factory.create() }
-    try {
-        use(page)
-    } finally {
-        withContext(NonCancellable + mainDispatcher) { page.close() }
+    withContext(mainDispatcher) {
+        val page = factory.create()
+        try {
+            use(page)
+        } finally {
+            try {
+                page.close()
+            } catch (error: RuntimeException) {
+                // A failing close must not hide why the job ended.
+                Log.w("withPage", "Could not close a page", error)
+            }
+        }
     }
 }
 

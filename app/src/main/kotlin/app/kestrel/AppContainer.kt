@@ -4,6 +4,7 @@ import android.app.NotificationManager
 import android.content.Context
 import android.os.SystemClock
 import android.text.format.DateFormat
+import android.util.Log
 import androidx.work.WorkManager
 import app.kestrel.data.ArmedSnipesCopy
 import app.kestrel.data.KestrelDatabase
@@ -29,6 +30,7 @@ import app.kestrel.platform.BackgroundCheck
 import app.kestrel.platform.DiskCachedItemPhotos
 import app.kestrel.platform.EngineJobRunner
 import app.kestrel.platform.JobAftermath
+import app.kestrel.platform.JobKind
 import app.kestrel.platform.LockedBootNotice
 import app.kestrel.platform.MonitorSchedulePolicy
 import app.kestrel.platform.NotificationActionHandler
@@ -36,6 +38,7 @@ import app.kestrel.platform.NotificationTexts
 import app.kestrel.platform.RaiseMaxRules
 import app.kestrel.platform.Readiness
 import app.kestrel.platform.ReadinessProbes
+import app.kestrel.platform.RescheduleWorker
 import app.kestrel.platform.SchedulePlanner
 import app.kestrel.platform.SchedulePolicy
 import app.kestrel.platform.SnipeJobAftermath
@@ -47,6 +50,7 @@ import app.kestrel.platform.SystemEventHandler
 import app.kestrel.platform.WakeLocks
 import app.kestrel.web.EbaySession
 import app.kestrel.web.WebBidPageFactory
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -59,7 +63,11 @@ open class AppContainer(
     val context: Context,
 ) {
     /** For work that must outlive a receiver or a screen, such as rescheduling after a reboot. */
-    val applicationScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val applicationScope: CoroutineScope =
+        CoroutineScope(
+            SupervisorJob() + Dispatchers.Default +
+                CoroutineExceptionHandler { _, error -> Log.e("AppContainer", "Background work failed", error) },
+        )
 
     // Data.
 
@@ -109,6 +117,7 @@ open class AppContainer(
             permissions = AndroidAlarmPermissions(context),
             workManager = { WorkManager.getInstance(context) },
             problemNotifier = notifications,
+            isWindowRunning = ::isWindowRunning,
         )
     }
 
@@ -131,6 +140,8 @@ open class AppContainer(
     }
 
     internal val jobRegistry: SnipeJobRegistry = SnipeJobRegistry()
+
+    internal fun isWindowRunning(snipeId: Long): Boolean = JobKind.WINDOW in jobRegistry.runningKinds(snipeId)
 
     internal open val wakeLocks: WakeLocks by lazy { AndroidWakeLocks(context) }
 
@@ -159,6 +170,7 @@ open class AppContainer(
             rescheduleAll = { scheduler.rescheduleAll() },
             purgeDeletedBefore = { repository.purgeDeleted(it) },
             cancelUnlockNotice = { notifications.cancelUnlockToArm() },
+            finishLater = { RescheduleWorker.enqueue(context) },
             nowUtcMillis = { clock.nowUtcMillis() },
         )
     }

@@ -8,6 +8,7 @@ import android.util.Log
 import app.kestrel.data.ArmedSnipesCopy
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Re-arms everything after a reboot, an app update or a clock or time-zone change. Before the first unlock after a
@@ -57,22 +58,43 @@ class SystemEventReceiver : BroadcastReceiver() {
     }
 }
 
-/** What a reschedule event does, apart from the receiver plumbing. */
+/**
+ * What a reschedule event does, apart from the receiver plumbing. A broadcast must finish within seconds even with
+ * goAsync, so the work has a time budget; whatever does not fit, or fails, is handed to [finishLater] (WorkManager).
+ */
 internal class SystemEventHandler(
     private val rescheduleAll: suspend () -> Unit,
     private val purgeDeletedBefore: suspend (Long) -> Unit,
     private val cancelUnlockNotice: () -> Unit,
+    private val finishLater: () -> Unit,
     private val nowUtcMillis: () -> Long,
+    private val budgetMillis: Long = BROADCAST_BUDGET_MILLIS,
 ) {
     suspend fun onRescheduleEvent(action: String) {
         if (action == Intent.ACTION_BOOT_COMPLETED) cancelUnlockNotice()
+        val finished =
+            try {
+                withTimeoutOrNull(budgetMillis) {
+                    rescheduleAll()
+                    purgeQuietly()
+                } != null
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Log.e(TAG, "Could not reschedule after $action", error)
+                false
+            }
+        if (finished) return
+        Log.w(TAG, "Rescheduling after $action did not finish in time; WorkManager takes over")
         try {
-            rescheduleAll()
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: Exception) {
-            Log.e(TAG, "Could not reschedule after $action", error)
+            finishLater()
+        } catch (error: RuntimeException) {
+            Log.e(TAG, "Could not hand rescheduling to WorkManager", error)
         }
+    }
+
+    /** Old deleted rows can wait for the next event, so a failed purge is only logged. */
+    private suspend fun purgeQuietly() {
         try {
             purgeDeletedBefore(nowUtcMillis() - DELETED_KEPT_MILLIS)
         } catch (error: CancellationException) {
@@ -85,6 +107,9 @@ internal class SystemEventHandler(
     private companion object {
         const val TAG = "SystemEventHandler"
         const val DELETED_KEPT_MILLIS = 24 * 60 * 60 * 1000L
+
+        // Foreground broadcasts such as TIME_SET get about ten seconds before Android calls the app not responding.
+        const val BROADCAST_BUDGET_MILLIS = 7_000L
     }
 }
 

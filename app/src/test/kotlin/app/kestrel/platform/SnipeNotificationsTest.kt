@@ -17,6 +17,7 @@ import app.kestrel.model.Snipe
 import app.kestrel.model.SnipeOutcome
 import app.kestrel.model.SnipeResult
 import app.kestrel.ui.MainActivity
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import org.junit.Assert.assertEquals
@@ -334,6 +335,27 @@ class SnipeNotificationsTest {
         assertNull(posted(NotificationIds.window(other.id)))
         assertNull(posted(NotificationIds.needsUser(other.id)))
         assertNotNull(posted(NotificationIds.result(other.id)))
+    }
+
+    @Test
+    fun aPhotoThatCannotBeReadIsLeftOutWithoutHarm() {
+        val brokenPhotos =
+            object : ItemPhotos {
+                override fun cached(url: String?): Bitmap? = null
+
+                override suspend fun load(url: String): Bitmap? = throw IllegalStateException("cache unreadable")
+            }
+        val withBrokenPhotos =
+            SnipeNotifications(context, clock, { clock.now }, testTexts(), brokenPhotos, scope, { false })
+
+        withBrokenPhotos.result(
+            snipe.copy(imageUrl = "https://example.invalid/photo.jpg"),
+            SnipeResult(SnipeOutcome.WON, null, null, null, null, null, null),
+        )
+        scope.testScheduler.advanceUntilIdle()
+
+        assertTrue("the failure stayed inside the photo job", scope.isActive)
+        assertNotNull(posted(NotificationIds.result(snipe.id)))
     }
 
     @Test
