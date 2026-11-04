@@ -4,19 +4,16 @@ import androidx.compose.runtime.Composable
 import app.kestrel.ui.harness.PhoneInsets
 import app.kestrel.ui.harness.RecordingNavigator
 import app.kestrel.ui.harness.ScreenshotTest
-import app.kestrel.ui.screens.handoff.HandOffDestination
 import app.kestrel.ui.screens.history.HistoryDestination
 import app.kestrel.ui.screens.home.HomeDestination
 import app.kestrel.ui.screens.lot.LotDestination
-import app.kestrel.ui.screens.onboarding.OnboardingDestination
-import app.kestrel.ui.screens.ready.ReadyDestination
 import app.kestrel.ui.screens.result.ResultDestination
-import app.kestrel.ui.screens.settings.SettingsDestination
-import app.kestrel.ui.screens.signin.SignInDestination
-import app.kestrel.ui.screens.signinbrowser.SignInBrowserDestination
 import org.junit.Test
 
-/** Each destination's placeholder, as the shell shows it until its screen lands, in both themes. */
+/**
+ * Each destination's placeholder, as the shell shows it until its screen lands, in both themes. Destinations whose
+ * screen has landed (Ready, sign-in, eBay's pages, Settings and Onboarding) have their own screenshots instead.
+ */
 class ShellPlaceholderScreenshots : ScreenshotTest() {
     private val navigator = RecordingNavigator()
 
@@ -53,45 +50,8 @@ class ShellPlaceholderScreenshots : ScreenshotTest() {
     fun resultDark() = dark("result") { ResultDestination(1, navigator, windowInsets = PhoneInsets) }
 
     @Test
-    fun readyLight() = light("ready") { ReadyDestination(navigator, windowInsets = PhoneInsets) }
-
-    @Test
-    fun readyDark() = dark("ready") { ReadyDestination(navigator, windowInsets = PhoneInsets) }
-
-    @Test
-    fun signInLight() = light("signin") { SignInDestination(navigator, windowInsets = PhoneInsets) }
-
-    @Test
-    fun signInDark() = dark("signin") { SignInDestination(navigator, windowInsets = PhoneInsets) }
-
-    @Test
-    fun signInBrowserLight() =
-        light("signin-browser") { SignInBrowserDestination(navigator, windowInsets = PhoneInsets) }
-
-    @Test
-    fun signInBrowserDark() = dark("signin-browser") { SignInBrowserDestination(navigator, windowInsets = PhoneInsets) }
-
-    @Test
-    fun handOffLight() = light("handoff") { HandOffDestination(1, navigator, windowInsets = PhoneInsets) }
-
-    @Test
-    fun handOffDark() = dark("handoff") { HandOffDestination(1, navigator, windowInsets = PhoneInsets) }
-
-    @Test
-    fun settingsLight() = light("settings") { SettingsDestination(navigator, windowInsets = PhoneInsets) }
-
-    @Test
-    fun settingsDark() = dark("settings") { SettingsDestination(navigator, windowInsets = PhoneInsets) }
-
-    @Test
     fun historyLight() = light("history") { HistoryDestination(navigator, windowInsets = PhoneInsets) }
 
     @Test
     fun historyDark() = dark("history") { HistoryDestination(navigator, windowInsets = PhoneInsets) }
-
-    @Test
-    fun onboardingLight() = light("onboarding") { OnboardingDestination(navigator, windowInsets = PhoneInsets) }
-
-    @Test
-    fun onboardingDark() = dark("onboarding") { OnboardingDestination(navigator, windowInsets = PhoneInsets) }
 }
