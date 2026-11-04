@@ -119,6 +119,19 @@ class DryRunTest {
         }
 
     @Test
+    fun anErrorAboutTheMaxIsMarkedAsSuch() =
+        runTest {
+            val harness = DryRunHarness(this)
+            harness.page.typedInlineError = { "Enter a valid amount" }
+
+            harness.run()
+
+            val event = harness.store.eventsOf(TimelineKind.DRY_RUN).single()
+            assertTrue(event.message, event.message.startsWith("Dry run failed: eBay showed an error for your max"))
+            assertTrue(event.detail!!, event.detail!!.contains("\"aboutTheMax\":true"))
+        }
+
+    @Test
     fun minimumAboveTheMaxPassesButRaisesThePriceAlert() =
         runTest {
             val harness = DryRunHarness(this)

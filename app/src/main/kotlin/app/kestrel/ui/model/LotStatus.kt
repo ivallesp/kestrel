@@ -72,11 +72,15 @@ sealed interface LotStatus {
         override val kind get() = LotStatusKind.PhoneCheck
     }
 
-    /** The practice run before the bid did not reach eBay's bid panel. */
+    /**
+     * The practice run before the bid failed: on eBay's sign-in page, on the max, or otherwise. [reason] is the
+     * engine's own sentence, which says where it stopped.
+     */
     data class DryRunFailed(
         val ranAt: Instant?,
         val cause: DryRunCause,
         val bidAt: Instant?,
+        val reason: String? = null,
     ) : LotStatus {
         override val kind get() = LotStatusKind.DryRunFailed
     }
@@ -234,8 +238,8 @@ sealed interface LotStatus {
     }
 }
 
-/** Why a dry run failed, as far as the copy needs to know. */
-enum class DryRunCause { SIGN_IN_PAGE, OTHER }
+/** Why a dry run failed, as far as the copy needs to know: eBay's sign-in page, the max, or anything else. */
+enum class DryRunCause { SIGN_IN_PAGE, MAX, OTHER }
 
 /** One per [LotStatus] case: the family, the failure tone and the place on the ladder, without the payload. */
 enum class LotStatusKind(

@@ -225,14 +225,40 @@ object LotStatusMapper {
     private fun dryRunFailed(evidence: Evidence): LotStatus {
         val dryRun = evidence.history.lastOrNull { it.kind == TimelineKind.DRY_RUN }
         val ranAt = (evidence.snipe.dryRunAtUtcMillis ?: dryRun?.atUtcMillis)?.let(Instant::ofEpochMilli)
+        // The engine's sentence says where the dry run stopped ("Dry run failed: … No bid was placed.").
+        val reason =
+            dryRun
+                ?.message
+                ?.removePrefix(DRY_RUN_FAILED_PREFIX)
+                ?.removeSuffix(NOTHING_PLACED_SUFFIX)
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() && dryRun.message.startsWith(DRY_RUN_FAILED_PREFIX) }
         // A check the user must do is named for what it is; the dry run is retried once it is done.
-        return when (dryRun?.detailText("reason")) {
-            "CAPTCHA" -> LotStatus.Captcha(evidence.bidAt)
-            "VERIFICATION" -> LotStatus.PhoneCheck(evidence.bidAt)
-            "SIGN_IN" -> LotStatus.DryRunFailed(ranAt, DryRunCause.SIGN_IN_PAGE, evidence.bidAt)
-            else -> LotStatus.DryRunFailed(ranAt, DryRunCause.OTHER, evidence.bidAt)
+        return when {
+            dryRun?.detailText("reason") == "CAPTCHA" -> {
+                LotStatus.Captcha(evidence.bidAt)
+            }
+
+            dryRun?.detailText("reason") == "VERIFICATION" -> {
+                LotStatus.PhoneCheck(evidence.bidAt)
+            }
+
+            dryRun?.detailText("reason") == "SIGN_IN" -> {
+                LotStatus.DryRunFailed(ranAt, DryRunCause.SIGN_IN_PAGE, evidence.bidAt)
+            }
+
+            dryRun?.detailText("aboutTheMax") == "true" -> {
+                LotStatus.DryRunFailed(ranAt, DryRunCause.MAX, evidence.bidAt, reason)
+            }
+
+            else -> {
+                LotStatus.DryRunFailed(ranAt, DryRunCause.OTHER, evidence.bidAt, reason)
+            }
         }
     }
+
+    private const val DRY_RUN_FAILED_PREFIX = "Dry run failed: "
+    private const val NOTHING_PLACED_SUFFIX = " No bid was placed."
 
     private fun bidding(evidence: Evidence): LotStatus {
         val snipe = evidence.snipe

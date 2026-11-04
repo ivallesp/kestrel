@@ -144,6 +144,7 @@ internal class DryRunProcedure(
                         NeedsUserReason.BID_FAILED,
                         "Your max is in ${max.currency}, but this listing takes bids in ${listing.currentPrice.currency}.",
                         layer.report,
+                        aboutTheMax = true,
                     )
             if (!overMax && typed.inlineError != null) {
                 return fail(
@@ -151,6 +152,7 @@ internal class DryRunProcedure(
                     NeedsUserReason.DRY_RUN_FAILED,
                     "eBay showed an error for your max: ${typed.inlineError}",
                     layer.report,
+                    aboutTheMax = true,
                 )
             }
             return pass(snipe, listing, max, layer, typed, minimum, overMax)
@@ -208,11 +210,13 @@ internal class DryRunProcedure(
         return DryRunOutcome.Passed
     }
 
+    /** [aboutTheMax]: a failure only a new max can fix, so the lot screen offers Edit max for it. */
     private suspend fun fail(
         snipe: Snipe,
         reason: NeedsUserReason,
         text: String,
         report: String?,
+        aboutTheMax: Boolean = false,
     ): DryRunOutcome {
         val now = clock.nowUtcMillis()
         val updated =
@@ -223,7 +227,7 @@ internal class DryRunProcedure(
             snipe.id,
             TimelineKind.DRY_RUN,
             "Dry run failed: $text No bid was placed.",
-            mapOf("reason" to reason.name, "layerReport" to report),
+            mapOf("reason" to reason.name, "layerReport" to report, "aboutTheMax" to aboutTheMax),
         )
         journal.notify { needsUser(updated, reason, text) }
         return DryRunOutcome.Failed(reason, text)

@@ -146,13 +146,36 @@ fun LotStatus.detail(
 
         is LotStatus.DryRunFailed -> {
             val start = ranAt?.let { "At ${clockFor(now, it, zone)} " } ?: ""
+            // The engine's own sentence when it gave one: it says where the dry run stopped.
+            val found =
+                reason?.withCurlyQuotes()?.let { words ->
+                    if (start.isEmpty() ||
+                        words.startsWith("eBay")
+                    ) {
+                        words
+                    } else {
+                        words.replaceFirstChar { it.lowercase() }
+                    }
+                }
             val what =
                 when (cause) {
                     DryRunCause.SIGN_IN_PAGE -> "eBay showed a sign-in page instead of the bid panel."
-                    DryRunCause.OTHER -> "the dry run didn’t reach the bid panel."
+                    DryRunCause.MAX, DryRunCause.OTHER -> found ?: "the dry run didn’t reach the bid panel."
                 }
-            val sentence = (start + what).replaceFirstChar { it.uppercase() }
-            val fix = bidAt?.let { " Fix it before ${moment(now, it, zone)}." } ?: " Fix it before the bid."
+            // "eBay" keeps its small e at the start of a sentence too (DESIGN MF4).
+            val sentence =
+                (start + what).let {
+                    if (it.startsWith(
+                            "eBay",
+                        )
+                    ) {
+                        it
+                    } else {
+                        it.replaceFirstChar(Char::uppercase)
+                    }
+                }
+            val change = if (cause == DryRunCause.MAX) "Change your max" else "Fix it"
+            val fix = bidAt?.let { " $change before ${moment(now, it, zone)}." } ?: " $change before the bid."
             sentence + fix
         }
 
@@ -251,55 +274,107 @@ fun LotStatus.detail(
 /** The status's action at [now], or null. "Edit max" ends when the edits lock, "Undo cancel" when the auction ends. */
 fun LotStatus.action(now: Instant): LotAction? =
     when (this) {
-        LotStatus.Watching -> LotAction.SET_MAX
+        LotStatus.Watching -> {
+            LotAction.SET_MAX
+        }
 
-        is LotStatus.Armed -> LotAction.EDIT_MAX
+        is LotStatus.Armed -> {
+            LotAction.EDIT_MAX
+        }
 
-        is LotStatus.OverMax -> LotAction.RAISE_MAX
+        is LotStatus.OverMax -> {
+            LotAction.RAISE_MAX
+        }
 
-        is LotStatus.SignInNeeded -> LotAction.SIGN_IN
+        is LotStatus.SignInNeeded -> {
+            LotAction.SIGN_IN
+        }
 
-        is LotStatus.Captcha -> LotAction.OPEN_EBAY_PAGE
+        is LotStatus.Captcha -> {
+            LotAction.OPEN_EBAY_PAGE
+        }
 
-        is LotStatus.PhoneCheck -> LotAction.OPEN_EBAY_PAGE
+        is LotStatus.PhoneCheck -> {
+            LotAction.OPEN_EBAY_PAGE
+        }
 
-        // A dry run that met eBay's sign-in page is fixed by signing in, so the button says so.
-        is LotStatus.DryRunFailed -> if (cause == DryRunCause.SIGN_IN_PAGE) LotAction.SIGN_IN else LotAction.FIX
+        // A dry run that met eBay's sign-in page is fixed by signing in, one that failed on the max by a new max.
+        is LotStatus.DryRunFailed -> {
+            when (cause) {
+                DryRunCause.SIGN_IN_PAGE -> LotAction.SIGN_IN
+                DryRunCause.MAX -> LotAction.EDIT_MAX
+                DryRunCause.OTHER -> LotAction.FIX
+            }
+        }
 
-        is LotStatus.OfflineNearBid -> null
+        is LotStatus.OfflineNearBid -> {
+            null
+        }
 
-        is LotStatus.Unreachable -> LotAction.OPEN_ON_EBAY
+        is LotStatus.Unreachable -> {
+            LotAction.OPEN_ON_EBAY
+        }
 
-        is LotStatus.NeedsYou -> LotAction.OPEN_EBAY_PAGE
+        is LotStatus.NeedsYou -> {
+            LotAction.OPEN_EBAY_PAGE
+        }
 
-        is LotStatus.FinalMinute -> if (now < editsLockAt) LotAction.EDIT_MAX else null
+        is LotStatus.FinalMinute -> {
+            if (now < editsLockAt) LotAction.EDIT_MAX else null
+        }
 
-        is LotStatus.BidSent -> null
+        is LotStatus.BidSent -> {
+            null
+        }
 
-        is LotStatus.InTheLead -> null
+        is LotStatus.InTheLead -> {
+            null
+        }
 
-        is LotStatus.Outbid -> null
+        is LotStatus.Outbid -> {
+            null
+        }
 
-        is LotStatus.NoReply -> null
+        is LotStatus.NoReply -> {
+            null
+        }
 
-        is LotStatus.Extended -> null
+        is LotStatus.Extended -> {
+            null
+        }
 
-        is LotStatus.ReadingResult -> null
+        is LotStatus.ReadingResult -> {
+            null
+        }
 
-        is LotStatus.Won -> LotAction.VIEW_RECEIPT
+        is LotStatus.Won -> {
+            LotAction.VIEW_RECEIPT
+        }
 
-        is LotStatus.Lost -> LotAction.VIEW_RECEIPT
+        is LotStatus.Lost -> {
+            LotAction.VIEW_RECEIPT
+        }
 
-        is LotStatus.EndedEarly -> null
+        is LotStatus.EndedEarly -> {
+            null
+        }
 
         // Undo for a cancel by the user lives in the snackbar shown right after it.
-        is LotStatus.CancelledByYou -> null
+        is LotStatus.CancelledByYou -> {
+            null
+        }
 
-        is LotStatus.CancelledByGroup -> if (wonTitle != null && auctionRunning) LotAction.UNDO_CANCEL else null
+        is LotStatus.CancelledByGroup -> {
+            if (wonTitle != null && auctionRunning) LotAction.UNDO_CANCEL else null
+        }
 
-        is LotStatus.BidNotSent -> if (signedOutAt != null) LotAction.SIGN_IN else LotAction.VIEW_RECEIPT
+        is LotStatus.BidNotSent -> {
+            if (signedOutAt != null) LotAction.SIGN_IN else LotAction.VIEW_RECEIPT
+        }
 
-        is LotStatus.BidFailed -> LotAction.VIEW_RECEIPT
+        is LotStatus.BidFailed -> {
+            LotAction.VIEW_RECEIPT
+        }
     }
 
 private fun labelOf(
