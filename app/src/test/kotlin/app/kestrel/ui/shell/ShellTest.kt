@@ -2,6 +2,7 @@ package app.kestrel.ui.shell
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -24,10 +25,11 @@ class ShellTest {
     val composeRule = createComposeRule()
 
     // Onboarding has no back arrow (it is the first launch); finishingOnboardingOpensHome covers it.
+    // Lot and Result read their snipe from the database, where a fresh install has none.
     private val titles =
         listOf(
-            Destination.Lot(3) to "Lot detail",
-            Destination.Result(3) to "Result",
+            Destination.Lot(3) to NOT_ON_THE_LIST,
+            Destination.Result(3) to NOT_ON_THE_LIST,
             Destination.Ready to "Ready to snipe",
             Destination.SignIn to "Sign in to eBay",
             Destination.SignInBrowser to "eBay sign-in",
@@ -55,6 +57,7 @@ class ShellTest {
         titles.forEach { (destination, title) ->
             runBlocking { incoming.emit(destination) }
             composeRule.waitForIdle()
+            waitForText(title)
             composeRule.onNodeWithText(title).assertIsDisplayed()
             composeRule.onNodeWithContentDescription("Back").performClick()
             composeRule.waitForIdle()
@@ -74,7 +77,8 @@ class ShellTest {
                 )
             }
         }
-        composeRule.onNodeWithText("Snipe 8.").assertIsDisplayed()
+        waitForText(NOT_ON_THE_LIST)
+        composeRule.onNodeWithText(NOT_ON_THE_LIST).assertIsDisplayed()
     }
 
     @Test
@@ -93,5 +97,17 @@ class ShellTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Snipes").assertIsDisplayed()
         assertTrue(stored)
+    }
+
+    /** Screens that read the database show their words a moment after they open. */
+    private fun waitForText(text: String) {
+        composeRule.waitUntil(
+            LOAD_TIMEOUT_MILLIS,
+        ) { composeRule.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    private companion object {
+        const val NOT_ON_THE_LIST = "Not on your list"
+        const val LOAD_TIMEOUT_MILLIS = 5_000L
     }
 }

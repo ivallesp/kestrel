@@ -57,8 +57,9 @@ fun RollingDigits(
             key(positionFromEnd) {
                 AnimatedContent(
                     targetState = character,
-                    // Cells share a baseline: a cell holding a digit gets a shorter line box than one holding a
-                    // letter, so top-aligned cells would set the units of "13 m 07 s" low.
+                    // Cells share a baseline. A cell holding a digit gets a shorter line box than one holding a
+                    // letter, and a cell whose character the font lacks (U+202F in Newsreader) is set in a fallback
+                    // font with another baseline, so top-aligned cells would set the units of "13 m 07 s" low.
                     modifier = Modifier.alignByBaseline().clipToBounds(),
                     transitionSpec = {
                         if (reduceMotion) {
