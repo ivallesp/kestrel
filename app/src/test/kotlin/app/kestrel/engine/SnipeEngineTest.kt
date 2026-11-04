@@ -167,6 +167,25 @@ class SnipeEngineTest {
         }
 
     @Test
+    fun theRaiseHintCountsDownToTheLockTheUserGetsThreeSecondsBeforeTheBid() =
+        runTest {
+            val harness = WindowHarness(this)
+            harness.forbidSubmit()
+            launch {
+                delay(50_000)
+                harness.auction.price = gbp("50.00")
+                harness.auction.bidCount = 6
+            }
+
+            harness.run()
+
+            val alert = harness.store.eventsOf(TimelineKind.PRICE_OVER_MAX).first()
+            // Lead 6 s: the user's edits lock 3 s before the bid, at end - 9 s.
+            val untilLock = durationText(END_UTC - 9_000L - alert.trueUtcMillis)
+            assertTrue(alert.message, alert.message.endsWith("Raise the max within $untilLock to still bid."))
+        }
+
+    @Test
     fun cancelDuringTheWindowPlacesNoBid() =
         runTest {
             val harness = WindowHarness(this)

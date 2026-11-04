@@ -213,13 +213,67 @@ class SnipeRepositoryTest {
         }
 
     @Test
-    fun maxCannotChangeOnceTheWindowIsOpenOrTheSnipeFinished() =
+    fun maxAndLeadCanChangeWhileTheWindowIsOpenUntilTheEditsLock() =
         runTest {
             val snipe = addArmed()
-            for (status in listOf(SnipeStatus.BIDDING, SnipeStatus.BID_SENT, SnipeStatus.WON, SnipeStatus.CANCELLED)) {
+            forceStatus(snipe.id, SnipeStatus.BIDDING)
+            val end = snipe.endTimeUtcMillis
+            // Lead 6 s: the bid goes at end - 6 s, and edits lock 3 s before that.
+            now = end - 70_000
+            val raised = repository.updateMax(snipe.id, gbp("60.00"))
+            assertEquals(gbp("60.00"), (raised as EditResult.Done).snipe.maxBid)
+            assertEquals("the window keeps its status", SnipeStatus.BIDDING, raised.snipe.status)
+            now = end - 9_001
+            assertTrue(repository.updateMax(snipe.id, gbp("61.00")) is EditResult.Done)
+            now = end - 9_000
+            assertTrue(repository.updateMax(snipe.id, gbp("62.00")) is EditResult.NotAllowed)
+            assertTrue(repository.setLead(snipe.id, 5) is EditResult.NotAllowed)
+            assertEquals(gbp("61.00"), repository.snipe(snipe.id)?.maxBid)
+            // The group still cannot change once the window is open: the window decided on it at its start.
+            now = end - 70_000
+            val group = repository.createGroup("Cameras")
+            assertTrue(repository.setGroup(snipe.id, group.id) is EditResult.NotAllowed)
+        }
+
+    @Test
+    fun aLeadChangeInTheWindowMustBeBeforeBothTheOldAndTheNewLock() =
+        runTest {
+            val snipe = addArmed()
+            forceStatus(snipe.id, SnipeStatus.BIDDING)
+            now = snipe.endTimeUtcMillis - 20_000
+            // 30 s would bid 30 s before the end, which has passed.
+            assertTrue(repository.setLead(snipe.id, 30) is EditResult.NotAllowed)
+            // 15 s locks 18 s before the end, still ahead; the old 6 s lead locks later still.
+            assertEquals(15, (repository.setLead(snipe.id, 15) as EditResult.Done).snipe.leadSeconds)
+        }
+
+    @Test
+    fun maxCannotChangeOnceTheBidIsOutOrTheSnipeFinished() =
+        runTest {
+            val snipe = addArmed()
+            val statuses =
+                listOf(
+                    SnipeStatus.BID_SENT,
+                    SnipeStatus.LEADING,
+                    SnipeStatus.EXTENDED,
+                    SnipeStatus.WON,
+                    SnipeStatus.CANCELLED,
+                )
+            for (status in statuses) {
                 forceStatus(snipe.id, status)
                 assertTrue("$status", repository.updateMax(snipe.id, gbp("90.00")) is EditResult.NotAllowed)
+                assertTrue("$status", repository.setLead(snipe.id, 9) is EditResult.NotAllowed)
             }
+        }
+
+    @Test
+    fun aWindowThatEndedWithAnOpenResultTakesNoEdits() =
+        runTest {
+            val snipe = addArmed()
+            val open = SnipeResult(SnipeOutcome.UNKNOWN, null, null, null, null, null, "Check eBay.")
+            repository.update(snipe.copy(status = SnipeStatus.BIDDING, result = open))
+
+            assertTrue(repository.updateMax(snipe.id, gbp("90.00")) is EditResult.NotAllowed)
         }
 
     @Test

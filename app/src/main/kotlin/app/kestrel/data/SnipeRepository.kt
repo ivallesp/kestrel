@@ -119,13 +119,17 @@ class SnipeRepository(
         return result
     }
 
-    /** Sets, changes or removes (null) the max. Only allowed before the bid window opens. */
+    /**
+     * Sets, changes or removes (null) the max. Also while the bid window is open, until the edits lock 3 s before the
+     * bid (see [SnipeRules.maxOrLeadRefusal]).
+     */
     suspend fun updateMax(
         snipeId: Long,
         maxBid: Money?,
     ): EditResult =
         edit(snipeId) { snipe, now ->
-            SnipeRules.editRefusal(snipe.status)?.let { return@edit EditResult.NotAllowed(it) }
+            // True time read inside the transaction: the lock is a matter of seconds.
+            SnipeRules.maxOrLeadRefusal(snipe, nowUtcMillis())?.let { return@edit EditResult.NotAllowed(it) }
             if (maxBid != null) {
                 maxRefusal(snipe, maxBid)?.let { return@edit EditResult.NotAllowed(it) }
             }
@@ -141,7 +145,12 @@ class SnipeRepository(
         leadSeconds: Int,
     ): EditResult =
         edit(snipeId) { snipe, now ->
-            SnipeRules.editRefusal(snipe.status)?.let { return@edit EditResult.NotAllowed(it) }
+            SnipeRules
+                .maxOrLeadRefusal(
+                    snipe,
+                    nowUtcMillis(),
+                    leadSeconds,
+                )?.let { return@edit EditResult.NotAllowed(it) }
             if (leadSeconds !in SnipeRules.LEAD_SECONDS_RANGE) return@edit EditResult.NotAllowed(leadRangeMessage())
             if (leadSeconds == snipe.leadSeconds) return@edit EditResult.Done(snipe)
             val updated = snipe.copy(leadSeconds = leadSeconds, updatedAtUtcMillis = now)

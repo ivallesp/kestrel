@@ -12,6 +12,7 @@ import android.net.Uri
 import android.provider.Settings
 import android.util.Log
 import app.kestrel.R
+import app.kestrel.data.SnipeRules
 import app.kestrel.engine.EngineClock
 import app.kestrel.engine.NeedsUserReason
 import app.kestrel.engine.SnipeNotifier
@@ -252,24 +253,26 @@ class SnipeNotifications internal constructor(
         showPriceAlert(snipe, current, minimumNext, problem = null)
     }
 
-    /** The price alert; [problem] explains why a typed max was refused (re-posting also clears the reply field). */
+    /**
+     * The price alert; [problem] explains why a typed max was refused (re-posting also clears the reply field). The
+     * Raise max reply is offered only while the store would still take a new max (SnipeRules.maxOrLeadRefusal).
+     */
     internal fun showPriceAlert(
         snipe: Snipe,
         current: Money?,
         minimumNext: Money?,
         problem: String?,
     ) {
-        val detail = texts.priceOverMaxDetail(snipe, current, minimumNext, problem)
-        val notification =
+        val canRaise = SnipeRules.maxOrLeadRefusal(snipe, clock.nowUtcMillis()) == null
+        val detail = texts.priceOverMaxDetail(snipe, current, minimumNext, problem, canRaise)
+        val builder =
             alert(snipe.id, R.drawable.ic_notification_trending_up)
                 .setContentTitle(texts.priceOverMaxTitle())
                 .setContentText(problem ?: texts.priceOverMaxText(snipe, current))
                 .setStyle(Notification.BigTextStyle().bigText(detail))
                 .setCategory(Notification.CATEGORY_STATUS)
-                .addAction(raiseMaxAction(snipe, current, minimumNext))
-                .addAction(openAction(snipe.id))
-                .build()
-        post(NotificationIds.priceAlert(snipe.id), notification)
+        if (canRaise) builder.addAction(raiseMaxAction(snipe, current, minimumNext))
+        post(NotificationIds.priceAlert(snipe.id), builder.addAction(openAction(snipe.id)).build())
     }
 
     internal fun showRaiseMaxDone(

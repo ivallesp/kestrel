@@ -6,6 +6,7 @@ import app.kestrel.engine.WindowTimings.CLOSE_LAYER_TIMEOUT
 import app.kestrel.engine.WindowTimings.CREATE_PAGE_TIMEOUT
 import app.kestrel.engine.WindowTimings.DISPATCH_TOLERANCE
 import app.kestrel.engine.WindowTimings.HOLD_TICK
+import app.kestrel.engine.WindowTimings.LAST_READ_BEFORE_FIRE
 import app.kestrel.engine.WindowTimings.LAYER_OPEN_BEFORE_END
 import app.kestrel.engine.WindowTimings.LAYER_OPEN_BEFORE_FIRE
 import app.kestrel.engine.WindowTimings.LAYER_READY_BEFORE_DISPATCH
@@ -45,9 +46,10 @@ import kotlinx.coroutines.withContext
 
 /**
  * One snipe's final window, from T-120 s to the resolved result (ARCHITECTURE section 5): clock check, item page at
- * T-90 s, bid layer and max at T-45 s, edits lock at fire time - 2 s, one press at end - lead (an unreadable reply is
- * followed on the page, never pressed again), then follow the auction through Extended Bidding and read the result. Every wait goes through [clock] and coroutine delay, every call into the page has a time limit, and every way
- * out ends in a stored status, a timeline line and a notification.
+ * T-90 s, bid layer and max at T-45 s, the user's edits lock 3 s before the bid and are read a last time 2 s before
+ * it, one press at end - lead (an unreadable reply is followed on the page, never pressed again), then follow the
+ * auction through Extended Bidding and read the result. Every wait goes through [clock] and coroutine delay, every
+ * call into the page has a time limit, and every way out ends in a stored status, a timeline line and a notification.
  */
 internal class SnipeWindow(
     private val snipeId: Long,
@@ -84,7 +86,10 @@ internal class SnipeWindow(
     private var bidAmountKnown = true
 
     private val fireAtUtcMillis: Long get() = watch.endUtcMillis - leadMillis
-    private val lockAtUtcMillis: Long get() = fireAtUtcMillis - BidTiming.EDIT_LOCK_BEFORE_FIRE_MILLIS
+    private val lockAtUtcMillis: Long get() = fireAtUtcMillis - LAST_READ_BEFORE_FIRE
+
+    // The user's own deadline for edits, a second before the window's last read: the hint below names it.
+    private val userEditsLockAtUtcMillis: Long get() = fireAtUtcMillis - BidTiming.EDIT_LOCK_BEFORE_FIRE_MILLIS
     private val pageLoadAtUtcMillis: Long
         get() = minOf(watch.endUtcMillis - PAGE_LOAD_BEFORE_END, fireAtUtcMillis - PAGE_LOAD_BEFORE_FIRE)
     private val layerOpenAtUtcMillis: Long
@@ -804,7 +809,7 @@ internal class SnipeWindow(
         if (level == lastAlertedMinimum) return
         lastAlertedMinimum = level
         val current = watch.level?.price ?: level
-        val untilLock = lockAtUtcMillis - clock.nowUtcMillis()
+        val untilLock = userEditsLockAtUtcMillis - clock.nowUtcMillis()
         val raiseHint = if (untilLock > 0) " Raise the max within ${durationText(untilLock)} to still bid." else ""
         journal.event(
             snipeId,
@@ -871,7 +876,8 @@ internal class SnipeWindow(
         return notStarted(SnipeOutcome.NOT_PLACED, reason)
     }
 
-    // At fire time - 2 s the max locks: the last read of the instruction, the group rule and the price check.
+    // At fire time - 2 s, a second after the user's edits locked: the last read of the instruction, the group rule and
+    // the price check.
     private suspend fun lock(): SnipeResult? {
         checkUserChanges()?.let { return it }
         if (clock.nowUtcMillis() - instructionReadAtUtcMillis > INSTRUCTION_MAXIMUM_AGE_MILLIS) {

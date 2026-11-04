@@ -95,8 +95,8 @@ internal class SchedulePlanner(
             // behind is something else, so this cannot reopen a window that already ran.
             snipe.status == SnipeStatus.ARMED -> now
 
-            // A window cut off before it sent the bid (the app was updated or killed): open it again. A retry can
-            // only use the same max, because the max cannot change while the window is open.
+            // A window cut off before it sent the bid (the app was updated or killed): open it again. It reads the
+            // stored max afresh, which the user can only have changed before the edits locked, 3 s before the bid.
             snipe.status == SnipeStatus.BIDDING && !windowRunning -> now
 
             else -> null

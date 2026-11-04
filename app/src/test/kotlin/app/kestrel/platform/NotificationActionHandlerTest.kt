@@ -139,6 +139,38 @@ class NotificationActionHandlerTest {
         }
 
     @Test
+    fun aReplyDuringTheBidWindowRaisesTheMaxForTheBid() =
+        runTest {
+            val snipe = overMaxSnipe()
+            // The window is open (it asked the user to raise), 70 s before the end.
+            repository.update(repository.snipe(snipe.id)!!.copy(status = SnipeStatus.BIDDING))
+            clock.now = snipe.endTimeUtcMillis - 70_000
+
+            handler.handle(reply(snipe.id, "60"))
+
+            val updated = repository.snipe(snipe.id)!!
+            assertEquals(gbp("60.00"), updated.maxBid)
+            assertEquals(SnipeStatus.BIDDING, updated.status)
+        }
+
+    @Test
+    fun onceTheEditsLockThePriceAlertNoLongerOffersRaiseMax() =
+        runTest {
+            val snipe = overMaxSnipe()
+            val bidding = repository.snipe(snipe.id)!!.copy(status = SnipeStatus.BIDDING)
+            repository.update(bidding)
+            // Lead 6 s: the edits locked at end - 9 s.
+            clock.now = snipe.endTimeUtcMillis - 8_000
+
+            notifications.priceOverMax(bidding, gbp("52.00"), gbp("53.00"))
+
+            val posted = alert(snipe.id)!!
+            assertTrue(posted.actions.none { it.title.toString() == "Raise max" })
+            val detail = posted.extras.getCharSequence(Notification.EXTRA_BIG_TEXT).toString()
+            assertTrue(detail, detail.contains("Bid on eBay yourself"))
+        }
+
+    @Test
     fun aReplyBelowTheMinimumKeepsTheMaxAndSaysWhy() =
         runTest {
             val snipe = overMaxSnipe()
