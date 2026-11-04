@@ -791,7 +791,8 @@
   // The DOM event sequence of a tap at the element's centre. These events are untrusted; Kotlin prefers a
   // native MotionEvent when the touch probe shows native taps reach the page. When [stillValid] is given it is
   // checked before every event: eBay's handlers may re-render the button mid-press (into a power bid, say), and the
-  // sequence stops before the click. Returns true when the whole sequence, click included, was dispatched.
+  // sequence stops before the click. Returns 'complete', 'notStarted' (nothing was dispatched) or 'partial' (some
+  // events went out, and a handler may already have acted on them).
   function domPress(element, stillValid) {
     var box = element.getBoundingClientRect();
     var x = box.left + box.width / 2;
@@ -821,10 +822,10 @@
       },
     ];
     for (var i = 0; i < steps.length; i++) {
-      if (stillValid && !stillValid()) return false;
+      if (stillValid && !stillValid()) return i === 0 ? 'notStarted' : 'partial';
       steps[i]();
     }
-    return true;
+    return 'complete';
   }
 
   // The armed button still says bid and nothing else, outside the power bids, in this document.
@@ -1080,14 +1081,23 @@
       // checked is what is sent, even if the options changed while a Request's body was being read.
       function sendChecked(requestBody) {
         var optionsBody = init ? init.body : undefined;
-        var body = optionsBody != null ? optionsBody : requestBody;
+        var fromOptions = optionsBody != null;
+        var body = fromOptions ? optionsBody : requestBody;
         var verdict = ceilingVerdict(url, typeof body === 'string' ? body : null);
         if (verdict.block) {
           recordBlocked('fetch', url, verdict);
           return Promise.reject(new TypeError('Failed to fetch'));
         }
         var record = startRecord('fetch', method, url, verdict);
-        var promise = original.apply(self, args);
+        var callArgs = args;
+        if (fromOptions) {
+          // Native fetch reads the options again: give it the body that was checked as an own property, with every
+          // other option still read from the caller's object (own or inherited).
+          var forwarded = Object.create(init);
+          Object.defineProperty(forwarded, 'body', { value: optionsBody, enumerable: true, configurable: true, writable: true });
+          callArgs = [input, forwarded];
+        }
+        var promise = original.apply(self, callArgs);
         observeResponse(promise, record);
         return promise;
       }
@@ -1362,8 +1372,9 @@
       state.guard.mode = 'swallow';
     }
     centerOf(bidButton.element);
-    if (!domPress(bidButton.element, pressableStill(bidButton.element))) return { ok: false, reason: 'labelChanged' };
-    return { ok: true, selector: bidButton.selector, label: bidButton.label };
+    var outcome = domPress(bidButton.element, pressableStill(bidButton.element));
+    if (outcome === 'notStarted') return { ok: false, reason: 'labelChanged' };
+    return { ok: true, partial: outcome === 'partial', selector: bidButton.selector, label: bidButton.label };
   }
 
   function layerState() {
@@ -1668,11 +1679,11 @@
     press.perfTime = now();
     press.epochTime = Date.now();
     // The one press is spent even when it stops part-way: a button that changed under the finger is not pressed again.
-    if (!domPress(submit.element, pressableStill(submit.element))) {
-      return { ok: false, dispatched: false, reason: 'labelChanged', label: submit.label };
-    }
-    return { ok: true, dispatched: true, label: submit.label, selector: submit.selector, perfTime: press.perfTime,
-      epochTime: press.epochTime };
+    // Once any event went out, eBay's handler may already have sent the bid ("Submitting..."), so it counts as sent.
+    var outcome = domPress(submit.element, pressableStill(submit.element));
+    if (outcome === 'notStarted') return { ok: false, dispatched: false, reason: 'labelChanged', label: submit.label };
+    return { ok: true, dispatched: true, partial: outcome === 'partial', label: submit.label, selector: submit.selector,
+      perfTime: press.perfTime, epochTime: press.epochTime };
   }
 
   function difference(current, baseline) {

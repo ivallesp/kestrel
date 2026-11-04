@@ -25,6 +25,24 @@ test('options changed after the call are what gets checked, so a higher body can
   assert.match(call(page.window, 'replyState').blocked[0].reason, /above the maximum/);
 });
 
+test('a body that reads differently each time is sent as it was checked', async () => {
+  const page = await openSyntheticLayer({ respond: () => ({ status: 200, body: '{}' }) });
+  call(page.window, 'armObserver', { ceilingMinor: 1250, currency: 'GBP', hold: false });
+  let reads = 0;
+  const init = { method: 'POST' };
+  Object.defineProperty(init, 'body', {
+    get() {
+      reads += 1;
+      return reads === 1 ? PRICE_12_50 : PRICE_1250;
+    },
+  });
+  await page.window.fetch(CONFIRM_URL, init);
+  const sent = confirmCalls(page);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].body, PRICE_12_50, 'the transport got the body the ceiling saw');
+  assert.equal(sent[0].method, 'POST');
+});
+
 test('inherited fetch options travel unchanged', async () => {
   const page = await openSyntheticLayer({ respond: () => ({ status: 200, body: '{}' }) });
   call(page.window, 'armObserver', { ceilingMinor: 1250, currency: 'GBP', hold: false });

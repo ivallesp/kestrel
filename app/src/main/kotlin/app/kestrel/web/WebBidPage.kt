@@ -35,6 +35,18 @@ internal data class VerifiedTyping(
     val documentToken: String?,
 )
 
+/** What became of a native tap. */
+internal enum class TapOutcome {
+    /** The finger went down and up: a click may have followed. */
+    TAPPED,
+
+    /** Nothing was dispatched. */
+    NOT_TAPPED,
+
+    /** The finger went down, then the touch was cancelled because the page navigated. */
+    TOUCHED_ONLY,
+}
+
 /** Whether a MotionEvent dispatched to this WebView reached the page as a trusted tap at the intended point. */
 internal data class NativeTouchCheck(
     val works: Boolean,
@@ -374,8 +386,11 @@ class WebBidPage internal constructor(
     /** Presses the bid button: a guarded native tap when touch works, else DOM events. Null when it was pressed. */
     private suspend fun pressBidButton(): LayerState? {
         if (nativeTouch?.works == true) {
+            val navigation = driver.navigationCount
             val target = helper.call(PageFunction.ARM_TAP, TapTargetSnapshot.serializer(), JsonPrimitive("bidButton"))
-            if (target.ok && target.hit == true && tapSafely(target)) {
+            val outcome = if (target.ok && target.hit == true) tapAt(target, navigation) else TapOutcome.NOT_TAPPED
+            if (outcome == TapOutcome.TOUCHED_ONLY) return null
+            if (outcome == TapOutcome.TAPPED) {
                 val reached =
                     driver.waitUntil(timing.tapConfirmMillis, timing.tapConfirmPollMillis) {
                         tapResult().takeIf { it.reached }
@@ -559,6 +574,7 @@ class WebBidPage internal constructor(
         var tapDispatchedAt: Long? = null
         var tapLabel: String? = null
         if (nativeTouch?.works == true) {
+            val navigation = driver.navigationCount
             val target =
                 try {
                     helper.call(
@@ -573,7 +589,12 @@ class WebBidPage internal constructor(
             if (!target.ok && target.reason != NOT_IN_VIEWPORT) {
                 throw SubmitNotDispatchedException(describeRefusal(target.reason ?: target.error))
             }
-            if (target.ok && target.hit == true && tapSafely(target)) {
+            val outcome = if (target.ok && target.hit == true) tapAt(target, navigation) else TapOutcome.NOT_TAPPED
+            // A touch that started and was cancelled by a navigation may still have reached the button.
+            if (outcome == TapOutcome.TOUCHED_ONLY) {
+                return SubmitDispatch(clock.elapsedRealtimeMillis(), InputMethod.NATIVE_TOUCH, target.label)
+            }
+            if (outcome == TapOutcome.TAPPED) {
                 tapDispatchedAt = clock.elapsedRealtimeMillis()
                 tapLabel = target.label
                 // A page that moved to another document after the tap cannot say the tap did not land there.
@@ -595,6 +616,11 @@ class WebBidPage internal constructor(
             }
         val after = clock.elapsedRealtimeMillis()
         if (pressed.ok && pressed.dispatched) {
+            if (pressed.partial) {
+                note(
+                    "submit: eBay changed the button part-way through the press; it may have been sent",
+                )
+            }
             return SubmitDispatch((before + after) / 2, InputMethod.DOM_EVENTS, pressed.label)
         }
         if (pressed.reason in nativeOutcomeUnknownOrReached && tapDispatchedAt != null) {
@@ -640,13 +666,23 @@ class WebBidPage internal constructor(
         }
     }
 
-    private suspend fun tapSafely(target: TapTargetSnapshot): Boolean =
+    /**
+     * Taps the point [target] measured in the document of navigation [navigation]. A point outside the view, or a
+     * page that navigated first, means no tap; a navigation while the finger was down cancels the touch.
+     */
+    private suspend fun tapAt(
+        target: TapTargetSnapshot,
+        navigation: Long,
+    ): TapOutcome =
         try {
-            driver.tap(target.x, target.y, target.devicePixelRatio, timing.pressMillis)
-            true
+            driver.tap(target.x, target.y, target.devicePixelRatio, timing.pressMillis, onlyInNavigation = navigation)
+            TapOutcome.TAPPED
         } catch (refused: IllegalArgumentException) {
             note("tap refused: ${refused.message}")
-            false
+            TapOutcome.NOT_TAPPED
+        } catch (aborted: TapAbortedException) {
+            note("tap stopped: ${aborted.message}")
+            if (aborted.fingerWentDown) TapOutcome.TOUCHED_ONLY else TapOutcome.NOT_TAPPED
         }
 
     private suspend fun tapResult(): TapResultSnapshot =
@@ -707,14 +743,14 @@ class WebBidPage internal constructor(
 
     /** Taps the page once with every tap swallowed by kestrel.js, then asks whether it arrived trusted, in place. */
     private suspend fun probeNativeTouch(): NativeTouchCheck {
+        val navigation = driver.navigationCount
         val armed = helper.call(PageFunction.ARM_TOUCH_PROBE, ProbeTapSnapshot.serializer())
         if (!armed.ok) return NativeTouchCheck(false, "the touch probe could not be armed: ${armed.error}")
         try {
-            if (!tapSafely(
-                    TapTargetSnapshot(ok = true, x = armed.x, y = armed.y, devicePixelRatio = armed.devicePixelRatio),
-                )
-            ) {
-                return NativeTouchCheck(false, "the probe tap was outside the view")
+            val point =
+                TapTargetSnapshot(ok = true, x = armed.x, y = armed.y, devicePixelRatio = armed.devicePixelRatio)
+            if (tapAt(point, navigation) != TapOutcome.TAPPED) {
+                return NativeTouchCheck(false, "the probe tap was outside the view or the page navigated")
             }
             val seen =
                 driver.waitUntil(timing.probeTimeoutMillis, timing.tapConfirmPollMillis) {

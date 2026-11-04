@@ -212,9 +212,26 @@ test('a DOM press stops when eBay turns the button into something else mid-press
   submit.addEventListener('pointerdown', () => {
     submit.textContent = 'Bid £20.00';
   });
-  assert.deepEqual(call(page.window, 'submit', { expectValue: '12.50' }),
-    { ok: false, dispatched: false, reason: 'labelChanged', label: 'Bid' });
+  const pressed = call(page.window, 'submit', { expectValue: '12.50' });
+  assert.equal(pressed.dispatched, true, 'events went out, so the outcome is possibly sent');
+  assert.equal(pressed.partial, true);
   await settle(page.window);
   assert.equal(page.window.__fixtureCounts.submitClicks, 0, 'the click never reached the changed button');
   assert.equal(call(page.window, 'submit', { expectValue: '12.50' }).reason, 'alreadySubmitted', 'the one press is spent');
+});
+
+test('a button that eBay relabels "Submitting..." on the finger going down counts as pressed', async () => {
+  const page = await openSyntheticLayer();
+  call(page.window, 'openBidLayer');
+  call(page.window, 'typeMax', '12.50');
+  const submit = page.window.document.querySelector('.place-bid-actions__submit button');
+  let sentOnPointerDown = 0;
+  submit.addEventListener('pointerdown', () => {
+    sentOnPointerDown += 1;
+    submit.textContent = 'Submitting...';
+  });
+  const pressed = call(page.window, 'submit', { expectValue: '12.50' });
+  assert.equal(sentOnPointerDown, 1);
+  assert.equal(pressed.dispatched, true, 'never reported as not sent once the page acted');
+  assert.equal(pressed.partial, true);
 });

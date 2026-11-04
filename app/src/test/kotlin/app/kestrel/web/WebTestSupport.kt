@@ -170,6 +170,7 @@ internal class FakePageDriver : PageDriver {
         failure?.let { throw PageUnavailableException(it.description) }
         loads += url
         helperInstalled = false
+        navigationCount += 1
         return loadResult(url).also { currentUrl = it.finalUrl }
     }
 
@@ -198,6 +199,7 @@ internal class FakePageDriver : PageDriver {
         yCssPx: Double,
         devicePixelRatio: Double,
         pressMillis: Long,
+        onlyInNavigation: Long?,
     ) {
         failure?.let { throw PageUnavailableException(it.description) }
         TapGeometry.toViewPixels(
@@ -207,9 +209,20 @@ internal class FakePageDriver : PageDriver {
             EbayWebViewFactory.HEADLESS_WIDTH_PX,
             EbayWebViewFactory.HEADLESS_HEIGHT_PX,
         )
+        if (onlyInNavigation != null && navigationCount != onlyInNavigation) {
+            throw TapAbortedException("The page navigated before the tap", fingerWentDown = false)
+        }
         val tap = FakeTap(xCssPx, yCssPx, devicePixelRatio)
         taps += tap
         onTap(tap)
+    }
+
+    override var navigationCount = 0L
+
+    /** A main-frame navigation the page made by itself (a redirect, a reload). */
+    fun pageNavigates() {
+        navigationCount += 1
+        helperInstalled = false
     }
 
     override fun destroy() {
@@ -299,6 +312,7 @@ internal class SimulatedEbayPage(
     var documentToken = "document-1"
     var navigateAfterPress = false
     var navigateOnSubmitTap = false
+    var navigateAfterSubmitArmed = false
     var bidButtonPresses = 0
 
     init {
@@ -367,7 +381,10 @@ internal class SimulatedEbayPage(
             guardReached = false
             json(mapOf("ok" to true))
         }
-        driver.on("submit") { arguments -> submit(arguments.firstOrNull()?.objectField("expectValue")?.text()) }
+        driver.on("submit") { arguments ->
+            val options = arguments.firstOrNull()
+            submit(options?.objectField("expectValue")?.text(), options?.objectField("documentToken")?.text())
+        }
         driver.on("replyState") { replyState() }
         driver.on("closeLayer") {
             layerOpen = false
@@ -515,6 +532,12 @@ internal class SimulatedEbayPage(
             if (pressMethod != null) return json(mapOf("ok" to false, "reason" to "alreadySubmitted"))
             if (fieldValue != expectValue) return json(mapOf("ok" to false, "reason" to "amountChanged"))
             guardTarget = "submit"
+            if (navigateAfterSubmitArmed) {
+                // A new document replaces this one before the tap: same form, same amount, no guard, a new token.
+                driver.pageNavigates()
+                documentToken = "document-2"
+                guardTarget = null
+            }
             return json(
                 mapOf(
                     "ok" to true,
@@ -572,10 +595,14 @@ internal class SimulatedEbayPage(
 
     private fun refused(reason: String) = json(mapOf("ok" to false, "dispatched" to false, "reason" to reason))
 
-    private fun submit(expectValue: String?): String {
+    private fun submit(
+        expectValue: String?,
+        expectedDocument: String?,
+    ): String {
         val refusal =
             when {
                 submitRefusalOverride != null -> submitRefusalOverride
+                expectedDocument != null && expectedDocument != documentToken -> "documentChanged"
                 pressMethod == "native" -> "nativeTapReached"
                 pressMethod != null -> "alreadySubmitted"
                 !layerOpen -> "bidLayerClosed"

@@ -618,6 +618,19 @@ class WebBidPageTest {
         }
 
     @Test
+    fun `a navigation between arming and the tap stops the tap and nothing is pressed`() =
+        runTest {
+            ebay.navigateAfterSubmitArmed = true
+            val page = page().readyToSubmit()
+            val tapsBefore = driver.taps.size
+            val refused = runCatching { page.submit() }.exceptionOrNull()
+            assertTrue(refused.toString(), refused is SubmitNotDispatchedException)
+            assertEquals("the page moved to another document after the amount was typed", refused!!.message)
+            assertEquals("no tap on the new document", tapsBefore, driver.taps.size)
+            assertEquals(0, ebay.presses)
+        }
+
+    @Test
     fun `every press names the document the amount was typed in`() =
         runTest {
             ebay.touchReachesPage = false

@@ -55,6 +55,10 @@ class WebViewDriver internal constructor(
     override var javaScriptDialogCount: Int = 0
         private set
 
+    @Volatile
+    override var navigationCount: Long = 0
+        private set
+
     private val pendingScripts: MutableSet<CancellableContinuation<String>> =
         Collections.synchronizedSet(
             mutableSetOf(),
@@ -193,17 +197,25 @@ class WebViewDriver internal constructor(
         yCssPx: Double,
         devicePixelRatio: Double,
         pressMillis: Long,
+        onlyInNavigation: Long?,
     ) {
         withContext(mainDispatcher) {
             ensureUsable()
             val (width, height) = viewSize()
             val point = TapGeometry.toViewPixels(xCssPx, yCssPx, devicePixelRatio, width, height)
+            // The point was measured in one document; after a navigation it may lie on anything in the next one.
+            if (onlyInNavigation != null && navigationCount != onlyInNavigation) {
+                throw TapAbortedException("The page navigated before the tap", fingerWentDown = false)
+            }
             val downTime = SystemClock.uptimeMillis()
             var lifted = false
             dispatchTouch(MotionEvent.ACTION_DOWN, downTime, downTime, point)
             try {
                 delay(pressMillis)
                 ensureUsable()
+                if (onlyInNavigation != null && navigationCount != onlyInNavigation) {
+                    throw TapAbortedException("The page navigated during the tap", fingerWentDown = true)
+                }
                 dispatchTouch(MotionEvent.ACTION_UP, downTime, SystemClock.uptimeMillis(), point)
                 lifted = true
             } finally {
@@ -294,6 +306,7 @@ class WebViewDriver internal constructor(
 
     private inner class Events : WebViewEvents {
         override fun pageStarted(url: String) {
+            navigationCount += 1
             currentUrl = url
             currentLoad?.pageStarted(url)
         }

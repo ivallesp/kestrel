@@ -197,6 +197,8 @@ internal data class PressSnapshot(
     val ok: Boolean = false,
     val error: String? = null,
     val dispatched: Boolean = false,
+    /** Some events of the press went out before eBay changed the button; the bid may have been sent. */
+    val partial: Boolean = false,
     val reason: String? = null,
     val label: String? = null,
     val selector: String? = null,

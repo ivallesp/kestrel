@@ -23,6 +23,9 @@ interface PageDriver {
     /** The most recent of those dialogs, oldest first. */
     val javaScriptDialogs: List<String>
 
+    /** How many main-frame documents have started loading in this WebView; it changes on every navigation. */
+    val navigationCount: Long
+
     suspend fun load(
         url: String,
         timeoutMillis: Long,
@@ -34,12 +37,17 @@ interface PageDriver {
         timeoutMillis: Long = DEFAULT_SCRIPT_TIMEOUT_MILLIS,
     ): String
 
-    /** A finger tap (MotionEvent down, then up after [pressMillis]) at a CSS-pixel point of the page. */
+    /**
+     * A finger tap (MotionEvent down, then up after [pressMillis]) at a CSS-pixel point of the page. With
+     * [onlyInNavigation], the point belongs to that document: if the page has navigated since, the finger does not go
+     * down, or is cancelled instead of lifted (no click), and [TapAbortedException] is thrown.
+     */
     suspend fun tap(
         xCssPx: Double,
         yCssPx: Double,
         devicePixelRatio: Double,
         pressMillis: Long = DEFAULT_PRESS_MILLIS,
+        onlyInNavigation: Long? = null,
     )
 
     /** Releases the WebView. Safe to call more than once and from any thread. */
@@ -150,4 +158,10 @@ class PageLoadException(
 /** submit() pressed nothing: the bid was not sent. */
 class SubmitNotDispatchedException(
     message: String,
+) : WebPageException(message)
+
+/** A tap was stopped because the page navigated; [fingerWentDown] says whether a touch had already started. */
+class TapAbortedException(
+    message: String,
+    val fingerWentDown: Boolean,
 ) : WebPageException(message)

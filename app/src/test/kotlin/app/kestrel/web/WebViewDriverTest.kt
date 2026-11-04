@@ -252,6 +252,47 @@ class WebViewDriverTest {
         }
 
     @Test
+    fun `a tap meant for one document is not delivered to the next`() =
+        runTest {
+            val events = mutableListOf<Int>()
+            webView.setOnTouchListener { _, event ->
+                events += event.actionMasked
+                true
+            }
+            val driver = driver()
+            val before = driver.navigationCount
+            client.onPageStarted(webView, item, null)
+            assertEquals(before + 1, driver.navigationCount)
+            val stopped =
+                runCatching {
+                    driver.tap(
+                        206.0,
+                        484.0,
+                        2.625,
+                        60,
+                        onlyInNavigation = before,
+                    )
+                }.exceptionOrNull()
+            assertTrue(stopped is TapAbortedException)
+            assertFalse((stopped as TapAbortedException).fingerWentDown)
+            assertTrue("no finger went down", events.isEmpty())
+            val current = driver.navigationCount
+            val tapping =
+                async(UnconfinedTestDispatcher(testScheduler)) {
+                    runCatching { driver.tap(206.0, 484.0, 2.625, 60, onlyInNavigation = current) }.exceptionOrNull()
+                }
+            client.onPageStarted(webView, "https://www.ebay.co.uk/itm/127820098966", null)
+            advanceTimeBy(61)
+            val cancelled = tapping.await() as TapAbortedException
+            assertTrue(cancelled.fingerWentDown)
+            assertEquals(
+                "cancelled, never lifted into a click",
+                listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_CANCEL),
+                events,
+            )
+        }
+
+    @Test
     fun `a tap outside the WebView is refused and nothing is dispatched`() =
         runTest {
             var touched = false
