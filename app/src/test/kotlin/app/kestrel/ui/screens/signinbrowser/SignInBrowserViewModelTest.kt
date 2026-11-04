@@ -60,6 +60,33 @@ class SignInBrowserViewModelTest {
         }
 
     @Test
+    fun aPageThatCannotLoadWhileOnlineSaysEbayCouldNotBeReached() =
+        runTest(main.dispatcher) {
+            val viewModel = SignInBrowserViewModel(FakeSession())
+            runCurrent()
+            viewModel.onMainFrameError(SignInPages.signInUrl)
+            assertEquals(BrowserSheet.Offline, viewModel.state.value.sheet)
+            assertNull(viewModel.state.value.progress)
+            // Chromium's error page finishing behind the sheet leaves it up.
+            viewModel.onPageFinished(SignInPages.signInUrl, "Webpage not available")
+            assertEquals(BrowserSheet.Offline, viewModel.state.value.sheet)
+
+            assertFalse(viewModel.onSheetAction())
+            assertNull(viewModel.state.value.sheet)
+            assertEquals(1, viewModel.state.value.pageGeneration)
+        }
+
+    @Test
+    fun aFailedLoadBehindTheGoogleSheetKeepsThatSheet() =
+        runTest(main.dispatcher) {
+            val viewModel = SignInBrowserViewModel(FakeSession())
+            runCurrent()
+            viewModel.onThirdPartySignIn("https://accounts.google.com/o/oauth2/v2/auth")
+            viewModel.onMainFrameError("https://accounts.google.com/o/oauth2/v2/auth")
+            assertEquals(BrowserSheet.ThirdParty("Google"), viewModel.state.value.sheet)
+        }
+
+    @Test
     fun theSignInPageItselfIsNotRead() =
         runTest(main.dispatcher) {
             val viewModel = SignInBrowserViewModel(FakeSession())

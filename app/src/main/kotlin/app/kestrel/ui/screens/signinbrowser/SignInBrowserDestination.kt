@@ -61,6 +61,8 @@ fun SignInBrowserDestination(
 
                 override fun onThirdPartySignIn(url: String) = viewModel.onThirdPartySignIn(url)
 
+                override fun onMainFrameError(url: String) = viewModel.onMainFrameError(url)
+
                 override fun onRendererGone(crashed: Boolean) = viewModel.onRendererGone()
             }
         }

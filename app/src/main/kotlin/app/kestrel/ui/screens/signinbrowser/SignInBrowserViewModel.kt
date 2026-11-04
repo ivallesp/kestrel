@@ -41,7 +41,7 @@ sealed interface BrowserSheet {
         val provider: String,
     ) : BrowserSheet
 
-    /** A page finished loading while the phone was offline. */
+    /** A page could not reach eBay: it finished loading while the phone was offline, or failed to load. */
     data object Offline : BrowserSheet
 
     /** Android closed the page's renderer; the WebView has to be replaced. */
@@ -147,6 +147,18 @@ class SignInBrowserViewModel(
         if (evidence !is SignInEvidence.SignedIn) return
         session.keep(evidence.name)
         mutableState.update { it.copy(signedIn = true, sheet = BrowserSheet.SignedIn(evidence.name)) }
+    }
+
+    /**
+     * eBay's page did not load although the phone counts as online (DNS, a timeout, a reset, TLS): the WebView shows
+     * Chromium's error page, so the sheet offers to try again. A sheet already up (Google sign-in refused) stays.
+     */
+    fun onMainFrameError(pageUrl: String) {
+        val current = mutableState.value
+        if (current.signedIn || current.sheet != null) return
+        mutableState.update {
+            it.copy(host = SignInPages.hostOf(pageUrl) ?: it.host, sheet = BrowserSheet.Offline, progress = null)
+        }
     }
 
     fun onThirdPartySignIn(pageUrl: String) {

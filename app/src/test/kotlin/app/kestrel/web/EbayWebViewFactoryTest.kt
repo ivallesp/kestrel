@@ -3,9 +3,11 @@ package app.kestrel.web
 import android.net.Uri
 import android.webkit.CookieManager
 import android.webkit.RenderProcessGoneDetail
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import io.mockk.every
 import io.mockk.mockk
@@ -131,6 +133,34 @@ class EbayWebViewFactoryTest {
             ),
         )
         assertTrue(rendererGone)
+    }
+
+    @Test
+    fun `a page that fails to load reaches the host, unless Kestrel stopped it itself`() {
+        val webView = WebView(context)
+        val failed = mutableListOf<String>()
+        EbayWebViewFactory.configureVisible(
+            webView,
+            object : VisibleWebViewListener {
+                override fun onMainFrameError(url: String) {
+                    failed += url
+                }
+            },
+        )
+        val client = shadowOf(webView).webViewClient
+        val unreachable =
+            mockk<WebResourceError> {
+                every { errorCode } returns WebViewClient.ERROR_HOST_LOOKUP
+                every { description } returns "net::ERR_NAME_NOT_RESOLVED"
+            }
+        val signIn = "https://signin.ebay.co.uk/ws/eBayISAPI.dll?SignIn"
+        client.onReceivedError(webView, request(signIn), unreachable)
+        // A POST to Google that Kestrel stopped as it started: its error is Kestrel's own doing.
+        val google = "https://accounts.google.com/o/oauth2/v2/auth"
+        client.onPageStarted(webView, google, null)
+        client.onReceivedError(webView, request(google), unreachable)
+
+        assertEquals(listOf(signIn), failed)
     }
 
     @Test

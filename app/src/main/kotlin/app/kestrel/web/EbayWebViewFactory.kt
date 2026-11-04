@@ -25,6 +25,12 @@ interface VisibleWebViewListener {
 
     /** The renderer is gone: the host must remove this WebView and create a new one. */
     fun onRendererGone(crashed: Boolean) {}
+
+    /**
+     * The page itself could not load (no route to eBay, a timeout, a reset or TLS error); the WebView shows
+     * Chromium's own error page. Never sent for a navigation Kestrel refused or stopped.
+     */
+    fun onMainFrameError(url: String) {}
 }
 
 /** Builds the app's eBay WebViews. All share the app's one WebView profile, so they share the eBay cookies. */
@@ -84,6 +90,9 @@ object EbayWebViewFactory {
     private class VisibleEvents(
         private val listener: VisibleWebViewListener,
     ) : WebViewEvents {
+        /** The last main-frame address Kestrel refused, whose load error is Kestrel's own doing. */
+        private var refusedUrl: String? = null
+
         override fun pageStarted(url: String) = Unit
 
         override fun pageFinished(
@@ -99,6 +108,7 @@ object EbayWebViewFactory {
             isMainFrame: Boolean,
         ) {
             if (!isMainFrame) return
+            refusedUrl = url
             if (verdict.decision == NavigationDecision.THIRD_PARTY_SIGN_IN) {
                 listener.onThirdPartySignIn(url)
             } else {
@@ -110,7 +120,9 @@ object EbayWebViewFactory {
             url: String,
             code: Int,
             description: String,
-        ) = Unit
+        ) {
+            if (url != refusedUrl) listener.onMainFrameError(url)
+        }
 
         override fun mainFrameHttpError(
             url: String,
