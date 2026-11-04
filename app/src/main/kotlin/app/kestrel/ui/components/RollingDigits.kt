@@ -57,7 +57,9 @@ fun RollingDigits(
             key(positionFromEnd) {
                 AnimatedContent(
                     targetState = character,
-                    modifier = Modifier.clipToBounds(),
+                    // A cell whose character the font lacks (U+202F in Newsreader) is set in a fallback font with
+                    // another baseline; aligning the cells by baseline keeps the figure on one line.
+                    modifier = Modifier.alignByBaseline().clipToBounds(),
                     transitionSpec = {
                         if (reduceMotion) {
                             ContentTransform(EnterTransition.None, ExitTransition.None, sizeTransform = null)
