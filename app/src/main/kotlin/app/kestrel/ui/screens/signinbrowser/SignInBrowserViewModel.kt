@@ -5,7 +5,16 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.kestrel.AppContainer
+import app.kestrel.data.SnipeRepository
+import app.kestrel.model.Snipe
+import app.kestrel.model.TimelineEvent
+import app.kestrel.platform.SnipeAction
+import app.kestrel.platform.SnipeService
 import app.kestrel.ui.model.Connectivity
+import app.kestrel.ui.model.DryRunCause
+import app.kestrel.ui.model.LotStatus
+import app.kestrel.ui.model.LotStatusMapper
+import app.kestrel.ui.screens.handoff.HandOffViewModel
 import app.kestrel.ui.shell.ConnectivityMonitor
 import app.kestrel.ui.shell.UiPreferences
 import app.kestrel.web.EbaySession
@@ -14,9 +23,11 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.Instant
 
 /** A sheet over eBay's page: the success, or one of the failures of DESIGN S6. */
 sealed interface BrowserSheet {
@@ -192,6 +203,41 @@ class SignInBrowserViewModel(
     }
 }
 
+/**
+ * What a successful sign-in runs again, so the lots that met eBay's sign-in page leave "Sign-in needed" and "Dry run
+ * failed" now rather than at the next scheduled check, which can be hours away. Lots whose bid window runs are left
+ * to it ([HandOffViewModel.recheckAction]).
+ */
+internal object SignInRechecks {
+    suspend fun due(
+        repository: SnipeRepository,
+        nowUtcMillis: Long,
+    ): List<Pair<SnipeAction, Snipe>> {
+        val now = Instant.ofEpochMilli(nowUtcMillis)
+        return repository.pendingSnipes().mapNotNull { snipe ->
+            actionFor(snipe, repository.observeTimeline(snipe.id).first(), now)?.let { it to snipe }
+        }
+    }
+
+    /**
+     * A check clears "Sign-in needed" once the page shows the user signed in; a dry run that failed stays failed
+     * until a dry run passes (ListingCheckProcedure.statusAfterCheck), so that one runs the dry run again.
+     */
+    fun actionFor(
+        snipe: Snipe,
+        events: List<TimelineEvent>,
+        now: Instant,
+    ): SnipeAction? {
+        HandOffViewModel.recheckAction(snipe) ?: return null
+        val dryRunAgain = snipe.maxBid != null && snipe.dryRunPassed == false
+        return when (val status = LotStatusMapper.statusOf(snipe, events, now, Connectivity.Online)) {
+            is LotStatus.SignInNeeded -> if (dryRunAgain) SnipeAction.DRY_RUN else SnipeAction.CHECK
+            is LotStatus.DryRunFailed -> SnipeAction.DRY_RUN.takeIf { status.cause == DryRunCause.SIGN_IN_PAGE }
+            else -> null
+        }
+    }
+}
+
 /** The app's session: the WebView cookie store, the settings and the connection. */
 internal class ContainerSignInSession(
     private val container: AppContainer,
@@ -205,6 +251,10 @@ internal class ContainerSignInSession(
             if (name != null) container.settings.setSignedInName(name)
             // For Settings: "Signed in on this phone since Sun 2 Nov".
             UiPreferences.of(context).recordSignIn(container.clock.nowUtcMillis())
+            // Lots that met eBay's sign-in page read as paused until Kestrel looks again, so it looks now.
+            for ((action, snipe) in SignInRechecks.due(container.repository, container.clock.nowUtcMillis())) {
+                SnipeService.start(context, action, snipe)
+            }
         }
     }
 
