@@ -7,8 +7,8 @@ Research behind every decision: `docs/research/` (bid flow, Android platform, eB
 ## 1. Ground rules (product and safety)
 
 1. The user's maximum is a hard ceiling. Kestrel never bids above it, never raises it by itself, never buys, never pays.
-2. One bid per snipe: the full maximum, once, a few seconds before the end. eBay proxy bidding does the rest.
-   A retry is allowed only with the identical amount (it cannot raise what the user pays).
+2. One bid per snipe: the full maximum, one press, a few seconds before the end. eBay proxy bidding does the rest.
+   A press whose reply was lost is never repeated; the ended page decides what happened.
 3. Kestrel drives eBay's normal web pages in a normal WebView, at a person's pace. It never replays eBay's internal
    requests from outside the page, never changes its user agent, and never calls eBay from OkHttp.
 4. If eBay shows a captcha, a "verify it's you" step, phone verification, an age check or any page Kestrel does not
