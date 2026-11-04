@@ -17,6 +17,7 @@ import app.kestrel.engine.DryRun
 import app.kestrel.engine.EngineClock
 import app.kestrel.engine.ListingCheck
 import app.kestrel.engine.SnipeEngine
+import app.kestrel.engine.SntpClient
 import app.kestrel.engine.SntpSample
 import app.kestrel.engine.TimeSources
 import app.kestrel.engine.TrueTime
@@ -232,7 +233,8 @@ open class AppContainer(
     private fun canUseFullScreenIntent(): Boolean =
         context.getSystemService(NotificationManager::class.java)?.canUseFullScreenIntent() == true
 
-    // Wiring point for the engine's SNTP client: one exchange with the host, or null on failure. Until it is wired,
-    // TrueTime falls back to Android's network time and then the phone clock, and says so in the timeline.
-    private val sntpExchange: suspend (String) -> SntpSample? = { null }
+    private val sntpClient by lazy { SntpClient(System::currentTimeMillis, SystemClock::elapsedRealtime) }
+
+    // One SNTP exchange with the host, or null on failure (TrueTime then falls back to network time, then the phone clock).
+    private val sntpExchange: suspend (String) -> SntpSample? = { host -> sntpClient.query(host) }
 }

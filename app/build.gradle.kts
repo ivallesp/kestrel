@@ -65,6 +65,8 @@ android {
         unitTests {
             isIncludeAndroidResources = true
             all {
+                // Robolectric writes ~200 MB of temporary files; keep them off the RAM-backed /tmp.
+                it.systemProperty("java.io.tmpdir", "/var/tmp")
                 // Robolectric 4.17 on JDK 17+ (robolectric.org/getting-started).
                 // SDK 37 needs jdk.internal.access at startup (ApplicationSharedMemory).
                 it.jvmArgs(
