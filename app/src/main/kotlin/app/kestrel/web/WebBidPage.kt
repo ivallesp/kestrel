@@ -9,6 +9,7 @@ import app.kestrel.engine.LayerState
 import app.kestrel.engine.PageState
 import app.kestrel.engine.SubmitDispatch
 import app.kestrel.engine.TypedAmount
+import app.kestrel.engine.TypingProblem
 import app.kestrel.model.AutoRefreshState
 import app.kestrel.model.EbaySite
 import app.kestrel.model.ItemRef
@@ -33,6 +34,18 @@ internal data class VerifiedTyping(
     val dialogCount: Int,
     /** kestrel.js's name for the document the amount was typed in. */
     val documentToken: String?,
+)
+
+/** One typing of the maximum, kept so the layer can be checked again later without typing. */
+internal data class TypingAttempt(
+    val amount: Money,
+    val site: EbaySite,
+    /** What kestrel.js read from the field right after typing. */
+    val typedValue: String,
+    val minimumAmountText: String?,
+    val documentToken: String?,
+    /** The WebView's navigation count when the amount was typed. */
+    val navigation: Long,
 )
 
 /** What became of a native tap. */
@@ -80,6 +93,7 @@ class WebBidPage internal constructor(
     private var lastListing: Listing? = null
     private var autoRefreshUrl: String? = null
     private var verifiedTyping: VerifiedTyping? = null
+    private var lastTyping: TypingAttempt? = null
     private var nativeTouch: NativeTouchCheck? = null
     private var dispatch: SubmitDispatch? = null
     private var lastAutoRefreshStartElapsed: Long? = null
@@ -91,6 +105,7 @@ class WebBidPage internal constructor(
         lastListing = null
         autoRefreshUrl = null
         verifiedTyping = null
+        lastTyping = null
         val view = reader.settle(driver.load(ref.url, timing.loadTimeoutMillis))
         note("opened ${ref.url}: ${view.kind} at ${view.url}")
         val listing =
@@ -137,6 +152,7 @@ class WebBidPage internal constructor(
         // After the press the layer is eBay's: typing again could change what its own requests still send.
         if (submitAttempted.get()) return notTyped("this page's one press was already used")
         verifiedTyping = null
+        lastTyping = null
         val site = ref?.site ?: return notTyped("open the item before typing the maximum")
         if (amount.minor <= 0) return notTyped("the maximum must be above zero")
         val listingCurrency = lastListing?.currentPrice?.currency
@@ -154,6 +170,7 @@ class WebBidPage internal constructor(
 
     override suspend fun closeLayer() {
         verifiedTyping = null
+        lastTyping = null
         if (driver.failure != null) return
         quietly {
             val closed = helper.call(PageFunction.CLOSE_LAYER, CloseSnapshot.serializer())
@@ -489,68 +506,110 @@ class WebBidPage internal constructor(
         val input = before.input ?: return notTyped("eBay's amount field is not open")
         val text = AmountText.forInput(amount, site, input.type)
         val typed = helper.call(PageFunction.TYPE_MAX, TypedSnapshot.serializer(), JsonPrimitive(text))
-        if (!typed.ok) return notTyped("the amount could not be typed (${typed.reason ?: typed.error})")
+        if (!typed.ok) {
+            // kestrel.js never types while eBay shows a check: that check is for the user.
+            val problem = if (typed.reason == "interstitial") TypingProblem.NEEDS_USER else TypingProblem.OTHER
+            return notTyped("the amount could not be typed (${typed.reason ?: typed.error})", problem)
+        }
+        val attempt =
+            TypingAttempt(
+                amount,
+                site,
+                typed.value,
+                typed.minimumAmountText,
+                typed.documentToken,
+                driver.navigationCount,
+            )
+        lastTyping = attempt
         // eBay may validate after a short delay: wait for its error or for the button to enable.
         val settled =
             driver.waitUntil(timing.typingSettleMillis, timing.pollMillis) {
                 layerState().takeIf { it.inlineError != null || it.submit?.enabled == true || it.interstitial != null }
             } ?: layerState()
-        val fieldValue = settled.input?.value ?: typed.value
+        return verify(attempt, settled, "typed $text")
+    }
+
+    override suspend fun checkTyped(): TypedAmount {
+        verifiedTyping = null
+        if (submitAttempted.get()) return notTyped("this page's one press was already used")
+        val attempt = lastTyping ?: return notTyped("nothing was typed on this page yet")
+        if (driver.failure != null) return notTyped(driver.failure?.description ?: "the page stopped")
+        // The amount was typed in one document; a field in the next one says nothing about it.
+        if (driver.navigationCount !=
+            attempt.navigation
+        ) {
+            return notTyped("the page moved on since the amount was typed")
+        }
+        return try {
+            verify(attempt, layerState(), "checked")
+        } catch (problem: WebPageException) {
+            note("checkTyped: ${problem.message}")
+            notTyped(problem.message ?: "the page did not answer")
+        }
+    }
+
+    /** The verdict on the layer [settled] for the amount of [attempt]; only a verdict without a problem may bid. */
+    private fun verify(
+        attempt: TypingAttempt,
+        settled: LayerSnapshot,
+        what: String,
+    ): TypedAmount {
+        val amount = attempt.amount
+        val fieldValue = settled.input?.value ?: attempt.typedValue
         val minimum =
             minimumOf(
-                settled.minimumAmountText ?: typed.minimumAmountText,
+                settled.minimumAmountText ?: attempt.minimumAmountText,
                 settled.lowestPowerBidAmountText,
                 amount.currency,
             )
-        val shown = AmountText.readField(fieldValue, site, amount.currency)
+        val shown = AmountText.readField(fieldValue, attempt.site, amount.currency)
+        val belowMinimum = minimum != null && amount < minimum
         val interstitial = settled.interstitial
         val submit = settled.submit
         val dialog = dialogSince(layerDialogBaseline)
-        val problem =
+        val (problem, kind) =
             when {
                 dialog != null -> {
-                    kestrel("eBay showed a message that needs you: $dialog")
+                    kestrel("eBay showed a message that needs you: $dialog") to TypingProblem.NEEDS_USER
                 }
 
                 interstitial != null -> {
-                    kestrel(
-                        "eBay is asking for something first (${interstitial.kind}): ${interstitial.text}",
-                    )
+                    kestrel("eBay is asking for something first (${interstitial.kind}): ${interstitial.text}") to
+                        TypingProblem.NEEDS_USER
                 }
 
                 settled.inlineError != null -> {
-                    settled.inlineError
+                    // eBay's own words; with a minimum above the max they say the price passed it.
+                    settled.inlineError to if (belowMinimum) TypingProblem.BELOW_MINIMUM else TypingProblem.OTHER
                 }
 
                 shown != amount -> {
-                    kestrel("the amount field shows \"$fieldValue\", not ${describe(amount)}")
+                    kestrel("the amount field shows \"$fieldValue\", not ${describe(amount)}") to TypingProblem.OTHER
                 }
 
-                minimum != null && amount < minimum -> {
-                    kestrel(
-                        "the maximum is below eBay's minimum of ${describe(minimum)}",
-                    )
+                belowMinimum -> {
+                    kestrel("the maximum is below eBay's minimum of ${minimum?.let(::describe)}") to
+                        TypingProblem.BELOW_MINIMUM
                 }
 
                 submit == null || !submit.found -> {
-                    kestrel("eBay's bid button is not in the layer")
+                    kestrel("eBay's bid button is not in the layer") to TypingProblem.OTHER
                 }
 
                 !submit.enabled -> {
-                    kestrel("eBay's bid button stayed disabled after typing the amount")
+                    kestrel("eBay's bid button stayed disabled after typing the amount") to
+                        TypingProblem.BUTTON_DISABLED
                 }
 
                 else -> {
-                    null
+                    null to null
                 }
             }
-        if (problem ==
-            null
-        ) {
-            verifiedTyping = VerifiedTyping(amount, fieldValue, driver.javaScriptDialogCount, typed.documentToken)
+        if (problem == null) {
+            verifiedTyping = VerifiedTyping(amount, fieldValue, driver.javaScriptDialogCount, attempt.documentToken)
         }
-        note("typed $text, field shows \"$fieldValue\", ${problem ?: "verified"}")
-        return TypedAmount(fieldValue, problem, minimum)
+        note("$what: field shows \"$fieldValue\", ${problem ?: "verified"}")
+        return TypedAmount(fieldValue, problem, minimum, verified = problem == null, problem = kind)
     }
 
     private fun minimumOf(
@@ -846,9 +905,12 @@ class WebBidPage internal constructor(
         }
     }
 
-    private fun notTyped(reason: String): TypedAmount {
+    private fun notTyped(
+        reason: String,
+        problem: TypingProblem = TypingProblem.OTHER,
+    ): TypedAmount {
         note("typeMax: $reason")
-        return TypedAmount(fieldValue = "", inlineError = kestrel(reason), minimum = null)
+        return TypedAmount(fieldValue = "", inlineError = kestrel(reason), minimum = null, problem = problem)
     }
 
     // The engine may read report() from another coroutine while a page call is still writing notes.

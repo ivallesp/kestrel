@@ -286,6 +286,16 @@ internal class SimulatedEbayPage(
     var autoRefreshStatus = 200
     var autoRefreshPollsBeforeDone = 1
 
+    /** The page's clock, for behaviour that takes time (the rigs pass the test's virtual clock). */
+    var clock: () -> Long = { 0L }
+
+    /** eBay's own check of the typed amount: its bid button only enables this long after typing. */
+    var submitEnableDelayMillis = 0L
+    private var typedAtMillis = 0L
+
+    /** A check eBay shows right after the amount is typed (kind, text). */
+    var interstitialAfterTyping: Pair<String, String>? = null
+
     var probes = 0
     var layerOpen = false
     var interstitialShown = false
@@ -445,6 +455,9 @@ internal class SimulatedEbayPage(
         fieldValue.isNotEmpty() &&
             (AmountText.readField(fieldValue, EbaySite.UK, "GBP")?.minor ?: 0) >= minimumMinor
 
+    private val submitEnabled get() =
+        valid && submitEnabledWhenValid && clock() - typedAtMillis >= submitEnableDelayMillis
+
     private fun layerState(): String {
         if (interstitialShown) {
             val (kind, text) = interstitial!!
@@ -486,7 +499,7 @@ internal class SimulatedEbayPage(
                     mapOf(
                         "found" to (submitLabel != null),
                         "label" to submitLabel,
-                        "enabled" to (valid && submitEnabledWhenValid),
+                        "enabled" to submitEnabled,
                         "rejected" to listOf(mapOf("label" to "Review bid")),
                     ),
                 "minimumAmountText" to minimumAmountText,
@@ -516,12 +529,17 @@ internal class SimulatedEbayPage(
 
     private fun typeMax(text: String): String {
         fieldValue = fieldRewrite(text)
+        typedAtMillis = clock()
+        interstitialAfterTyping?.let {
+            interstitial = it
+            interstitialShown = true
+        }
         return json(
             mapOf(
                 "ok" to true,
                 "value" to fieldValue,
                 "minimumAmountText" to minimumAmountText,
-                "submitEnabled" to (valid && submitEnabledWhenValid),
+                "submitEnabled" to submitEnabled,
                 "documentToken" to documentToken,
             ),
         )

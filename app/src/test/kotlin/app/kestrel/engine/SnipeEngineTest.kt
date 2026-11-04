@@ -578,6 +578,45 @@ class SnipeEngineTest {
         }
 
     @Test
+    fun aMaxBelowEbaysMinimumEndsAsPricePassedTheMaxWithoutPressing() =
+        runTest {
+            val harness = WindowHarness(this)
+            harness.forbidSubmit()
+            harness.page.typedMinimum = { gbp("60.00") }
+            harness.page.typedInlineError = { "Enter £60.00 or more" }
+            harness.page.typedProblem = { TypingProblem.BELOW_MINIMUM }
+
+            val result = harness.run()
+
+            assertEquals(SnipeOutcome.PRICE_PASSED_MAX, result.outcome)
+            assertEquals(
+                gbp("60.00"),
+                harness.notifier.priceAlerts
+                    .last()
+                    .second,
+            )
+            assertTrue(harness.notifier.userAlerts.isEmpty())
+        }
+
+    @Test
+    fun aBidButtonThatNeverEnablesFailsEarlyWithTheReason() =
+        runTest {
+            val harness = WindowHarness(this)
+            harness.forbidSubmit()
+            harness.page.typedInlineError = { "Kestrel: eBay's bid button stayed disabled after typing the amount" }
+            harness.page.typedProblem = { TypingProblem.BUTTON_DISABLED }
+
+            val result = harness.run()
+
+            assertEquals(SnipeOutcome.FAILED, result.outcome)
+            assertTrue(result.reason!!, result.reason!!.contains("stayed disabled"))
+            // Looked again without typing before typing anew, and gave up long before the fire time.
+            assertEquals(2, harness.page.typed.size)
+            assertTrue(harness.page.checks >= 4)
+            assertTrue(harness.time.trueUtc() < END_UTC - 20_000)
+        }
+
+    @Test
     fun aPressThePageProvablyNeverMadeIsNotRecordedAsABid() =
         runTest {
             val harness = WindowHarness(this)

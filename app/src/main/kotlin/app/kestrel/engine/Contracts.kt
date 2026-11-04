@@ -55,10 +55,29 @@ sealed interface LayerState {
 data class TypedAmount(
     /** The value read back from the field, as text. */
     val fieldValue: String,
-    /** Inline error shown by eBay, for example "Enter £66.00 or more". */
+    /** Inline error shown by eBay, for example "Enter £66.00 or more", or Kestrel's own note of what is wrong. */
     val inlineError: String?,
     val minimum: Money?,
+    /** The page checked that the field holds exactly the amount and eBay's bid button takes it: only then may it bid. */
+    val verified: Boolean = false,
+    /** Why the page did not verify the amount; null when [verified]. */
+    val problem: TypingProblem? = null,
 )
+
+/** Why a typed maximum was not verified, sorted by what the window can do about it. */
+enum class TypingProblem {
+    /** A check, an interstitial or a JavaScript dialog stands in the way: only the user can deal with it. */
+    NEEDS_USER,
+
+    /** The maximum is below eBay's minimum: the price passed it. */
+    BELOW_MINIMUM,
+
+    /** The field holds the amount but eBay's bid button is still disabled; eBay may still be checking the amount. */
+    BUTTON_DISABLED,
+
+    /** Anything else: no field, another value in it, an eBay error, no recognisable bid button. */
+    OTHER,
+}
 
 /** How the submit tap was delivered. */
 enum class InputMethod { NATIVE_TOUCH, DOM_EVENTS }
@@ -124,6 +143,12 @@ interface BidLayerPreview {
 interface BidPage : BidLayerPreview {
     /** Fetch the page's AUTO_REFRESH JSON from inside the page (same origin, with credentials). */
     suspend fun autoRefresh(): AutoRefreshState?
+
+    /**
+     * Reads the layer again, without typing, and verifies the amount [typeMax] typed last, as [typeMax] does. For a
+     * bid button that eBay enables late, and for a last look before the press.
+     */
+    suspend fun checkTyped(): TypedAmount
 
     /** Start recording the bid request's reply; call before [submit]. */
     suspend fun armReplyObserver()

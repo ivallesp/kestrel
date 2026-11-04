@@ -4,6 +4,7 @@ import app.kestrel.engine.BidPage
 import app.kestrel.engine.BidReply
 import app.kestrel.engine.InputMethod
 import app.kestrel.engine.LayerState
+import app.kestrel.engine.TypingProblem
 import app.kestrel.model.Money
 import app.kestrel.model.PageKind
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -381,6 +382,39 @@ class WebBidPageTest {
             val typed = page.typeMax(max)
             assertEquals("Kestrel: the maximum is below eBay's minimum of 15.00 GBP", typed.inlineError)
             assertEquals(Money.of("15", "GBP"), typed.minimum)
+        }
+
+    @Test
+    fun `a check eBay shows after typing is a typing problem for the user`() =
+        runTest {
+            ebay.interstitialAfterTyping = "verification" to "Verify your phone number to bid"
+            val page = page()
+            page.openItem(ukItem)
+            page.openBidLayer()
+            val typed = page.typeMax(max)
+            assertFalse(typed.verified)
+            assertEquals(TypingProblem.NEEDS_USER, typed.problem)
+        }
+
+    @Test
+    fun `a bid button eBay enables late is confirmed by a check that does not type again`() =
+        runTest {
+            ebay.clock = { testScheduler.currentTime }
+            ebay.submitEnableDelayMillis = 3_000
+            val page = page()
+            page.openItem(ukItem)
+            page.openBidLayer()
+            val typed = page.typeMax(max)
+            assertEquals(TypingProblem.BUTTON_DISABLED, typed.problem)
+            assertFalse(typed.verified)
+            testScheduler.advanceTimeBy(3_000)
+            val checked = page.checkTyped()
+            assertTrue(checked.toString(), checked.verified)
+            assertNull(checked.problem)
+            assertEquals(1, driver.callsOf("typeMax").size)
+            page.armReplyObserver()
+            page.submit()
+            assertEquals(1, ebay.presses)
         }
 
     @Test

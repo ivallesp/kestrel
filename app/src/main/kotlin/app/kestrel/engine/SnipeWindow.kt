@@ -618,15 +618,20 @@ internal class SnipeWindow(
         )
     }
 
-    /** Types [amount] and reads the field back; the bid only goes ahead when the field provably holds exactly the max. */
+    /**
+     * Types [amount] and has the page verify it. The bid only goes ahead when the page says the field provably holds
+     * exactly the max and eBay's bid button takes it. A check in the way goes to the user at once; a max below eBay's
+     * minimum is left to the lock, which ends the window as "price passed your max" unless the user raises it.
+     */
     private suspend fun typeAndVerify(amount: Money): SnipeResult? {
         typedAmount = null
+        var lastProblem: String? = null
         for (attempt in 1..TYPE_ATTEMPTS) {
             val currentPage = page ?: break
             val budget = minOf(TYPE_TIMEOUT, latestDispatchUtcMillis - clock.nowUtcMillis() - TYPE_MINIMUM_BUDGET)
             if (budget < TYPE_MINIMUM_BUDGET) break
             val call = callWithin(budget) { currentPage.typeMax(amount) }
-            val typed = call.valueOrNull()
+            var typed = call.valueOrNull()
             if (typed == null) {
                 journal.event(
                     snipeId,
@@ -636,31 +641,81 @@ internal class SnipeWindow(
                 )
                 continue
             }
-            if (AmountField.minorUnits(typed.fieldValue) != amount.minor) {
-                journal.event(
-                    snipeId,
-                    TimelineKind.PROBLEM,
-                    "eBay's bid field showed \"${typed.fieldValue}\" instead of ${amount.displayText()}.",
-                    mapOf("attempt" to attempt, "inlineError" to typed.inlineError),
-                )
-                continue
+            // eBay may still be checking the amount: look again without typing, since typing restarts its check.
+            if (typed.problem == TypingProblem.BUTTON_DISABLED) typed = waitForBidButton(currentPage, typed)
+            when {
+                typed.verified && AmountField.minorUnits(typed.fieldValue) == amount.minor -> {
+                    acceptTyped(amount, typed)
+                    return null
+                }
+
+                typed.problem == TypingProblem.NEEDS_USER -> {
+                    return finish(
+                        SnipeOutcome.FAILED,
+                        "eBay needs you before it accepts a bid (\"${typed.inlineError}\"), so Kestrel did not bid.",
+                        userReason = NeedsUserReason.VERIFICATION,
+                    )
+                }
+
+                typed.problem == TypingProblem.BELOW_MINIMUM -> {
+                    watch.recordLayerMinimum(typed.minimum)
+                    journal.event(
+                        snipeId,
+                        TimelineKind.PROBLEM,
+                        "eBay did not take your max ${amount.displayText()}: \"${typed.inlineError}\".",
+                        mapOf("fieldValue" to typed.fieldValue, "minimum" to typed.minimum),
+                    )
+                    alertIfOverMax()
+                    return null
+                }
+
+                else -> {
+                    lastProblem = typed.inlineError
+                    journal.event(
+                        snipeId,
+                        TimelineKind.PROBLEM,
+                        "eBay's bid field showed \"${typed.fieldValue}\" and the page did not confirm your max " +
+                            "${amount.displayText()}: ${typed.inlineError ?: "no reason given"}.",
+                        mapOf("attempt" to attempt, "inlineError" to typed.inlineError, "problem" to typed.problem),
+                    )
+                }
             }
-            typedAmount = amount
-            watch.recordLayerMinimum(typed.minimum)
-            journal.event(
-                snipeId,
-                TimelineKind.LAYER_READY,
-                "Typed your max ${amount.displayText()} and read it back from eBay's field.",
-                mapOf("fieldValue" to typed.fieldValue, "inlineError" to typed.inlineError, "minimum" to typed.minimum),
-            )
-            alertIfOverMax()
-            return null
         }
+        val because = lastProblem?.let { " ($it)" } ?: ""
         return finish(
             SnipeOutcome.FAILED,
-            "Kestrel could not type your max into eBay's bid field and confirm it, so it did not bid.",
+            "Kestrel could not type your max into eBay's bid field and confirm it$because, so it did not bid.",
             userReason = NeedsUserReason.BID_FAILED,
         )
+    }
+
+    private suspend fun acceptTyped(
+        amount: Money,
+        typed: TypedAmount,
+    ) {
+        typedAmount = amount
+        watch.recordLayerMinimum(typed.minimum)
+        journal.event(
+            snipeId,
+            TimelineKind.LAYER_READY,
+            "Typed your max ${amount.displayText()} and eBay's page confirmed it.",
+            mapOf("fieldValue" to typed.fieldValue, "inlineError" to typed.inlineError, "minimum" to typed.minimum),
+        )
+        alertIfOverMax()
+    }
+
+    /** Looks at the layer again every second, for a while, until eBay enables its bid button for the typed amount. */
+    private suspend fun waitForBidButton(
+        currentPage: BidPage,
+        typed: TypedAmount,
+    ): TypedAmount {
+        var latest = typed
+        val until = minOf(clock.nowUtcMillis() + BID_BUTTON_WAIT_MILLIS, latestDispatchUtcMillis - TYPE_TIMEOUT)
+        while (latest.problem == TypingProblem.BUTTON_DISABLED && clock.nowUtcMillis() + HOLD_TICK <= until) {
+            delay(HOLD_TICK)
+            latest = callWithin(TYPE_TIMEOUT) { currentPage.checkTyped() }.valueOrNull() ?: return latest
+        }
+        return latest
     }
 
     private suspend fun followBeforeBid(deadline: Long): SnipeResult? {
@@ -1187,6 +1242,9 @@ internal class SnipeWindow(
     private companion object {
         const val LAYER_ATTEMPTS = 2
         const val TYPE_ATTEMPTS = 2
+
+        /** How long after typing Kestrel waits for eBay to enable its bid button before typing again. */
+        const val BID_BUTTON_WAIT_MILLIS = 6_000L
 
         /** The instruction must have been read this recently at the lock. */
         const val INSTRUCTION_MAXIMUM_AGE_MILLIS = 5_000L

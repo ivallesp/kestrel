@@ -400,6 +400,11 @@ class ScriptedBidPage(
     var typedMinimum: () -> Money? = { null }
     var typedInlineError: () -> String? = { null }
 
+    /** The page's verdict on the typed amount; by default worked out from the field and the error. */
+    var typedProblem: () -> TypingProblem? = { null }
+    private var lastTypedAmount: Money? = null
+    var checks = 0
+
     /** Replies to successive submits; an unreadable reply when empty. */
     val replies = ArrayDeque<BidReply>()
     var onSubmit: (submitNumber: Int) -> Unit = {}
@@ -468,7 +473,29 @@ class ScriptedBidPage(
     override suspend fun typeMax(amount: Money): TypedAmount {
         delay(300)
         typed += amount
-        return TypedAmount(fieldValueFor(amount), typedInlineError(), typedMinimum())
+        lastTypedAmount = amount
+        return typingVerdict(amount)
+    }
+
+    override suspend fun checkTyped(): TypedAmount {
+        delay(50)
+        checks++
+        val amount =
+            lastTypedAmount ?: return TypedAmount("", "Kestrel: nothing was typed", null, problem = TypingProblem.OTHER)
+        return typingVerdict(amount)
+    }
+
+    // The web page's verdict: verified only with exactly the amount in the field, no error and no problem.
+    private fun typingVerdict(amount: Money): TypedAmount {
+        val field = fieldValueFor(amount)
+        val error = typedInlineError()
+        val problem =
+            typedProblem() ?: when {
+                AmountField.minorUnits(field) != amount.minor -> TypingProblem.OTHER
+                error != null -> TypingProblem.OTHER
+                else -> null
+            }
+        return TypedAmount(field, error, typedMinimum(), verified = problem == null, problem = problem)
     }
 
     override suspend fun closeLayer() {

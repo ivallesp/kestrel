@@ -70,12 +70,49 @@ class EngineOnWebPageTest {
                 )
             }
             parsers.autoRefreshState = AutoRefreshState(price, 1, END_UTC, 2, false)
+            ebay.clock = { time.trueUtc() }
         }
 
         suspend fun run(): SnipeResult = engine.runWindow(1)
 
         fun snipe() = store.snipes.getValue(1)
     }
+
+    @Test
+    fun aBidButtonThatEnablesLateAfterTypingStillBids() =
+        runTest {
+            val rig = Rig(this)
+            // eBay checks the amount on its server and enables its bid button 3 s after typing.
+            rig.ebay.submitEnableDelayMillis = 3_000
+
+            val result = rig.run()
+
+            assertEquals(1, rig.ebay.presses)
+            assertEquals(6_000L, result.bidLeadMillis)
+            assertEquals(1, rig.store.eventsOf(TimelineKind.BID_SENT).size)
+        }
+
+    @Test
+    fun aCheckShownAfterTypingIsHandedToTheUserAtOnce() =
+        runTest {
+            val rig = Rig(this)
+            rig.ebay.interstitialAfterTyping = "verification" to "Verify your phone number to bid"
+
+            val result = rig.run()
+
+            assertEquals(0, rig.ebay.presses)
+            assertEquals(SnipeOutcome.FAILED, result.outcome)
+            assertEquals(
+                NeedsUserReason.VERIFICATION,
+                rig.notifier.userAlerts
+                    .single()
+                    .first,
+            )
+            assertTrue(result.reason!!, result.reason!!.contains("Verify your phone number to bid"))
+            // Handed over right after typing at T-45 s, not at the fire time.
+            val handOff = rig.store.eventsOf(TimelineKind.NEEDS_USER).single()
+            assertTrue(handOff.trueUtcMillis < END_UTC - 30_000)
+        }
 
     @Test
     fun aPressThePageRefusedIsNeitherABidNorALoss() =
