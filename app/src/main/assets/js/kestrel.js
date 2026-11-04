@@ -252,12 +252,32 @@
     return null;
   }
 
+  var containerSelector = null;
+
+  // The bid layer's and dialogs' own containers (TABLE.layerContainer and TABLE.dialogs).
+  function isDialogContainer(element) {
+    if (containerSelector === null) {
+      containerSelector = TABLE.layerContainer.concat(TABLE.dialogs).map(function (entry) {
+        return entry[0];
+      }).join(', ');
+    }
+    try {
+      return typeof element.matches === 'function' && element.matches(containerSelector);
+    } catch (error) {
+      return false;
+    }
+  }
+
   function isHiddenElement(element) {
     if (element.hidden) return true;
     if (element.classList && element.classList.contains('clipped')) return true;
     var style = window.getComputedStyle(element);
-    return style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse' ||
-      style.opacity === '0';
+    if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse') return true;
+    // A dialog's fade-in runs on animation frames, which a headless page with the screen off may never get: the
+    // dialog then stays at opacity 0 though everything in it is there and works. eBay closes its dialogs with the
+    // hidden attribute, so only a container's own fade is ignored; anything else at opacity 0 (a button, an overlay
+    // that is not a dialog) stays hidden.
+    return style.opacity === '0' && !isDialogContainer(element);
   }
 
   function isRendered(element) {
@@ -1839,6 +1859,14 @@
       dialogs: renderedDialogs().slice(0, 5).map(function (dialog) {
         return { role: dialog.getAttribute('role'), label: dialog.getAttribute('aria-label'),
           text: truncate(textOf(dialog, REPORT_TEXT_LIMIT), REPORT_TEXT_LIMIT) };
+      }),
+      // Dialog containers shown but still transparent: a fade-in that never ran.
+      containerOpacity: queryAll(document, '*').filter(function (node) {
+        if (node.hidden || !isDialogContainer(node)) return false;
+        var style = window.getComputedStyle(node);
+        return style.display !== 'none' && style.opacity === '0';
+      }).slice(0, 5).map(function (node) {
+        return { classes: truncate(node.getAttribute('class') || '', 120), opacity: '0' };
       }),
       frames: framesIn(document).slice(0, 10).map(function (frame) {
         var holder = layer ? (layer.element.closest(DIALOG_SELECTOR) || layer.element) : null;

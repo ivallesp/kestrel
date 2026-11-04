@@ -132,6 +132,41 @@ test('a modal dialog in front of the bid button is not pressed through', () => {
   assert.equal(counts.clicks, 0);
 });
 
+// eBay Skin's dialog window starts transparent and fades in on animation frames, which a headless page with the
+// screen off may never get.
+const FADING_LAYER = '<div class="lightbox-dialog lightbox-dialog--mask-fade lightbox-dialog--show-init" role="dialog" ' +
+  'aria-modal="true" aria-label="Place your bid" data-rect="0 60 411 760">' +
+  '<div class="lightbox-dialog__window lightbox-dialog__window--animate" style="opacity: 0" data-rect="0 60 411 760">' +
+  '<div class="placebid-redesign-wrapper" data-rect="0 110 411 700"><p>£5.37 current bid</p>' + FORM + '</div></div></div>';
+
+test('a bid layer whose fade-in never ran is still the open layer, with its text read', () => {
+  const page = openPage(ITEM, FADING_LAYER);
+  const layer = call(page.window, 'layerState');
+  assert.equal(layer.open, true, JSON.stringify(layer));
+  assert.equal(layer.ready, true);
+  assert.equal(layer.submit.label, 'Bid');
+  assert.equal(call(page.window, 'typeMax', '12.50').ok, true);
+  const report = call(page.window, 'report');
+  assert.deepEqual(report.containerOpacity, [{ classes: 'lightbox-dialog__window lightbox-dialog__window--animate', opacity: '0' }]);
+});
+
+test('a check in a layer whose fade-in never ran is still seen', () => {
+  const page = openPage(ITEM, FADING_LAYER.replace('<p>£5.37 current bid</p>', '<p>Verify your phone number to continue.</p>'));
+  const layer = call(page.window, 'layerState');
+  assert.equal(layer.ready, false);
+  assert.equal(layer.interstitial.kind, 'verification');
+});
+
+test('an invisible button is never the submit, whatever holds it', () => {
+  const page = openPage(ITEM, '<div class="placebid-redesign-wrapper" data-rect="0 100 411 600">' +
+    '<input class="textbox__control" type="tel" id="x-@placebid-price" data-rect="16 380 380 44">' +
+    '<div class="place-bid-actions__submit"><button class="btn btn--fluid btn--primary" type="button" style="opacity: 0" ' +
+    'data-rect="16 460 380 48">Bid</button></div></div>');
+  const layer = call(page.window, 'layerState');
+  assert.equal(layer.submit.found, false);
+  assert.equal(layer.ready, false);
+});
+
 test('a check eBay hosts in a frame inside its dialog is pending for the user, not a layer that did not open', () => {
   // The 2026-04 UK bid dialog keeps a section for content eBay loads from elsewhere; an identity check can arrive there.
   const page = openPage(ITEM,
