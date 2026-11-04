@@ -198,8 +198,13 @@ internal class FakePageDriver : PageDriver {
         val call = PageCall(match.groupValues[1], arguments)
         calls += call
         val handler = handlers[call.function] ?: return """{"ok":false,"error":"no fake for ${call.function}"}"""
-        return handler(arguments)
+        val answer = handler(arguments)
+        // The page acted at once, but its answer takes this long to come back (eBay's handler is slow).
+        answerDelayFor(call.function).takeIf { it > 0 }?.let { delay(it) }
+        return answer
     }
+
+    var answerDelayFor: (function: String) -> Long = { 0L }
 
     override suspend fun tap(
         xCssPx: Double,

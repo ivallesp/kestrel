@@ -99,6 +99,7 @@ class WebBidPage internal constructor(
     private var lastTyping: TypingAttempt? = null
     private var nativeTouch: NativeTouchCheck? = null
     private var dispatch: SubmitDispatch? = null
+    private var submittedTyping: VerifiedTyping? = null
     private var dialogsAtPress = 0
     private var lastAutoRefreshStartElapsed: Long? = null
     private var layerDialogBaseline = 0
@@ -210,6 +211,7 @@ class WebBidPage internal constructor(
         }
         val typing =
             verifiedTyping ?: throw SubmitNotDispatchedException("The typed maximum was not verified on this page")
+        submittedTyping = typing
         driver.failure?.let { throw SubmitNotDispatchedException(it.description) }
         // The one place the hold on bid requests is released, with the typed maximum as the ceiling.
         val released =
@@ -233,7 +235,7 @@ class WebBidPage internal constructor(
     }
 
     override suspend fun awaitReply(timeoutMillis: Long): BidReply {
-        val sent = dispatch ?: return BidReply.Unconfirmed(null)
+        val sent = dispatch ?: pressReadBackFromThePage() ?: return BidReply.Unconfirmed(null)
         // An unrecognised notice is eBay's answer only once it has stayed the same for the grace period; a notice
         // that keeps changing is a countdown or a status line, not a reply.
         var candidate: String? = null
@@ -906,6 +908,25 @@ class WebBidPage internal constructor(
             note("replyState: ${problem.message}")
             null
         }
+
+    /**
+     * submit() was cut off by the caller's time limit, but the press may have gone out: the document the amount was
+     * typed in keeps its own record of the press and when it happened, so eBay's reply can still be read.
+     */
+    private suspend fun pressReadBackFromThePage(): SubmitDispatch? {
+        val typing = submittedTyping ?: return null
+        val state = replyStateOrNull() ?: return null
+        if (!state.pressed || typing.documentToken == null || state.documentToken != typing.documentToken) return null
+        val pressAt = state.pressPerfTime
+        val pageNow = state.nowPerf
+        val ago = if (pressAt != null && pageNow != null) (pageNow - pressAt).roundToLong().coerceAtLeast(0) else 0L
+        val method = if (state.pressMethod == "native") InputMethod.NATIVE_TOUCH else InputMethod.DOM_EVENTS
+        val pressed = SubmitDispatch(clock.elapsedRealtimeMillis() - ago, method, null)
+        dispatch = pressed
+        dialogsAtPress = typing.dialogCount
+        note("submit: the press was read back from the page after its answer was cut off")
+        return pressed
+    }
 
     /**
      * What eBay showed instead of an answer that only the user can deal with: a check in the page, a sign-in or

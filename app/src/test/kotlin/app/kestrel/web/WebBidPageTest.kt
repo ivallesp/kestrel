@@ -11,6 +11,7 @@ import app.kestrel.model.PageKind
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -827,6 +828,21 @@ class WebBidPageTest {
             val page = page().readyToSubmit()
             page.submit()
             assertEquals(NeedsUserReason.CAPTCHA, (page.awaitReply(4_000) as BidReply.NeedsUser).reason)
+        }
+
+    @Test
+    fun `a press whose answer came after the engine stopped waiting still has eBay's reply read`() =
+        runTest {
+            ebay.touchReachesPage = false
+            // eBay's click handler holds the page: the press went out, its answer comes back after 5 s.
+            driver.answerDelayFor = { if (it == "submit") 5_000L else 0L }
+            val page = page().readyToSubmit()
+            assertNull("the engine gives submit 3 s", withTimeoutOrNull(3_000) { page.submit() })
+            assertEquals(1, ebay.presses)
+
+            val reply = page.awaitReply(4_000)
+
+            assertTrue(reply.toString(), reply is BidReply.Leading)
         }
 
     @Test
