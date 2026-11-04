@@ -54,7 +54,6 @@ class NotificationActionHandlerTest {
             texts = testTexts(),
             photos = FakePhotos(),
             scope = TestScope(StandardTestDispatcher()),
-            canUseFullScreenIntent = { false },
         )
     private lateinit var handler: NotificationActionHandler
 

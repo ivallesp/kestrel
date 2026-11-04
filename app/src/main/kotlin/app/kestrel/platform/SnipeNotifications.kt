@@ -39,7 +39,6 @@ class SnipeNotifications internal constructor(
     private val texts: NotificationTexts,
     private val photos: ItemPhotos,
     private val scope: CoroutineScope,
-    private val canUseFullScreenIntent: () -> Boolean,
 ) : SnipeNotifier,
     ScheduleProblemNotifier {
     private val manager: NotificationManager? = context.getSystemService(NotificationManager::class.java)
@@ -295,7 +294,7 @@ class SnipeNotifications internal constructor(
         reason: NeedsUserReason,
         detail: String?,
     ) {
-        val open = openSnipe(snipe.id)
+        // A heads-up on the Needs you channel, never a full-screen takeover (DESIGN 5.4 and MF46).
         val builder =
             alert(snipe.id, R.drawable.ic_notification_error)
                 .setContentTitle(texts.needsUserTitle(reason))
@@ -303,10 +302,6 @@ class SnipeNotifications internal constructor(
                 .setStyle(Notification.BigTextStyle().bigText(texts.needsUserDetail(snipe, reason, detail)))
                 .setCategory(Notification.CATEGORY_ERROR)
                 .addAction(openAction(snipe.id))
-        // Only when the bid is minutes away is it worth taking over a locked screen.
-        if (snipe.endTimeUtcMillis - clock.nowUtcMillis() <= IMMINENT_MILLIS && canUseFullScreenIntentSafely()) {
-            builder.setFullScreenIntent(open, true)
-        }
         post(NotificationIds.needsUser(snipe.id), builder.build())
     }
 
@@ -547,14 +542,6 @@ class SnipeNotifications internal constructor(
     /** Converts true UTC to the phone's own clock, which is what notification times are drawn against. */
     private fun toDeviceClock(trueUtcMillis: Long): Long = systemUtcMillis() + (trueUtcMillis - clock.nowUtcMillis())
 
-    private fun canUseFullScreenIntentSafely(): Boolean =
-        try {
-            canUseFullScreenIntent()
-        } catch (error: RuntimeException) {
-            Log.w(TAG, "Could not check the full-screen intent permission", error)
-            false
-        }
-
     private fun isShowing(id: Int): Boolean =
         try {
             manager?.activeNotifications?.any { it.id == id } == true
@@ -587,7 +574,6 @@ class SnipeNotifications internal constructor(
         const val RAISE_MAX_LABEL = "Raise max"
         const val OPEN_LABEL = "Open"
         const val CANCEL_LABEL = "Cancel snipe"
-        const val IMMINENT_MILLIS = 5 * 60_000L
         const val CONFIRMATION_TIMEOUT_MILLIS = 5 * 60_000L
         const val WINDOW_NOTIFICATION_LINGER_MILLIS = 60 * 60_000L
         const val MINIMUM_TIMEOUT_MILLIS = 5 * 60_000L

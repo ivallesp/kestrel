@@ -13,6 +13,7 @@ import app.kestrel.model.Snipe
 import app.kestrel.model.SnipeGroup
 import app.kestrel.model.SnipeResult
 import app.kestrel.model.SnipeStatus
+import app.kestrel.model.TimelineEvent
 import app.kestrel.model.TimelineKind
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -216,6 +217,14 @@ class FakeStore : SnipeStore {
     }
 
     fun eventsOf(kind: TimelineKind): List<RecordedEvent> = events.filter { it.kind == kind }
+
+    override suspend fun latestEvent(
+        snipeId: Long,
+        kind: TimelineKind,
+    ): TimelineEvent? =
+        events.lastOrNull { it.snipeId == snipeId && it.kind == kind }?.let {
+            TimelineEvent(0, it.snipeId, it.trueUtcMillis, it.kind, it.message, it.detail)
+        }
 
     override suspend fun snipe(id: Long): Snipe? {
         if (readsFail) throw IllegalStateException("database is locked")

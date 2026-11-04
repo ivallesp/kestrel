@@ -59,7 +59,6 @@ class SystemEventsTest {
             texts = testTexts(),
             photos = FakePhotos(),
             scope = TestScope(StandardTestDispatcher()),
-            canUseFullScreenIntent = { false },
         )
 
     @Before

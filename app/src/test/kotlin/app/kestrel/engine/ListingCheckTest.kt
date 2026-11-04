@@ -264,6 +264,21 @@ class ListingCheckTest {
         }
 
     @Test
+    fun resultChecksAfterTheEndAlertOncePerProblem() =
+        runTest {
+            val harness = CheckHarness(this)
+            harness.auction.endUtc = BASE_UTC - 3_600_000
+            harness.store.edit(1) { it.copy(status = SnipeStatus.LEADING, endTimeUtcMillis = BASE_UTC - 3_600_000) }
+            harness.page.pageKinds += PageKind.CAPTCHA
+            harness.page.pageKinds += PageKind.CAPTCHA
+
+            harness.run()
+            harness.run()
+
+            assertEquals(listOf(NeedsUserReason.CAPTCHA), harness.notifier.userAlerts.map { it.first })
+        }
+
+    @Test
     fun aWindowThisProcessDoesNotRunIsResolvedAtTheFirstCheckAfterTheEnd() =
         runTest {
             val harness = CheckHarness(this)

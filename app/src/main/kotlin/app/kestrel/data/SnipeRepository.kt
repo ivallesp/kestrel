@@ -86,7 +86,7 @@ class SnipeRepository(
      */
     suspend fun latestDryRun(): Snipe? = snipes.latestDryRun(SnipeRules.BIDDING_STATUS_NAMES)?.toSnipe()
 
-    suspend fun latestEvent(
+    override suspend fun latestEvent(
         snipeId: Long,
         kind: TimelineKind,
     ): TimelineEvent? = timeline.latest(snipeId, kind)?.toEvent()

@@ -8,6 +8,7 @@ import app.kestrel.model.PageKind
 import app.kestrel.model.Snipe
 import app.kestrel.model.SnipeGroup
 import app.kestrel.model.SnipeResult
+import app.kestrel.model.TimelineEvent
 import app.kestrel.model.TimelineKind
 
 /** True time, anchored to elapsedRealtime. Implemented by [TrueTime]. */
@@ -209,6 +210,12 @@ interface SnipeStore {
     suspend fun group(id: Long): SnipeGroup?
 
     suspend fun groupMembers(groupId: Long): List<Snipe>
+
+    /** The snipe's latest timeline event of [kind], or null (also for a store that cannot say). */
+    suspend fun latestEvent(
+        snipeId: Long,
+        kind: TimelineKind,
+    ): TimelineEvent? = null
 }
 
 /** User-facing alerts. Implemented by the platform layer (notifications). */

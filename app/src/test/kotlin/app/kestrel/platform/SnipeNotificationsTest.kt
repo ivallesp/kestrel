@@ -37,7 +37,6 @@ class SnipeNotificationsTest {
     private val clock = FakeClock(now = TEST_NOW)
     private val photos = FakePhotos()
     private val scope = TestScope(StandardTestDispatcher())
-    private var fullScreenAllowed = true
 
     // The phone's clock runs 2.5 s behind true time.
     private val notifications =
@@ -48,7 +47,6 @@ class SnipeNotificationsTest {
             texts = testTexts(),
             photos = photos,
             scope = scope,
-            canUseFullScreenIntent = { fullScreenAllowed },
         )
 
     private val end = TEST_NOW + 2 * MINUTE
@@ -231,12 +229,13 @@ class SnipeNotificationsTest {
     }
 
     @Test
-    fun anImminentProblemUsesAFullScreenIntentOnlyWhenAllowed() {
+    fun aNeedsYouAlertNeverTakesOverTheScreen() {
+        // DESIGN 5.4 and MF46: never full-screen, neither minutes before the bid nor days after the end.
         notifications.needsUser(snipe, NeedsUserReason.CAPTCHA, detail = "eBay showed a security check.")
-        assertNotNull(posted(NotificationIds.needsUser(snipe.id))!!.fullScreenIntent)
+        assertNull(posted(NotificationIds.needsUser(snipe.id))!!.fullScreenIntent)
 
-        fullScreenAllowed = false
-        notifications.needsUser(snipe, NeedsUserReason.CAPTCHA, detail = "eBay showed a security check.")
+        val longEnded = snipe.copy(endTimeUtcMillis = TEST_NOW - 3 * 24 * 60 * MINUTE)
+        notifications.needsUser(longEnded, NeedsUserReason.UNKNOWN_PAGE, detail = null)
         assertNull(posted(NotificationIds.needsUser(snipe.id))!!.fullScreenIntent)
     }
 
@@ -346,7 +345,7 @@ class SnipeNotificationsTest {
                 override suspend fun load(url: String): Bitmap? = throw IllegalStateException("cache unreadable")
             }
         val withBrokenPhotos =
-            SnipeNotifications(context, clock, { clock.now }, testTexts(), brokenPhotos, scope, { false })
+            SnipeNotifications(context, clock, { clock.now }, testTexts(), brokenPhotos, scope)
 
         withBrokenPhotos.result(
             snipe.copy(imageUrl = "https://example.invalid/photo.jpg"),

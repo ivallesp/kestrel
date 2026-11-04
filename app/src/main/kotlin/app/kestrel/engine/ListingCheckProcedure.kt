@@ -314,8 +314,14 @@ internal class ListingCheckProcedure(
         windowRunning: Boolean,
     ): CheckOutcome {
         if (windowRunning) {
-            // Reading the result of an abandoned window: nothing to change, the user has to look.
-            alertUser(snipe, handOff.reason, handOff.text)
+            // Reading the result of an abandoned window: nothing to change, the user has to look. The result checks
+            // go on for days after the end, so the same problem is alerted once.
+            val last =
+                callWithin(WindowTimings.STORE_TIMEOUT) {
+                    store.latestEvent(snipe.id, TimelineKind.NEEDS_USER)
+                }.valueOrNull()
+            val alerted = last != null && last.atUtcMillis >= snipe.endTimeUtcMillis && last.message == handOff.text
+            if (!alerted) alertUser(snipe, handOff.reason, handOff.text)
             return CheckOutcome.NeedsUser(handOff.reason)
         }
         val now = clock.nowUtcMillis()

@@ -1,6 +1,5 @@
 package app.kestrel
 
-import android.app.NotificationManager
 import android.content.Context
 import android.os.SystemClock
 import android.text.format.DateFormat
@@ -128,7 +127,6 @@ open class AppContainer(
             texts = notificationTexts,
             photos = DiskCachedItemPhotos(context),
             scope = applicationScope,
-            canUseFullScreenIntent = ::canUseFullScreenIntent,
         )
     }
 
@@ -276,9 +274,6 @@ open class AppContainer(
         val feeIncluded = snipe.buyerProtectionFee != null
         snipe.lastPrice?.let { BidIncrements.minimumNextBid(snipe.ref.site, it, snipe.lastBidCount ?: 0, feeIncluded) }
     }
-
-    private fun canUseFullScreenIntent(): Boolean =
-        context.getSystemService(NotificationManager::class.java)?.canUseFullScreenIntent() == true
 
     private val sntpClient by lazy { SntpClient(System::currentTimeMillis, SystemClock::elapsedRealtime) }
 
