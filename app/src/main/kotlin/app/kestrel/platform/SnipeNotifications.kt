@@ -9,6 +9,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.drawable.Icon
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import app.kestrel.R
@@ -191,7 +192,6 @@ class SnipeNotifications internal constructor(
                 .setContentText(text)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
-                .setRequestPromotedOngoing(true)
                 .setCategory(Notification.CATEGORY_PROGRESS)
                 .setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
                 .setVisibility(Notification.VISIBILITY_PRIVATE)
@@ -200,6 +200,7 @@ class SnipeNotifications internal constructor(
                 .setDeleteIntent(broadcast(dismissed, state.snipeId, NotificationIds.Slot.WINDOW_DISMISSED))
                 .addAction(cancelAction(state.snipeId))
                 .setStyle(progressStyle(state))
+        requestPromotion(builder)
         state.endTimeUtcMillis?.let { end ->
             // A Live Update left behind by a killed process must not count down forever.
             val untilGone = end + WINDOW_NOTIFICATION_LINGER_MILLIS - clock.nowUtcMillis()
@@ -624,5 +625,17 @@ internal enum class WindowProgress(
                 WindowPhase.RESOLVING -> 95
             }
         }
+    }
+}
+
+/**
+ * Asks for a Live Update. setRequestPromotedOngoing arrived in Android 16 QPR2 (API 36.1); the extra it sets is read on
+ * every version that supports Live Updates, so 36.0 gets the extra alone.
+ */
+private fun requestPromotion(builder: Notification.Builder) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN) {
+        builder.setRequestPromotedOngoing(true)
+    } else {
+        builder.extras.putBoolean(Notification.EXTRA_REQUEST_PROMOTED_ONGOING, true)
     }
 }

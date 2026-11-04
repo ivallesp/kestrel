@@ -18,14 +18,14 @@ val ktlintStyle = mapOf("ktlint_code_style" to "ktlint_official")
 spotless {
     kotlin {
         target("**/*.kt")
-        targetExclude("**/build/**")
+        targetExclude("**/build/**", ".claude/**")
         ktlint(libs.versions.ktlint.get())
             .editorConfigOverride(ktlintStyle)
             .customRuleSets(listOf("io.nlopez.compose.rules:ktlint:${libs.versions.composeRulesKtlint.get()}"))
     }
     kotlinGradle {
         target("**/*.gradle.kts")
-        targetExclude("**/build/**")
+        targetExclude("**/build/**", ".claude/**")
         ktlint(libs.versions.ktlint.get()).editorConfigOverride(ktlintStyle)
     }
 }
