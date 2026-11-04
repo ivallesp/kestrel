@@ -13,6 +13,9 @@ internal object SnipeRules {
 
     val FINAL_STATUS_NAMES: List<String> = SnipeStatus.entries.filter { it.isFinal }.map { it.name }
 
+    /** Statuses in which Kestrel still means to bid (with a max): [SnipeStatus.isActiveBid]. */
+    val BIDDING_STATUS_NAMES: List<String> = SnipeStatus.entries.filter { it.isActiveBid }.map { it.name }
+
     private val bidInFlight = setOf(SnipeStatus.BID_SENT, SnipeStatus.LEADING, SnipeStatus.OUTBID, SnipeStatus.EXTENDED)
     private val notStarted = setOf(SnipeStatus.ARMED, SnipeStatus.WATCHING)
 

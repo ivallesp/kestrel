@@ -54,11 +54,16 @@ interface SnipeDao {
     )
     suspend fun inGroup(groupId: Long): List<SnipeEntity>
 
+    // Only snipes that will still bid count: a finished or watched snipe's dry run says nothing about the next bid.
+    // A failed dry run comes first (the one that bids soonest), so a later pass on another snipe never hides it.
     @Query(
         "SELECT * FROM snipes WHERE dryRunAtUtcMillis IS NOT NULL AND deletedAtUtcMillis IS NULL " +
-            "ORDER BY dryRunAtUtcMillis DESC, id DESC LIMIT 1",
+            "AND maxBid IS NOT NULL AND status IN (:biddingStatuses) " +
+            "ORDER BY CASE WHEN dryRunPassed = 0 THEN 0 ELSE 1 END ASC, " +
+            "CASE WHEN dryRunPassed = 0 THEN endTimeUtcMillis ELSE 0 END ASC, " +
+            "dryRunAtUtcMillis DESC, id DESC LIMIT 1",
     )
-    suspend fun latestDryRun(): SnipeEntity?
+    suspend fun latestDryRun(biddingStatuses: List<String>): SnipeEntity?
 
     @Insert
     suspend fun insert(snipe: SnipeEntity): Long

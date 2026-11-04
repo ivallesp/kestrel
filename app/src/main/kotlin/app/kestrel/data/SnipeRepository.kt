@@ -73,8 +73,11 @@ class SnipeRepository(
     suspend fun pendingSnipes(): List<Snipe> =
         snipes.withoutStatuses(SnipeRules.FINAL_STATUS_NAMES).map { it.toSnipe() }
 
-    /** The snipe whose dry run ran most recently, if any. */
-    suspend fun latestDryRun(): Snipe? = snipes.latestDryRun()?.toSnipe()
+    /**
+     * The dry run readiness reports, among snipes that will still bid: the failed one that bids soonest, otherwise
+     * the most recent pass. Null when no such snipe had a dry run.
+     */
+    suspend fun latestDryRun(): Snipe? = snipes.latestDryRun(SnipeRules.BIDDING_STATUS_NAMES)?.toSnipe()
 
     suspend fun latestEvent(
         snipeId: Long,

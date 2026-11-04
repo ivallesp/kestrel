@@ -769,6 +769,42 @@ class SnipeRepositoryTest {
         }
 
     @Test
+    fun aFinishedOrWatchedSnipesDryRunIsNoLongerTheLatest() =
+        runTest {
+            val lost = addArmed(testListing(itemId = "1"))
+            repository.update(
+                repository.snipe(lost.id)!!.copy(
+                    status = SnipeStatus.LOST,
+                    dryRunAtUtcMillis = now - HOUR,
+                    dryRunPassed = false,
+                ),
+            )
+            val watched = addArmed(testListing(itemId = "2"))
+            repository.update(
+                repository.snipe(watched.id)!!.copy(dryRunAtUtcMillis = now - MINUTE, dryRunPassed = false),
+            )
+            repository.updateMax(watched.id, null)
+
+            assertNull("no snipe that will bid had a dry run", repository.latestDryRun())
+        }
+
+    @Test
+    fun aFailedDryRunOfASnipeThatWillBidOutranksALaterPass() =
+        runTest {
+            val later = addArmed(testListing(itemId = "1", endTimeUtcMillis = now + 5 * HOUR))
+            val sooner = addArmed(testListing(itemId = "2", endTimeUtcMillis = now + 4 * HOUR))
+            val passed = addArmed(testListing(itemId = "3"))
+            for (failed in listOf(later, sooner)) {
+                repository.update(
+                    repository.snipe(failed.id)!!.copy(dryRunAtUtcMillis = now - HOUR, dryRunPassed = false),
+                )
+            }
+            repository.update(repository.snipe(passed.id)!!.copy(dryRunAtUtcMillis = now - MINUTE, dryRunPassed = true))
+
+            assertEquals("the failure that bids first", sooner.id, repository.latestDryRun()?.id)
+        }
+
+    @Test
     fun theArmedCopyHoldsOnlySnipesThatWillBid() =
         runTest {
             val armed = addArmed(testListing(itemId = "1"))
