@@ -116,4 +116,40 @@ class WindowToLotWordsTest {
             assertFalse(live.card!!.detail, live.card!!.detail.contains("in the lead"))
             run.join()
         }
+
+    @Test
+    fun aVerificationAfterThePressAsksForTheUserAndIsNotCalledAnOutbid() =
+        runTest {
+            val harness = Harness(this)
+            harness.page.replies +=
+                BidReply.NeedsUser("Please verify it's you to continue", NeedsUserReason.VERIFICATION, 500)
+            harness.auction.finalPage = FinalPage(price = gbp("30.00"), bidCount = 5, userIsHighBidder = true)
+            val run = launch { harness.engine.runWindow(1) }
+
+            // Just after the reply (the press at the end minus 6 s, the reply 0.5 s later), before the end.
+            advanceTimeBy(117_000)
+            assertEquals(
+                SnipeStatus.BID_SENT,
+                harness.store.snipes
+                    .getValue(1)
+                    .status,
+            )
+            val live = LotStateBuilder.build(harness.inputs())
+            assertTrue(live.status.toString(), live.status is LotStatus.NeedsYou)
+            assertEquals(LotAction.OPEN_EBAY_PAGE, live.card?.action)
+            val rows = live.timeline.map { it.title to it.detail }
+            assertFalse(rows.toString(), rows.contains("Another bidder is ahead" to "The price passed your max"))
+            assertTrue(rows.toString(), rows.any { it.first == "eBay asked for something after the press" })
+
+            run.join()
+            val receipt = (LotPageBuilder.page(harness.inputs()) as LotPage.Finished).state.receipt
+            assertEquals(
+                SnipeOutcome.WON,
+                harness.store.snipes
+                    .getValue(1)
+                    .result
+                    ?.outcome,
+            )
+            assertFalse(receipt.any { it.title == "Another bidder is ahead" })
+        }
 }

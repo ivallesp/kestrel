@@ -259,6 +259,14 @@ object LotStatusMapper {
         if (reply?.detailText("reply") == "Rejected" && onlyAttempt) {
             return LotStatus.BidFailed(quotedText(reply.message), Instant.ofEpochMilli(reply.atUtcMillis))
         }
+        // eBay asked for something after the press: the bid may not count until the user answers it on eBay's page.
+        if (reply?.detailText("reply") == "NeedsUser") {
+            val ask =
+                evidence.history.lastOrNull {
+                    it.kind == TimelineKind.NEEDS_USER && it.atUtcMillis >= sentAtMillis
+                }
+            return LotStatus.NeedsYou(ask?.message, bidAt = null)
+        }
         val sentAt = Instant.ofEpochMilli(sentAtMillis)
         return if (evidence.nowMillis - sentAtMillis < NO_REPLY_AFTER_MILLIS) {
             LotStatus.BidSent(sent?.detailMoney("amount") ?: evidence.snipe.maxBid, sentAt)

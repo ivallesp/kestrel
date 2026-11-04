@@ -418,6 +418,12 @@ object LotTimeline {
                 Row(at, "No reply from eBay", "Kestrel couldn’t read one in time", tenths = true)
             }
 
+            // A check eBay asked for after the press (a verification, a dialog): nothing about another bidder.
+            "NeedsUser" -> {
+                val words = LotEvidence.quotedText(event.message)
+                Row(at, "eBay asked for something after the press", words?.let { "“$it”" }, tenths = true)
+            }
+
             // The live price passed the max after the bid: no reply, the page itself showed it.
             else -> {
                 Row(at, "Another bidder is ahead", "The price passed your max", tenths = true)
