@@ -386,7 +386,8 @@ private fun SumColumn(
 ) {
     Column(modifier) {
         SmallCaps(label, maxLines = 2)
-        Text(text = value, style = style, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
+        // Long amounts ("US$200.00", "£2,200.00") step down rather than clip in the narrow columns.
+        PriceFigure(text = value, style = style)
     }
 }
 
