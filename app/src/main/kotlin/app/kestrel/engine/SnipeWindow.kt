@@ -934,6 +934,8 @@ internal class SnipeWindow(
     }
 
     private suspend fun fire(): SnipeResult? {
+        // Posted now: building and posting a notification between the precise wait and the tap would delay the tap.
+        progress(WindowPhase.BIDDING)
         clock.waitPreciselyUntil(fireAtUtcMillis)
         if (clock.nowUtcMillis() > latestDispatchUtcMillis) {
             return finish(
@@ -945,7 +947,6 @@ internal class SnipeWindow(
         val currentPage =
             page ?: return finish(SnipeOutcome.FAILED, "Kestrel's browser page is gone, so it could not bid.")
         val endAtFire = watch.endUtcMillis
-        progress(WindowPhase.BIDDING)
         // One press per page and per window: an unreadable reply is followed on the page, never pressed again.
         return submitAndAwaitReply(currentPage, endAtFire)
     }
@@ -955,7 +956,7 @@ internal class SnipeWindow(
         endAtFire: Long,
     ): SnipeResult? {
         val notSent =
-            sender.submit(currentPage, maxBid, fireAtUtcMillis, endAtFire) {
+            sender.submit(currentPage, maxBid, fireAtUtcMillis, endAtFire, latestDispatchUtcMillis) {
                 snipe =
                     writer.update(snipeId, snipe, PRE_TAP_STORE_TIMEOUT_MILLIS) {
                         it.copy(status = SnipeStatus.BID_SENT)
@@ -1295,7 +1296,10 @@ internal class SnipeWindow(
         /** The instruction must have been read this recently at the lock. */
         const val INSTRUCTION_MAXIMUM_AGE_MILLIS = 5_000L
 
-        /** Storing BID_SENT right before the tap may not delay the tap by more than twice this (a read and a write). */
+        /**
+         * The limit on each of the two store calls (a read and a write) that put BID_SENT down right before the tap. A
+         * call blocked in I/O can outlast it, so the sender checks the latest dispatch time again after them.
+         */
         const val PRE_TAP_STORE_TIMEOUT_MILLIS = 150L
 
         /** Statuses a window can hand back when it closes early to be scheduled again. */

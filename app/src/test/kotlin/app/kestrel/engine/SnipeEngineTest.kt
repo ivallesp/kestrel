@@ -709,6 +709,46 @@ class SnipeEngineTest {
         }
 
     @Test
+    fun theBiddingLiveUpdateIsPostedBeforeThePreciseWaitNotBetweenItAndTheTap() =
+        runTest {
+            val harness = WindowHarness(this)
+            harness.notifier.clock = { harness.time.trueUtc() }
+            harness.page.replies += BidReply.Leading("Your current bid puts you in the lead.", 400)
+            harness.winAt("30.00")
+
+            harness.run()
+
+            val biddingShownAt =
+                harness.notifier.phaseTimes
+                    .first { it.first == WindowPhase.BIDDING }
+                    .second
+            assertTrue("shown at ${biddingShownAt - END_UTC}", biddingShownAt < END_UTC - 6_000L)
+        }
+
+    @Test
+    fun aTapThatTheStoreWriteMadeTooLateIsNotSent() =
+        runTest {
+            val harness = WindowHarness(this)
+            harness.forbidSubmit()
+            // Storage stalls: the pre-tap BID_SENT write blocks the main thread for 5.5 s, past the latest dispatch.
+            var stalled = false
+            harness.store.updateDelayMillis = { written ->
+                if (!stalled && written.status == SnipeStatus.BID_SENT) {
+                    stalled = true
+                    harness.time.elapsedShiftMillis = 5_500
+                }
+                0L
+            }
+
+            val result = harness.run()
+
+            assertEquals(SnipeOutcome.FAILED, result.outcome)
+            assertTrue(result.reason!!, result.reason!!.contains("too late"))
+            assertEquals(null, result.bidSentAtUtcMillis)
+            assertTrue(harness.store.eventsOf(TimelineKind.BID_SENT).isEmpty())
+        }
+
+    @Test
     fun bidSentIsStoredBeforeTheTap() =
         runTest {
             val harness = WindowHarness(this)

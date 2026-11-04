@@ -34,6 +34,11 @@ class SnipeRepository(
     private val armedCopy: ArmedSnipesCopy,
     private val nowUtcMillis: () -> Long,
     private val formatMoney: (Money) -> String,
+    /**
+     * Runs the armed-copy refresh after an engine write, off the caller's path: the BID_SENT write right before the
+     * tap must not wait for a file write and its fsync. Null refreshes inline.
+     */
+    private val refreshArmedCopyLater: ((suspend () -> Unit) -> Unit)? = null,
 ) : SnipeStore {
     private val snipes = database.snipeDao()
     private val groups = database.groupDao()
@@ -244,7 +249,8 @@ class SnipeRepository(
                 )
             snipes.update(merged.toEntity(deletedAtUtcMillis = storedRow.deletedAtUtcMillis))
         }
-        refreshArmedCopy()
+        val later = refreshArmedCopyLater
+        if (later != null) later { refreshArmedCopy() } else refreshArmedCopy()
     }
 
     override suspend fun addEvent(

@@ -43,10 +43,18 @@ internal class BidSender(
         amount: Money,
         fireAtUtcMillis: Long,
         endUtcMillis: Long,
+        latestDispatchUtcMillis: Long,
         beforeTap: suspend () -> Unit,
     ): NotSent? {
         record.submits++
         beforeTap()
+        // A store write stuck in I/O cannot be cut short by its time limit; a bid that would now arrive after the end
+        // is not sent.
+        if (clock.nowUtcMillis() > latestDispatchUtcMillis) {
+            val reason = "the phone was too late to press it before the end"
+            journal.event(snipeId, TimelineKind.PROBLEM, "Kestrel did not press eBay's bid button: $reason.")
+            return NotSent(reason, needsUser = false)
+        }
         // From here on the bid counts as sent, even if the call fails: the tap may still have reached eBay.
         record.sent = true
         val call = callWithin(WindowTimings.SUBMIT_TIMEOUT) { page.submit() }

@@ -604,6 +604,37 @@ class SnipeRepositoryTest {
             assertNotNull(armedCopy.read().single().title)
         }
 
+    @Test
+    fun anEngineWriteLeavesTheArmedCopyToLaterWork() =
+        runTest {
+            val later = mutableListOf<suspend () -> Unit>()
+            val deferring =
+                SnipeRepository(
+                    database,
+                    armedCopy,
+                    nowUtcMillis = { now },
+                    formatMoney = ::testFormatMoney,
+                    refreshArmedCopyLater = { later += it },
+                )
+            val armed =
+                (
+                    deferring.addFromListing(
+                        testListing(),
+                        gbp("48.00"),
+                        leadSeconds = 6,
+                    ) as AddResult.Added
+                ).snipe
+            assertEquals(listOf(armed.id), armedCopy.read().map { it.id })
+
+            // The pre-tap BID_SENT write: the file write and its fsync must not run inside it.
+            deferring.update(armed.copy(status = SnipeStatus.BID_SENT))
+
+            assertEquals(listOf(armed.id), armedCopy.read().map { it.id })
+            assertEquals(1, later.size)
+            later.single().invoke()
+            assertTrue(armedCopy.read().isEmpty())
+        }
+
     private suspend fun forceStatus(
         snipeId: Long,
         status: SnipeStatus,

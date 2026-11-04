@@ -253,6 +253,10 @@ class FakeStore : SnipeStore {
 class FakeNotifier : SnipeNotifier {
     val windowsOpened = mutableListOf<Long>()
     val phases = mutableListOf<WindowPhase>()
+
+    /** When each phase was shown, by [clock]. */
+    var clock: () -> Long = { 0L }
+    val phaseTimes = mutableListOf<Pair<WindowPhase, Long>>()
     val windowsClosed = mutableListOf<Long>()
     val priceAlerts = mutableListOf<Pair<Money, Money?>>()
     val userAlerts = mutableListOf<Pair<NeedsUserReason, String?>>()
@@ -271,6 +275,7 @@ class FakeNotifier : SnipeNotifier {
         detail: String?,
     ) {
         phases += phase
+        phaseTimes += phase to clock()
     }
 
     override fun windowClosed(snipeId: Long) {

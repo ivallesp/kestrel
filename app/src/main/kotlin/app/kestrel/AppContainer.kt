@@ -59,6 +59,7 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * Manual dependency container. Each layer adds its singletons here. Everything is lazy: the process can start before
@@ -80,7 +81,13 @@ open class AppContainer(
     val armedSnipesCopy: ArmedSnipesCopy by lazy { ArmedSnipesCopy.inDeviceProtectedStorage(context) }
     val settings: SettingsStore by lazy { SettingsStore.create(context) }
     val repository: SnipeRepository by lazy {
-        SnipeRepository(database, armedSnipesCopy, nowUtcMillis = { clock.nowUtcMillis() }, formatMoney = formatMoney)
+        SnipeRepository(
+            database,
+            armedSnipesCopy,
+            nowUtcMillis = { clock.nowUtcMillis() },
+            formatMoney = formatMoney,
+            refreshArmedCopyLater = { refresh -> applicationScope.launch { refresh() } },
+        )
     }
 
     // Time.
