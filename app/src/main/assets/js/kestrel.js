@@ -141,7 +141,7 @@
       layerCheck: [/enter (?:the|your|a) (?:\d+[- ]digit )?(?:code|passcode|pin)\b|we(?:'ve| have)? (?:sent|texted|emailed) (?:you )?(?:a |the |your )?(?:code|text|message|verification)|(?:send|resend|get) (?:a |the |me a |new )?code\b|verify (?:your )?(?:phone|mobile)\b|confirm (?:your|you are of) age|verify it'?s you|confirm (?:it'?s|that it'?s) you|captcha|are you (?:a )?human|not a robot|verify your age|date of birth/i, 'verification steps reported 2025-07 to 2026-11'],
       powerBidLabel: [/^\s*(?:bid|bieten)\s+(\S*\d.*)$/i, 'power-bid buttons "Bid $X.XX", 2024-07-26 and 2025-11-17'],
       minimum: [
-        [/\benter\s+(.{1,30}?)\s+or\s+(?:more|higher)\b/i, 'legacy too-low text "Enter $X or more", 2019; gixen-cli 2026'],
+        [/\benter\s+(.{1,30}?)\s+or\s+(?:more|higher)\b/i, 'legacy too-low text "Enter $X or more", 2019; a bid tool, 2026'],
         [/\bminimum bid(?:\s+is|:)?\s+(.{1,30}?)(?:[.!]\s|[.!]?$)/i, 'inferred'],
         [/\bmindestens\s+(.{1,30}?)\s+(?:ein|bieten)\b/i, 'German, inferred'],
       ],

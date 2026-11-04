@@ -1,10 +1,12 @@
 package app.kestrel.web
 
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class LoadTrackerTest {
     private val url = "https://www.ebay.co.uk/itm/127820098965"
 

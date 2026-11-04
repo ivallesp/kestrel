@@ -9,6 +9,7 @@ import app.kestrel.model.ListingStatus
 import app.kestrel.model.Money
 import app.kestrel.model.PageKind
 import app.kestrel.model.ParsedLink
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -54,6 +55,7 @@ internal fun sampleListing(
 )
 
 /** The engine clock on the test's virtual time. */
+@OptIn(ExperimentalCoroutinesApi::class)
 internal class TestClock(
     private val scheduler: TestCoroutineScheduler,
 ) : EngineClock {

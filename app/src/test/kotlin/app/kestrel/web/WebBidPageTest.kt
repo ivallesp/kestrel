@@ -6,6 +6,7 @@ import app.kestrel.engine.InputMethod
 import app.kestrel.engine.LayerState
 import app.kestrel.model.Money
 import app.kestrel.model.PageKind
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
@@ -19,6 +20,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class WebBidPageTest {
     private val driver = FakePageDriver()
     private val ebay = SimulatedEbayPage(driver)

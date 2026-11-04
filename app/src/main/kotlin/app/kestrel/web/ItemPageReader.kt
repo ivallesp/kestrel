@@ -56,34 +56,19 @@ internal class ItemPageReader(
 ) {
     /** The page a load ended on. A self-clearing challenge is waited out in place. */
     suspend fun settle(load: LoadResult): PageView {
-        when (val outcome = load.outcome) {
-            is LoadOutcome.Blocked -> {
-                val kind =
-                    if (outcome.decision ==
-                        NavigationDecision.THIRD_PARTY_SIGN_IN
-                    ) {
-                        PageKind.THIRD_PARTY_SIGN_IN
-                    } else {
-                        PageKind.OTHER
-                    }
-                return PageView(kind, outcome.url, "")
-            }
-
-            is LoadOutcome.NetworkError -> {
-                throw PageLoadException("eBay could not be reached: ${outcome.description} (${outcome.code})")
-            }
-
-            LoadOutcome.RendererGone -> {
-                throw PageUnavailableException(driver.failure?.description ?: "The page's renderer stopped")
-            }
-
-            LoadOutcome.TimedOut -> {
-                throw PageLoadException("The page did not load within ${timing.loadTimeoutMillis / 1000} s")
-            }
-
-            is LoadOutcome.Loaded -> {
-                Unit
-            }
+        val outcome = load.outcome
+        if (outcome is LoadOutcome.Blocked) {
+            val thirdParty = outcome.decision == NavigationDecision.THIRD_PARTY_SIGN_IN
+            return PageView(if (thirdParty) PageKind.THIRD_PARTY_SIGN_IN else PageKind.OTHER, outcome.url, "")
+        }
+        if (outcome is LoadOutcome.NetworkError) {
+            throw PageLoadException("eBay could not be reached: ${outcome.description} (${outcome.code})")
+        }
+        if (outcome == LoadOutcome.RendererGone) {
+            throw PageUnavailableException(driver.failure?.description ?: "The page's renderer stopped")
+        }
+        if (outcome == LoadOutcome.TimedOut) {
+            throw PageLoadException("The page did not load within ${timing.loadTimeoutMillis / 1000} s")
         }
         val first = current(load)
         if (first.kind != PageKind.CHALLENGE) return first
