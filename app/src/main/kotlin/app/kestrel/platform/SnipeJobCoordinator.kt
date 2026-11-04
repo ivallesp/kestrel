@@ -6,7 +6,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -55,6 +57,11 @@ internal class SnipeJobCoordinator(
      * during the job would be lost with it, and the next snipe would find the user signed out.
      */
     private val flushCookies: suspend () -> Unit = {},
+    /**
+     * Called every [KEEP_ALARMED_EVERY_MILLIS] while a window runs, to keep its backup alarm ahead of it
+     * (SnipeScheduler.keepWindowBackupAhead): START_NOT_STICKY means nothing else restarts a window whose process died.
+     */
+    private val keepWindowAlarmed: suspend (snipeId: Long) -> Unit = {},
 ) {
     fun submit(request: SnipeRequest): Submission {
         val kind = request.action.jobKind
@@ -86,7 +93,16 @@ internal class SnipeJobCoordinator(
         val wakeLock =
             safely("take a wake lock") { wakeLocks.acquire("kestrel:${kind.name.lowercase()}", kind.wakeLockMillis) }
         try {
-            withTimeout(kind.timeoutMillis) { runner.run(kind, request.snipeId) }
+            withTimeout(kind.timeoutMillis) {
+                coroutineScope {
+                    val alarmed = if (kind == JobKind.WINDOW) launch { keepAlarmed(request.snipeId) } else null
+                    try {
+                        runner.run(kind, request.snipeId)
+                    } finally {
+                        alarmed?.cancel()
+                    }
+                }
+            }
         } catch (error: TimeoutCancellationException) {
             val minutes = kind.timeoutMillis / 60_000
             report(request.snipeId, kind, "${kind.label} stopped after $minutes min without finishing.")
@@ -117,6 +133,20 @@ internal class SnipeJobCoordinator(
         }
     }
 
+    private suspend fun keepAlarmed(snipeId: Long) {
+        while (true) {
+            try {
+                keepWindowAlarmed(snipeId)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                // A missed refresh leaves the previous alarm, which still fires; the window itself goes on.
+                Log.w(TAG, "Could not keep the backup alarm of snipe $snipeId ahead", error)
+            }
+            delay(KEEP_ALARMED_EVERY_MILLIS)
+        }
+    }
+
     private inline fun <T> safely(
         what: String,
         action: () -> T,
@@ -144,5 +174,6 @@ internal class SnipeJobCoordinator(
 
     private companion object {
         const val TAG = "SnipeJobCoordinator"
+        const val KEEP_ALARMED_EVERY_MILLIS = 10_000L
     }
 }

@@ -17,6 +17,7 @@ internal class ListingCheckProcedure(
     notifier: SnipeNotifier,
     private val clock: EngineClock,
     minimumBidRule: MinimumBidRule,
+    private val windowRunningHere: ((snipeId: Long) -> Boolean)? = null,
 ) {
     private val journal = EngineJournal(store, notifier, clock)
     private val writer = SnipeWriter(store, clock)
@@ -34,8 +35,13 @@ internal class ListingCheckProcedure(
         // A bidding status with a result is a window that finished without a final answer (UNKNOWN). Without a
         // result the window may still be running, unless the end is long past.
         val windowRunning = snipe.status.family == StatusFamily.BIDDING
-        val windowMayBeRunning = windowRunning && snipe.result == null
-        if (windowMayBeRunning && clock.nowUtcMillis() < snipe.endTimeUtcMillis + ABANDONED_WINDOW_AFTER_END_MILLIS) {
+        val windowMayBeRunning =
+            windowRunning && snipe.result == null &&
+                (
+                    windowRunningHere?.invoke(snipe.id)
+                        ?: (clock.nowUtcMillis() < snipe.endTimeUtcMillis + ABANDONED_WINDOW_AFTER_END_MILLIS)
+                )
+        if (windowMayBeRunning) {
             return CheckOutcome.Failed("The bid window is running and follows the listing itself.")
         }
         if (!windowRunning) groups.skipIfComplete(snipe)?.let { return CheckOutcome.Ended(it) }

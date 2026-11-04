@@ -241,6 +241,9 @@ class TestContainer(
     override val wakeLocks: WakeLocks get() = fakeWakeLocks
     var cookieFlushes = 0
     override val flushCookies: suspend () -> Unit = { cookieFlushes++ }
+    val windowsKeptAlarmed = mutableListOf<Long>()
+    override val keepWindowAlarmed: suspend (Long) -> Unit = { windowsKeptAlarmed += it }
+    override val lastExitNote = LastExitNote({ null }, { emptyList() }, { _, _ -> }, { 0L }, {})
 }
 
 /** The intent an alarm will deliver. Robolectric 4.17 exposes the alarm's PendingIntent only as a deprecated field. */

@@ -264,6 +264,29 @@ class ListingCheckTest {
         }
 
     @Test
+    fun aWindowThisProcessDoesNotRunIsResolvedAtTheFirstCheckAfterTheEnd() =
+        runTest {
+            val harness = CheckHarness(this)
+            // The process died after the bid; the end was three minutes ago and no window runs in this process.
+            harness.auction.endUtc = BASE_UTC - 180_000
+            harness.auction.finalPage = FinalPage(price = gbp("30.00"), userIsHighBidder = true)
+            harness.store.edit(1) { it.copy(status = SnipeStatus.LEADING, endTimeUtcMillis = BASE_UTC - 180_000) }
+            val check =
+                ListingCheck(
+                    harness.store,
+                    harness.notifier,
+                    VirtualClock(testScheduler),
+                    TEST_MINIMUM_RULE,
+                    windowRunning = { false },
+                )
+
+            val outcome = check.check(1, harness.page)
+
+            assertTrue(outcome.toString(), outcome is CheckOutcome.Ended)
+            assertEquals(SnipeStatus.WON, harness.snipe().status)
+        }
+
+    @Test
     fun watchOnlySnipeIsUpdatedWithoutAlerts() =
         runTest {
             val harness = CheckHarness(this)

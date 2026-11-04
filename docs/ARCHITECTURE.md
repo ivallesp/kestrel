@@ -104,7 +104,8 @@ Selectors and texts live in `assets/js/kestrel.js` as ordered fallback chains, a
 
 ```
 T-10 min   dry run (short FGS): load page, check session, open layer, type max, read minimum, close. Never submit.
-T-120 s    exact alarm -> AlarmReceiver -> startForegroundService(SnipeService). Backup alarm at T-75 s.
+T-120 s    exact alarm -> AlarmReceiver -> startForegroundService(SnipeService). Backup alarm at T-75 s; while the
+           window runs and has not bid, the backup moves 15 s ahead every 10 s, so a killed window opens again.
            startForeground first (Live Update: "Bids at 18:21:34"), partial wake lock (timeout), SNTP sync.
 T-90 s     load item page, classify, parse listing, check status/price/session/extended bidding.
 T-45 s     open bid layer, type max, verify, install response observer.

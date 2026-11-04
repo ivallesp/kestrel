@@ -87,6 +87,21 @@ internal class SchedulePlanner(
         )
     }
 
+    /**
+     * Where a running window's backup alarm goes while it has not bid: [ROLLING_BACKUP_AHEAD_MILLIS] ahead. A live
+     * window ignores the alarm; after the process died it opens the window again, and a late bid still beats none.
+     * Fixed backups (T-75 s) could not cover leads of up to a minute, nor a window that started after them.
+     */
+    fun rollingBackupAt(
+        snipe: Snipe,
+        nowUtcMillis: Long,
+    ): Long? =
+        if (snipe.status == SnipeStatus.BIDDING && snipe.result == null && snipe.endTimeUtcMillis > nowUtcMillis) {
+            nowUtcMillis + ROLLING_BACKUP_AHEAD_MILLIS
+        } else {
+            null
+        }
+
     private fun backstopFor(
         check: PlannedCheck?,
         end: Long,
@@ -164,6 +179,9 @@ internal class SchedulePlanner(
         private const val MINUTE_MILLIS = 60_000L
         const val MINIMUM_CHECK_DELAY_MILLIS = MINUTE_MILLIS
         const val EXACT_CHECKS_BEFORE_END_MILLIS = 60 * MINUTE_MILLIS
+
+        /** Well above AlarmManager's minimum for exact alarms (5 s), and moved again every 10 s while the window runs. */
+        const val ROLLING_BACKUP_AHEAD_MILLIS = 15_000L
 
         /** A deferrable check this close to the end is the last one before the hour, and gets an exact backstop. */
         const val BACKSTOP_FOR_CHECKS_WITHIN_MILLIS = 2 * 60 * MINUTE_MILLIS

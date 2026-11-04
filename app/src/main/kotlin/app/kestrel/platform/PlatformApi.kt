@@ -100,6 +100,18 @@ class SnipeScheduler internal constructor(
         cancelCheckWork(snipeId)
     }
 
+    /**
+     * While a window runs and has not bid, its backup alarm moves 15 s ahead ([SchedulePlanner.rollingBackupAt]), so a
+     * window that dies with the process opens again. Rescheduling after the window puts the plan's alarms back.
+     */
+    internal fun keepWindowBackupAhead(snipe: Snipe) {
+        val now = clock.nowUtcMillis()
+        val at = planner.rollingBackupAt(snipe, now) ?: return
+        val problems = mutableSetOf<ScheduleProblem>()
+        setAlarm(SnipeAction.WINDOW_BACKUP, snipe, at, now, problems)
+        if (problems.isNotEmpty()) Log.w(TAG, "The window's backup alarm for snipe ${snipe.id} was not set: $problems")
+    }
+
     /** Re-arms everything from the database (boot, update, time change). One bad snipe never stops the rest. */
     suspend fun rescheduleAll() {
         for (snipe in pendingSnipes()) {

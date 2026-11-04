@@ -26,6 +26,16 @@ class SchedulePlannerTest {
     }
 
     @Test
+    fun aWindowThatHasNotBidKeepsItsBackupFifteenSecondsAhead() {
+        val bidding = testSnipe(status = SnipeStatus.BIDDING, endTimeUtcMillis = now + 50_000)
+
+        assertEquals(now + 15_000, planner.rollingBackupAt(bidding, now))
+        // Once the bid may be out, or the end has passed, no window is reopened.
+        assertNull(planner.rollingBackupAt(bidding.copy(status = SnipeStatus.BID_SENT), now))
+        assertNull(planner.rollingBackupAt(bidding, now + 50_000))
+    }
+
+    @Test
     fun aDeferrableCheckNearTheLastHourHasAnExactBackstopAtTheHour() {
         val end = now + 90 * MINUTE
         val plan = planner.plan(testSnipe(endTimeUtcMillis = end, lastCheckedAtUtcMillis = now - 50 * MINUTE), now)
