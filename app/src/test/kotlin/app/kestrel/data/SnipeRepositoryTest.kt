@@ -340,6 +340,64 @@ class SnipeRepositoryTest {
         }
 
     @Test
+    fun uncancelBringsBackTheSameSnipeArmedWithItsTimeline() =
+        runTest {
+            val snipe = addArmed()
+            repository.cancel(snipe.id)
+
+            val restored = (repository.uncancel(snipe.id) as EditResult.Done).snipe
+
+            assertEquals(snipe.id, restored.id)
+            assertEquals(SnipeStatus.ARMED, restored.status)
+            assertEquals(null, restored.result)
+            assertEquals(gbp("48.00"), restored.maxBid)
+            val kinds = repository.observeTimeline(snipe.id).first().map { it.kind }
+            assertTrue(TimelineKind.CANCELLED in kinds)
+            assertEquals("You brought this snipe back.", lastMessage(snipe.id))
+            assertTrue(armedCopy.read().isNotEmpty())
+        }
+
+    @Test
+    fun uncancelOfASnipeItsGroupCancelledTakesItOutOfTheGroup() =
+        runTest {
+            val group = repository.createGroup("Cameras")
+            val snipe = addArmed()
+            repository.setGroup(snipe.id, group.id)
+            forceStatus(snipe.id, SnipeStatus.SKIPPED_BY_GROUP)
+
+            val restored = (repository.uncancel(snipe.id) as EditResult.Done).snipe
+
+            assertEquals(SnipeStatus.ARMED, restored.status)
+            assertEquals(null, restored.groupId)
+            assertEquals("You brought this snipe back, outside its group.", lastMessage(snipe.id))
+        }
+
+    @Test
+    fun uncancelIsRefusedForASnipeThatIsNotCancelledOrTooCloseToTheEnd() =
+        runTest {
+            val snipe = addArmed()
+            assertEquals(EditResult.NotAllowed("Only a cancelled snipe can come back."), repository.uncancel(snipe.id))
+
+            repository.cancel(snipe.id)
+            now = snipe.endTimeUtcMillis - 30_000L
+
+            assertTrue(repository.uncancel(snipe.id) is EditResult.NotAllowed)
+            assertEquals(SnipeStatus.CANCELLED, repository.snipe(snipe.id)?.status)
+        }
+
+    @Test
+    fun renameGroupTrimsTheNameAndExplainsRefusals() =
+        runTest {
+            val group = repository.createGroup("Cameras")
+
+            assertEquals(null, repository.renameGroup(group.id, "  Film cameras "))
+            assertEquals("Film cameras", repository.group(group.id)?.name)
+            assertEquals("A group needs a name.", repository.renameGroup(group.id, "   "))
+            assertTrue(repository.renameGroup(group.id, "x".repeat(61)) != null)
+            assertEquals("That group no longer exists.", repository.renameGroup(group.id + 100, "Lenses"))
+        }
+
+    @Test
     fun cancelIsRefusedOnceEbayHasTheBid() =
         runTest {
             val snipe = addArmed()

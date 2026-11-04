@@ -10,7 +10,6 @@ import app.kestrel.model.SnipeStatus
 import app.kestrel.model.TimelineEvent
 import app.kestrel.ui.model.Connectivity
 import app.kestrel.ui.model.GroupContext
-import app.kestrel.ui.model.UndoCancel
 import app.kestrel.ui.shell.ConnectivityMonitor
 import app.kestrel.ui.shell.UiPreferences
 import kotlinx.coroutines.Dispatchers
@@ -66,8 +65,8 @@ interface LotData {
     suspend fun undoDelete(id: Long): EditResult
 
     /**
-     * "Undo cancel" for a snipe its group cancelled while the auction still runs (see [UndoCancel]): the result
-     * carries the snipe that bids now, which has a new id.
+     * "Undo cancel" while the auction still runs (SnipeActions.uncancel): the same snipe is armed again and keeps its
+     * timeline.
      */
     suspend fun undoCancel(id: Long): EditResult
 
@@ -144,15 +143,7 @@ class ContainerLotData(
             .first()
             .suggestOddPence
 
-    override suspend fun undoCancel(id: Long): EditResult {
-        val snipe = repository.snipe(id) ?: return EditResult.NotFound
-        return UndoCancel.run(
-            snipe = snipe,
-            nowUtcMillis = nowUtcMillis(),
-            add = { listing, max, lead -> actions.add(listing, max, lead, groupId = null) },
-            delete = actions::delete,
-        )
-    }
+    override suspend fun undoCancel(id: Long): EditResult = actions.uncancel(id)
 
     override suspend fun sealStamped(id: Long): Boolean =
         withContext(Dispatchers.IO) { sealPreferences().getStringSet(STAMPED, emptySet()).orEmpty().contains("$id") }

@@ -48,6 +48,30 @@ internal object SnipeRules {
         return if (open) null else "Kestrel bids in a few seconds, so this can't change now."
     }
 
+    /**
+     * A cancelled snipe (by the user or by its group) can come back while there is still time for the window to run:
+     * at least [UNCANCEL_MINIMUM_LEFT_MILLIS] before the end. A cancelled snipe never sent a bid ([cancelRefusal]).
+     */
+    fun uncancelRefusal(
+        snipe: Snipe,
+        nowUtcMillis: Long,
+    ): String? =
+        when {
+            snipe.status != SnipeStatus.CANCELLED && snipe.status != SnipeStatus.SKIPPED_BY_GROUP -> {
+                "Only a cancelled snipe can come back."
+            }
+
+            snipe.endTimeUtcMillis - nowUtcMillis < UNCANCEL_MINIMUM_LEFT_MILLIS -> {
+                "Less than a minute is left, so it is too late to bring this snipe back."
+            }
+
+            else -> {
+                null
+            }
+        }
+
+    const val UNCANCEL_MINIMUM_LEFT_MILLIS = 60_000L
+
     fun cancelRefusal(status: SnipeStatus): String? =
         when {
             status.isFinal -> "This snipe has already finished."

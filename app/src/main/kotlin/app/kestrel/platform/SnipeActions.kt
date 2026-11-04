@@ -69,6 +69,15 @@ class SnipeActions internal constructor(
 
     suspend fun undoDelete(snipeId: Long): EditResult = repository.undoDelete(snipeId).rescheduled()
 
+    /** Brings back a cancelled snipe (same snipe, same timeline) and arms it again. */
+    suspend fun uncancel(snipeId: Long): EditResult = repository.uncancel(snipeId).rescheduled()
+
+    /** Returns why the group could not be renamed, or null when it was. */
+    suspend fun renameGroup(
+        groupId: Long,
+        name: String,
+    ): String? = repository.renameGroup(groupId, name)
+
     private fun stopEverything(snipeId: Long) {
         stopJobs(snipeId)
         cancelSchedule(snipeId)

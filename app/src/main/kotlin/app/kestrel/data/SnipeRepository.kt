@@ -191,6 +191,41 @@ class SnipeRepository(
         }
 
     /**
+     * Brings back a cancelled snipe on the same row, so its timeline stays. A snipe its group cancelled leaves the
+     * group: the group already has its win, and its rule would cancel the snipe again before it bids.
+     */
+    suspend fun uncancel(snipeId: Long): EditResult =
+        edit(snipeId) { snipe, now ->
+            SnipeRules.uncancelRefusal(snipe, nowUtcMillis())?.let { return@edit EditResult.NotAllowed(it) }
+            val leavesGroup = snipe.status == SnipeStatus.SKIPPED_BY_GROUP && snipe.groupId != null
+            val status = if (snipe.maxBid == null) SnipeStatus.WATCHING else SnipeStatus.ARMED
+            val updated =
+                snipe.copy(
+                    status = status,
+                    result = null,
+                    groupId = if (leavesGroup) null else snipe.groupId,
+                    updatedAtUtcMillis = now,
+                )
+            val message =
+                if (leavesGroup) "You brought this snipe back, outside its group." else "You brought this snipe back."
+            write(updated, event(snipe.id, now, TimelineKind.ARMED, message))
+        }
+
+    /** Renames a group. Returns why it could not, or null when it is done. */
+    suspend fun renameGroup(
+        groupId: Long,
+        name: String,
+    ): String? {
+        val trimmed = name.trim()
+        return when {
+            trimmed.isEmpty() -> "A group needs a name."
+            trimmed.length > GROUP_NAME_MAXIMUM_LENGTH -> "Keep the name to $GROUP_NAME_MAXIMUM_LENGTH characters."
+            groups.rename(groupId, trimmed) == 0 -> "That group no longer exists."
+            else -> null
+        }
+    }
+
+    /**
      * The user says how a bid ended that Kestrel could not read (see [SnipeRules.settleRefusal]). A win then counts
      * for the snipe's group; a loss lets the group's other snipes bid.
      */
@@ -511,6 +546,7 @@ class SnipeRepository(
     }
 
     companion object {
+        const val GROUP_NAME_MAXIMUM_LENGTH = 60
         private const val TAG = "SnipeRepository"
         const val CANCELLED_BY_USER = "Cancelled by you."
         private const val DELETED_ROWS_KEPT_MILLIS = 24 * 60 * 60 * 1000L

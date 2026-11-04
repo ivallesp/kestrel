@@ -93,6 +93,12 @@ interface GroupDao {
 
     @Insert
     suspend fun insert(group: GroupEntity): Long
+
+    @Query("UPDATE `groups` SET name = :name WHERE id = :id")
+    suspend fun rename(
+        id: Long,
+        name: String,
+    ): Int
 }
 
 @Dao
