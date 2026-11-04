@@ -132,6 +132,27 @@ class SignInBrowserViewModel(
         return SignInPages.canProveSignIn(pageUrl, title)
     }
 
+    /**
+     * True when the screen should read eBay's header on a page that just drew. The signed-in home page can keep
+     * loading for a long time (a stalled ad or tracker), so success is not left to [onPageFinished] alone.
+     */
+    fun onPageCommitted(
+        pageUrl: String,
+        title: String,
+    ): Boolean {
+        val current = mutableState.value
+        return !current.signedIn && current.sheet == null && online && SignInPages.canProveSignIn(pageUrl, title)
+    }
+
+    /**
+     * True when the page the user closes on could prove the sign-in, so the screen reads its header first
+     * ([onHeaderRead]): closing while the signed-in page still loads is a success, not "Sign-in didn’t finish."
+     */
+    fun shouldReadHeaderBeforeClosing(
+        pageUrl: String?,
+        title: String?,
+    ): Boolean = !mutableState.value.signedIn && pageUrl != null && SignInPages.canProveSignIn(pageUrl, title.orEmpty())
+
     /** [result] is what evaluateJavascript returned for SignInPages.headerScript on [pageUrl]. */
     fun onHeaderRead(
         pageUrl: String,

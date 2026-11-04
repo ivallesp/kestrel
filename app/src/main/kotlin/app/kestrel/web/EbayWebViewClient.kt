@@ -39,6 +39,12 @@ internal interface WebViewEvents {
     )
 
     fun rendererGone(crashed: Boolean)
+
+    /** The main frame's new page drew for the first time; its load may go on for a long while after. */
+    fun pageCommitted(
+        url: String,
+        title: String?,
+    ) {}
 }
 
 /**
@@ -85,6 +91,13 @@ internal class EbayWebViewClient(
         url: String?,
     ) {
         events.pageFinished(url ?: view.url.orEmpty(), view.title)
+    }
+
+    override fun onPageCommitVisible(
+        view: WebView,
+        url: String?,
+    ) {
+        events.pageCommitted(url ?: view.url.orEmpty(), view.title)
     }
 
     override fun onReceivedError(

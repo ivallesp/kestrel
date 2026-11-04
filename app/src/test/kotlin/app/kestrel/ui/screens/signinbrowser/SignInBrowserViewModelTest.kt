@@ -87,6 +87,39 @@ class SignInBrowserViewModelTest {
         }
 
     @Test
+    fun aSignedInPageIsReadAsSoonAsItShowsThoughItNeverFinishesLoading() =
+        runTest(main.dispatcher) {
+            val session = FakeSession()
+            val viewModel = SignInBrowserViewModel(session)
+            runCurrent()
+            assertFalse(viewModel.onPageCommitted(SignInPages.signInUrl, "Sign in or Register | eBay"))
+
+            assertTrue(viewModel.onPageCommitted(home, homeTitle))
+            viewModel.onHeaderRead(home, signedIn)
+
+            assertEquals(listOf<String?>("lot.42"), session.kept)
+            assertEquals(BrowserSheet.SignedIn("lot.42"), viewModel.state.value.sheet)
+            assertFalse("read once", viewModel.onPageCommitted(home, homeTitle))
+        }
+
+    @Test
+    fun closingOnASignedInPageThatIsStillLoadingReadsItFirst() =
+        runTest(main.dispatcher) {
+            val session = FakeSession()
+            val viewModel = SignInBrowserViewModel(session)
+            runCurrent()
+            assertFalse(viewModel.shouldReadHeaderBeforeClosing(SignInPages.signInUrl, "Sign in or Register | eBay"))
+            assertFalse(viewModel.shouldReadHeaderBeforeClosing(null, null))
+
+            // The header answers, so the close is a success: keep the session and leave no failure message.
+            assertTrue(viewModel.shouldReadHeaderBeforeClosing(home, ""))
+            viewModel.onHeaderRead(home, signedIn)
+            assertTrue(viewModel.state.value.signedIn)
+            assertEquals(listOf<String?>("lot.42"), session.kept)
+            assertFalse(viewModel.shouldReadHeaderBeforeClosing(home, ""))
+        }
+
+    @Test
     fun theSignInPageItselfIsNotRead() =
         runTest(main.dispatcher) {
             val viewModel = SignInBrowserViewModel(FakeSession())

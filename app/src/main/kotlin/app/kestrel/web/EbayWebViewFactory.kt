@@ -14,6 +14,12 @@ interface VisibleWebViewListener {
         title: String,
     ) {}
 
+    /** The page drew for the first time; a slow ad or tracker can hold its [onPageFinished] back for long. */
+    fun onPageCommitted(
+        url: String,
+        title: String,
+    ) {}
+
     /** Kestrel refused a navigation: not an eBay https page, or an app link such as intent://. */
     fun onNavigationBlocked(
         url: String,
@@ -99,6 +105,11 @@ object EbayWebViewFactory {
             url: String,
             title: String?,
         ) = listener.onPageFinished(url, title.orEmpty())
+
+        override fun pageCommitted(
+            url: String,
+            title: String?,
+        ) = listener.onPageCommitted(url, title.orEmpty())
 
         override fun redirected(url: String) = Unit
 

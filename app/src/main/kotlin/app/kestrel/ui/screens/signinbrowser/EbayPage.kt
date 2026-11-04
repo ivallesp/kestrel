@@ -33,6 +33,11 @@ class EbayPageController {
 
     fun canGoBack(): Boolean = webView?.canGoBack() == true
 
+    /** The address and the title of the page shown now, or null without a page. */
+    fun currentUrl(): String? = webView?.url
+
+    fun currentTitle(): String? = webView?.title
+
     fun goBack() {
         webView?.goBack()
     }

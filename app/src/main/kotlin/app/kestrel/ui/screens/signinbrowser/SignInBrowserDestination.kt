@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -15,6 +16,8 @@ import app.kestrel.ui.shell.KestrelNavigator
 import app.kestrel.ui.shell.ShellMessage
 import app.kestrel.ui.shell.kestrelViewModel
 import app.kestrel.ui.shell.show
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * S6, eBay's sign-in page in Kestrel's own browser: Destination.SignInBrowser. Back goes back through eBay's pages
@@ -32,9 +35,36 @@ fun SignInBrowserDestination(
     val controller = remember { EbayPageController() }
     LaunchedEffect(navigator) { navigator.messages.collect { snackbarHostState.show(it) } }
     LaunchedEffect(viewModel) { viewModel.notices.collect { snackbarHostState.show(ShellMessage(it)) } }
-    val close = {
+    val leave = {
         if (!viewModel.state.value.signedIn) navigator.leaveMessage(ShellMessage(DID_NOT_FINISH))
         navigator.back()
+    }
+    // A signed-in page that is still loading has not reported yet: read its header before judging the close. A page
+    // that never answers does not hold the close back.
+    val scope = rememberCoroutineScope()
+    val close = {
+        val url = controller.currentUrl()
+        if (url != null && viewModel.shouldReadHeaderBeforeClosing(url, controller.currentTitle())) {
+            var left = false
+            val leaveOnce = {
+                if (!left) {
+                    left = true
+                    leave()
+                }
+            }
+            val giveUp =
+                scope.launch {
+                    delay(HEADER_READ_TIMEOUT_MILLIS)
+                    leaveOnce()
+                }
+            controller.evaluate(SignInPages.headerScript) { result ->
+                giveUp.cancel()
+                viewModel.onHeaderRead(url, result)
+                leaveOnce()
+            }
+        } else {
+            leave()
+        }
     }
     BackHandler { if (controller.canGoBack()) controller.goBack() else close() }
     val listener =
@@ -50,6 +80,15 @@ fun SignInBrowserDestination(
                     title: String,
                 ) {
                     if (viewModel.onPageFinished(url, title)) {
+                        controller.evaluate(SignInPages.headerScript) { viewModel.onHeaderRead(url, it) }
+                    }
+                }
+
+                override fun onPageCommitted(
+                    url: String,
+                    title: String,
+                ) {
+                    if (viewModel.onPageCommitted(url, title)) {
                         controller.evaluate(SignInPages.headerScript) { viewModel.onHeaderRead(url, it) }
                     }
                 }
@@ -93,3 +132,5 @@ private fun signInBrowserViewModel(): SignInBrowserViewModel {
 }
 
 private const val DID_NOT_FINISH = "Sign-in didn’t finish."
+
+private const val HEADER_READ_TIMEOUT_MILLIS = 1_000L
