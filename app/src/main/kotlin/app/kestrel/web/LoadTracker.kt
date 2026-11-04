@@ -34,13 +34,13 @@ internal class LoadTracker(
 ) {
     val end = CompletableDeferred<LoadEnd>()
     private val redirectUrls = mutableListOf<String>()
-    private var started = false
+    private var startedUrl: String? = null
     private var httpErrorStatus: Int? = null
 
     val redirects: List<String> get() = redirectUrls.toList()
 
-    fun pageStarted() {
-        started = true
+    fun pageStarted(url: String) {
+        startedUrl = url
     }
 
     fun redirected(url: String) {
@@ -51,8 +51,8 @@ internal class LoadTracker(
         url: String,
         title: String?,
     ) {
-        // A late finish of the previous document must not end this load.
-        if (!started && url != requestedUrl && url !in redirectUrls) return
+        // A late finish of the previous document must not end this load: only this load's own addresses count.
+        if (url != startedUrl && url != requestedUrl && url !in redirectUrls) return
         end.complete(LoadEnd.Finished(url, title.orEmpty(), httpErrorStatus))
     }
 

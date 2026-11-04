@@ -128,6 +128,7 @@ internal data class TypedSnapshot(
     val lowestPowerBidAmountText: String? = null,
     val submitEnabled: Boolean = false,
     val submitLabel: String? = null,
+    val documentToken: String? = null,
 )
 
 @Serializable
@@ -138,6 +139,8 @@ internal data class ObserverSnapshot(
     val xhrWrapped: Boolean = false,
     val resourceObserver: Boolean = false,
     val ceilingMinor: Long? = null,
+    val hold: Boolean = false,
+    val holdReason: String? = null,
 )
 
 @Serializable
@@ -212,9 +215,11 @@ internal data class ReplySnapshot(
     val inlineError: String? = null,
     val records: List<RequestRecord> = emptyList(),
     val blocked: List<BlockedRequest> = emptyList(),
+    val blockedSincePress: List<BlockedRequest> = emptyList(),
     val pressed: Boolean = false,
     val pressMethod: String? = null,
     val pressPerfTime: Double? = null,
+    val documentToken: String? = null,
     val nowPerf: Double? = null,
 )
 

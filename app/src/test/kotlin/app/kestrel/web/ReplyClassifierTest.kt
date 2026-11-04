@@ -31,6 +31,11 @@ class ReplyClassifierTest {
             "Another bidder has a higher maximum",
             "Increase your max bid to win",
             "You're no longer the highest bidder",
+            "You are not the highest bidder",
+            "You're not currently the high bidder",
+            "You are not in the lead",
+            "You're no longer winning",
+            "Sie sind nicht mehr Höchstbietender",
             "Sie wurden überboten",
         ).forEach { assertEquals(it, Standing.OUTBID, ReplyClassifier.standingOf(it)) }
     }

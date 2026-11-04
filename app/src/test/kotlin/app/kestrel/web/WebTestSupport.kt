@@ -134,6 +134,13 @@ internal class FakePageDriver : PageDriver {
     override var failure: DriverFailure? = null
     override var currentUrl: String? = null
     override val diagnostics = mutableListOf<String>()
+    override val javaScriptDialogs = mutableListOf<String>()
+    override val javaScriptDialogCount: Int get() = javaScriptDialogs.size
+
+    /** The page opened alert(), confirm() or prompt(): the driver dismissed it and kept the message. */
+    fun pageOpensDialog(message: String) {
+        javaScriptDialogs += message
+    }
 
     val calls = mutableListOf<PageCall>()
     val loads = mutableListOf<String>()
@@ -277,6 +284,20 @@ internal class SimulatedEbayPage(
     var replyPolls = 0
     var autoRefreshPolls = 0
     var ceiling: JsonElement? = null
+    var hold = false
+    var holdStuck = false
+    val observerArms = mutableListOf<Boolean>()
+    var pressesWhileHeld = 0
+
+    /** The submit call presses, then its answer never comes back (an evaluateJavascript timeout). */
+    var submitAnswerLost = false
+    var inlineErrorAfterPress: String? = null
+    var dialogOnLayerOpen: String? = null
+    var submitRefusalOverride: String? = null
+
+    /** kestrel.js's name for the current document; a navigation gives the next document a new one. */
+    var documentToken = "document-1"
+    var navigateAfterPress = false
     var bidButtonPresses = 0
 
     init {
@@ -300,7 +321,14 @@ internal class SimulatedEbayPage(
         driver.on("typeMax") { arguments -> typeMax(arguments.first().text().orEmpty()) }
         driver.on("armObserver") { arguments ->
             ceiling = arguments.firstOrNull()
-            json(mapOf("ok" to true, "fetchWrapped" to true, "xhrWrapped" to true))
+            arguments
+                .firstOrNull()
+                ?.objectField("hold")
+                ?.jsonPrimitive
+                ?.booleanOrNull
+                ?.let { hold = it }
+            observerArms += hold
+            json(mapOf("ok" to true, "fetchWrapped" to true, "xhrWrapped" to true, "hold" to (hold || holdStuck)))
         }
         driver.on("armTouchProbe") {
             probeArmed = true
@@ -441,6 +469,7 @@ internal class SimulatedEbayPage(
     private fun showLayer() {
         bidButtonPresses += 1
         if (interstitial != null) interstitialShown = true else layerOpen = true
+        dialogOnLayerOpen?.let { driver.pageOpensDialog(it) }
     }
 
     private fun openBidLayer(): String {
@@ -463,6 +492,7 @@ internal class SimulatedEbayPage(
                 "value" to fieldValue,
                 "minimumAmountText" to minimumAmountText,
                 "submitEnabled" to (valid && submitEnabledWhenValid),
+                "documentToken" to documentToken,
             ),
         )
     }
@@ -513,35 +543,38 @@ internal class SimulatedEbayPage(
             guardTarget == "submit" && nativeTapReachesTarget -> {
                 guardReached = true
                 pressMethod = "native"
-                presses += 1
+                press()
             }
         }
     }
 
-    private fun submit(expectValue: String?): String {
-        if (pressMethod ==
-            "native"
-        ) {
-            return json(mapOf("ok" to false, "dispatched" to false, "reason" to "nativeTapReached"))
-        }
-        if (pressMethod !=
-            null
-        ) {
-            return json(mapOf("ok" to false, "dispatched" to false, "reason" to "alreadySubmitted"))
-        }
-        if (!layerOpen) return json(mapOf("ok" to false, "dispatched" to false, "reason" to "bidLayerClosed"))
-        if (expectValue ==
-            null
-        ) {
-            return json(mapOf("ok" to false, "dispatched" to false, "reason" to "expectedValueMissing"))
-        }
-        if (fieldValue !=
-            expectValue
-        ) {
-            return json(mapOf("ok" to false, "dispatched" to false, "reason" to "amountChanged"))
-        }
-        pressMethod = "dom"
+    private fun press() {
         presses += 1
+        if (hold) pressesWhileHeld += 1
+    }
+
+    private fun refused(reason: String) = json(mapOf("ok" to false, "dispatched" to false, "reason" to reason))
+
+    private fun submit(expectValue: String?): String {
+        val refusal =
+            when {
+                submitRefusalOverride != null -> submitRefusalOverride
+                pressMethod == "native" -> "nativeTapReached"
+                pressMethod != null -> "alreadySubmitted"
+                !layerOpen -> "bidLayerClosed"
+                expectValue == null -> "expectedValueMissing"
+                fieldValue != expectValue -> "amountChanged"
+                else -> null
+            }
+        if (refusal != null) return refused(refusal)
+        pressMethod = "dom"
+        press()
+        if (navigateAfterPress) {
+            // The press sent the bid and the page moved on: the next document's helper has no press history.
+            documentToken = "document-2"
+            pressMethod = null
+        }
+        if (submitAnswerLost) throw ScriptTimeoutException("A page script did not answer within 5000 ms")
         return json(mapOf("ok" to true, "dispatched" to true, "label" to submitLabel, "perfTime" to 1000.0))
     }
 
@@ -582,11 +615,14 @@ internal class SimulatedEbayPage(
                 "title" to title,
                 "layerOpen" to layerOpen,
                 "newNotices" to if (answered) replyNotices(replyPolls) else emptyList<String>(),
+                "inlineError" to if (answered) inlineErrorAfterPress else null,
                 "records" to records,
                 "blocked" to blocked,
+                "blockedSincePress" to blocked,
                 "pressed" to (pressMethod != null),
                 "pressMethod" to pressMethod,
                 "pressPerfTime" to if (pressMethod != null) 1000.0 else null,
+                "documentToken" to documentToken,
             ),
         )
     }

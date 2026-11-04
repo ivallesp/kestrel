@@ -14,6 +14,15 @@ interface PageDriver {
     /** Recent JavaScript dialogs, console errors and blocked navigations, for diagnostics. */
     val diagnostics: List<String>
 
+    /**
+     * How many JavaScript dialogs (alert, confirm, prompt) the page has opened. A headless page has to dismiss them to
+     * keep running, so the bid page treats a new one as something for the user.
+     */
+    val javaScriptDialogCount: Int
+
+    /** The most recent of those dialogs, oldest first. */
+    val javaScriptDialogs: List<String>
+
     suspend fun load(
         url: String,
         timeoutMillis: Long,

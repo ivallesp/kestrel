@@ -522,7 +522,121 @@ class WebBidPageTest {
             assertEquals(0, ebay.presses)
         }
 
+    @Test
+    fun `bid requests are held from the bid button until the moment of the press`() =
+        runTest {
+            val page = page()
+            page.openItem(ukItem)
+            page.openBidLayer()
+            assertTrue("held before the bid button is pressed", ebay.hold)
+            page.typeMax(max)
+            page.armReplyObserver()
+            assertTrue("still held while waiting for the moment", ebay.hold)
+            page.submit()
+            assertEquals(listOf(true, true, true, false), ebay.observerArms)
+            assertEquals(1, ebay.presses)
+            assertEquals(0, ebay.pressesWhileHeld)
+        }
+
+    @Test
+    fun `a hold that will not release stops the press`() =
+        runTest {
+            ebay.holdStuck = true
+            val page = page().readyToSubmit()
+            val refused = runCatching { page.submit() }.exceptionOrNull()
+            assertTrue(refused is SubmitNotDispatchedException)
+            assertEquals(0, ebay.presses)
+        }
+
+    @Test
+    fun `a JavaScript dialog the page opens with the layer is handed to the user`() =
+        runTest {
+            ebay.dialogOnLayerOpen = "confirm: Please confirm you accept the terms of sale"
+            val page = page()
+            page.openItem(ukItem)
+            val layer = page.openBidLayer()
+            assertTrue(layer.toString(), layer is LayerState.NeedsUser)
+            assertEquals("confirm: Please confirm you accept the terms of sale", (layer as LayerState.NeedsUser).text)
+        }
+
+    @Test
+    fun `a JavaScript dialog after typing stops the press`() =
+        runTest {
+            val page = page().readyToSubmit()
+            driver.pageOpensDialog("alert: Your session will expire soon")
+            val refused = runCatching { page.submit() }.exceptionOrNull()
+            assertTrue(refused is SubmitNotDispatchedException)
+            assertEquals("eBay showed a message first: alert: Your session will expire soon", refused!!.message)
+            assertEquals(0, ebay.presses)
+        }
+
+    @Test
+    fun `a press whose answer was lost is read back from the page`() =
+        runTest {
+            ebay.touchReachesPage = false
+            ebay.submitAnswerLost = true
+            val page = page().readyToSubmit()
+            val sent = page.submit()
+            assertEquals(InputMethod.DOM_EVENTS, sent.method)
+            assertEquals(1, ebay.presses)
+        }
+
+    @Test
+    fun `a lost answer that the page cannot clear up is never reported as not sent`() =
+        runTest {
+            ebay.touchReachesPage = false
+            ebay.submitAnswerLost = true
+            val page = page().readyToSubmit()
+            driver.on("replyState") { throw ScriptTimeoutException("A page script did not answer within 5000 ms") }
+            val outcome = runCatching { page.submit() }.exceptionOrNull()
+            assertTrue(outcome is WebPageException)
+            assertFalse("the bid may have been sent", outcome is SubmitNotDispatchedException)
+        }
+
+    @Test
+    fun `a lost answer read from a newer document is not taken as not sent`() =
+        runTest {
+            ebay.touchReachesPage = false
+            ebay.submitAnswerLost = true
+            ebay.navigateAfterPress = true
+            val page = page().readyToSubmit()
+            val outcome = runCatching { page.submit() }.exceptionOrNull()
+            assertTrue(outcome is WebPageException)
+            assertFalse("the bid may have been sent before the page moved on", outcome is SubmitNotDispatchedException)
+            assertEquals(1, ebay.presses)
+        }
+
+    @Test
+    fun `bid requests are held even when the layer is already open`() =
+        runTest {
+            val page = page()
+            page.openItem(ukItem)
+            ebay.layerOpen = true
+            assertTrue(page.openBidLayer() is LayerState.Ready)
+            assertEquals(0, ebay.bidButtonPresses)
+            assertTrue(ebay.hold)
+        }
+
+    @Test
+    fun `a native tap the page cannot rule out is reported as possibly sent`() =
+        runTest {
+            ebay.nativeTapReachesTarget = false
+            ebay.submitRefusalOverride = "nativeTapUnknown"
+            val page = page().readyToSubmit()
+            assertEquals(InputMethod.NATIVE_TOUCH, page.submit().method)
+        }
+
     // -------------------------------------------------------------------------------------------- reply
+
+    @Test
+    fun `a new error on the amount field after the press is eBay's refusal`() =
+        runTest {
+            ebay.replyNotices = { emptyList() }
+            ebay.inlineErrorAfterPress = "Enter £15.00 or more"
+            val page = page().readyToSubmit()
+            page.submit()
+            assertEquals(BidReply.Rejected("Enter £15.00 or more", 180), page.awaitReply(4_000))
+        }
 
     @Test
     fun `a leading reply carries eBay's text and the confirmbid round trip`() =

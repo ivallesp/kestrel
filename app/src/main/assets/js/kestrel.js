@@ -15,6 +15,8 @@
 
   var VERSION = '1';
   if (window.__kestrel && window.__kestrel.version === VERSION) return;
+  // Names this document: after a navigation the helper is installed afresh, with a new token and no press history.
+  var DOCUMENT_TOKEN = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
 
   // ------------------------------------------------------------------------------------------------
   // Selectors and texts, in the order they are tried. Each entry says where and when it was observed.
@@ -54,7 +56,7 @@
       ['button[type="submit"]', 'bid tool, 2026-10-09'],
       ['button.btn--primary:not([disabled])', 'bid tool, 2025-11-17'],
     ],
-    // Power-bid buttons are also recognised by their label ("Bid £X.XX", texts.powerBidLabel) wherever they sit.
+    // Power-bid buttons are also recognised by their label ("Bid" and an amount, texts.powerBidLabel) wherever they sit.
     powerBidButtons: [
       ['.place-bid-actions__powerbids-wrapper button', 'bid tools, 2024-07-26 and 2025-11-17'],
       ['.place-bid-actions__powerbids button', 'inferred from the 2024-07-26 wrapper'],
@@ -120,10 +122,19 @@
       greetingUnrecognisedClass: ['gh-identity__srvr--unrec', 'header greeting script, ebay.co.uk 2026-04-27'],
       signInUrl: [/\/\/signin\.ebay\.|eBayISAPI\.dll\?SignIn/i, 'sign-in redirects and signed-out bid button, 2026-04-27'],
       bidPagePath: [/^\/bfl\/placebid\//, 'bid layer address /bfl/placebid/<item>, signed-in capture 2026-04-30'],
-      // A press on the submit button is only allowed when its label says bid and nothing else.
-      submitLabel: [/\bbid\b|\bbieten\b|\bgebot\b/i, 'labels Bid, Submit bid, Place bid, Increase bid, Increase max bid (2025-09 to 2026-10); German inferred'],
-      // Amounts mean a power-bid button; the words mean another action (buy, offer, review step, retract).
-      submitLabelDeny: [/\d|buy|kaufen|pay\b|checkout|offer|angebot|preisvorschlag|review|retract|zur[u\u00fc]ck|cancel|abbrechen|close|history|watch/i, 'safety rule'],
+      // The request that places the bid is action=confirmbid; trisk and layer loads only prepare it.
+      placingAction: [/confirm|place|submit/i, 'POST /bfl/placebid?action=confirmbid, signed-in capture 2026-04-30'],
+      // A press on the submit button (or the item page's bid button) is only allowed when its label says bid and
+      // nothing else.
+      submitLabel: [/\bbid\b|\bbieten\b|\bgebot\b|\bench[e\u00e9]rir\b|\bench\u00e8re\b|\bpujar?\b|\bbieden\b|\blicytuj\b/i, 'labels Bid, Submit bid, Place bid, Increase bid, Increase max bid (2025-09 to 2026-10); German, French, Spanish, Dutch and Polish inferred'],
+      // Amounts mean a power-bid button; the words mean another action (buy, offer, a review or verification step,
+      // retract, cancel), in the same languages.
+      submitLabelDeny: [/\d|buy|kaufen|pay\b|checkout|offer|angebot|preisvorschlag|review|retract|zur[u\u00fc]ck|cancel|abbrechen|close|history|watch|verif|code|send|acheter|offre|annuler|historique|comprar|ofert|cancelar|historial|kopen|annuleren|\bkup\b|anuluj/i, 'safety rule'],
+      // An input for a verification code or a phone number (id, name, autocomplete, label or placeholder).
+      checkField: [/one-time-code|\botp\b|passcode|verif|captcha|\bpin\b|\bcode\b|phone|mobile|\btel\b/i, 'verification code fields #code, 2025-09; autocomplete tokens'],
+      // In a layer that has the amount field, only these phrases mean a check stands in the way (small print about
+      // terms, payment or identity checks is normal there).
+      layerCheck: [/enter (?:the|your|a) (?:\d+[- ]digit )?(?:code|passcode|pin)\b|we(?:'ve| have)? (?:sent|texted|emailed) (?:you )?(?:a |the |your )?(?:code|text|message|verification)|(?:send|resend|get) (?:a |the |me a |new )?code\b|verify (?:your )?(?:phone|mobile)\b|verify it'?s you|confirm (?:it'?s|that it'?s) you|captcha|are you (?:a )?human|not a robot|verify your age|date of birth/i, 'verification steps reported 2025-07 to 2026-11'],
       powerBidLabel: [/^\s*(?:bid|bieten)\s+(\S*\d.*)$/i, 'power-bid buttons "Bid $X.XX", 2024-07-26 and 2025-11-17'],
       minimum: [
         [/\benter\s+(.{1,30}?)\s+or\s+(?:more|higher)\b/i, 'legacy too-low text "Enter $X or more", 2019; gixen-cli 2026'],
@@ -138,7 +149,7 @@
         ['verification', /verif|confirm (?:it'?s|that it'?s) you|security (?:check|code|step|measure)|one[- ]time (?:code|pass)|enter (?:the|your|a) (?:\d+-digit )?code|we (?:sent|texted|emailed)|captcha|are you (?:a )?human|not a robot/i, 'phone verification reports 2025-07; eBay help 2026-11-04'],
         ['phone', /\bphone\b|mobile number|text message|\bsms\b/i, 'phone verification for bidding, reported 2025-07-14'],
         ['age', /\bage\b|18 or (?:over|older)|over 18|date of birth|age[- ]restricted/i, 'UK age-restricted items, eBay help 2025-08-20'],
-        ['payment', /payment method|add (?:a )?(?:card|payment)|postage address|shipping address|delivery address|billing address/i, 'eBay help 2026-11-04: payment method and postage address prompts'],
+        ['payment', /add (?:a )?(?:payment method|card|postage address|shipping address|delivery address)|(?:choose|select|enter|update|confirm) (?:a |your )?(?:payment method|card details|postage address|shipping address|delivery address)|payment method (?:is )?(?:required|needed)|(?:no|missing) (?:payment method|postage address|shipping address)/i, 'eBay help 2026-11-04: payment method and postage address prompts'],
         ['signIn', /\bsign[ -]?in\b|\blog[ -]?in\b|\bpassword\b/i, 'sign-in prompts 2025-2026'],
         ['terms', /\bterms\b|user agreement|\bi agree\b|\baccept\b|disclaimer|acknowledg/i, 'bid disclaimers (age, customs, adult items), sniper status lists 2026'],
       ],
@@ -175,7 +186,8 @@
 
   var state = {
     errors: [],
-    observer: { armed: false, ceiling: null, records: [], blocked: [], fetchOriginal: null, fetchWrapper: null,
+    observer: { armed: false, ceiling: null, hold: false, dialogHoldReason: null, dialogs: [], dialogWraps: [],
+      records: [], blocked: [], fetchOriginal: null, fetchWrapper: null,
       xhrOpenOriginal: null, xhrSendOriginal: null, xhrOpenWrapper: null, xhrSendWrapper: null,
       resourceObserver: null, xhrUrls: typeof WeakMap === 'function' ? new WeakMap() : null },
     press: { phase: 'idle', method: null, label: null, perfTime: null, epochTime: null, baseline: null },
@@ -394,16 +406,48 @@
       }
     }
     var loadingClass = TABLE.texts.bidButtonLoadingClass[0];
+    var label = labelOf(element);
     return {
       element: element,
       selector: found.selector,
       tag: element.tagName.toLowerCase(),
-      label: labelOf(element),
+      label: label,
+      // The entry button follows the submit's label rule: a button with an amount on it would place that bid.
+      recognised: judgeSubmitLabel(label).recognised && !isInsidePowerBids(element),
       disabled: !isEnabled(element),
       loading: !!(container && container.classList.contains(loadingClass)) || element.classList.contains(loadingClass),
       signInHref: signInHrefOf(element),
       visible: isRendered(element),
     };
+  }
+
+  // A field for a verification code or a phone number. Never an amount field, even when it matches the selectors.
+  function isCheckField(input) {
+    var described = [input.id, input.getAttribute('name'), input.getAttribute('autocomplete'),
+      input.getAttribute('aria-label'), input.getAttribute('placeholder'), labelTextOf(input)].join(' ');
+    return TABLE.texts.checkField[0].test(described);
+  }
+
+  // The text of the field's own labels: <label for>, a wrapping <label>, and aria-labelledby.
+  function labelTextOf(input) {
+    var parts = [];
+    var labels = input.labels ? Array.prototype.slice.call(input.labels) : queryAll(document, 'label').filter(function (label) {
+      return (input.id && label.htmlFor === input.id) || label.contains(input);
+    });
+    labels.forEach(function (label) {
+      parts.push(label.textContent || '');
+    });
+    (input.getAttribute('aria-labelledby') || '').split(/\s+/).forEach(function (id) {
+      var labelledBy = id ? document.getElementById(id) : null;
+      if (labelledBy) parts.push(labelledBy.textContent || '');
+    });
+    return normalize(parts.join(' '));
+  }
+
+  function findCheckField(container) {
+    return queryAll(container, 'input').filter(function (input) {
+      return isRendered(input) && isCheckField(input);
+    })[0] || null;
   }
 
   function findInput(container) {
@@ -413,6 +457,7 @@
         var node = nodes[j];
         var type = (node.getAttribute('type') || 'text').toLowerCase();
         if (type === 'hidden' || type === 'checkbox' || type === 'radio' || type === 'submit') continue;
+        if (isCheckField(node)) continue;
         if (isRendered(node)) return { element: node, selector: TABLE.amountInput[i][0] };
       }
     }
@@ -576,13 +621,15 @@
     return text || null;
   }
 
-  function renderedDialogs() {
+  // The visible dialogs, outermost only unless includeNested.
+  function renderedDialogs(includeNested) {
     var dialogs = [];
     TABLE.dialogs.forEach(function (entry) {
       queryAll(document, entry[0]).forEach(function (node) {
         if (dialogs.indexOf(node) < 0 && isRendered(node) && !isCookieBanner(node)) dialogs.push(node);
       });
     });
+    if (includeNested) return dialogs;
     return dialogs.filter(function (node) {
       return !dialogs.some(function (other) {
         return other !== node && other.contains(node);
@@ -610,20 +657,35 @@
       return { kind: 'signIn', text: truncate(textOf(holder, 600), 600) };
     }
     var layerElement = layer ? layer.element : null;
-    var dialogs = renderedDialogs().filter(function (dialog) {
-      return !(layerElement && (dialog === layerElement || dialog.contains(layerElement) || layerElement.contains(dialog)));
+    var amountField = layer && layer.input ? layer.input.element : null;
+    // Every other dialog counts, including one nested inside the layer. The layer, what holds it, and a dialog that
+    // holds the amount field (the bid form itself, inside a wrapper) do not.
+    var dialogs = renderedDialogs(true).filter(function (dialog) {
+      if (!layerElement) return true;
+      if (dialog === layerElement || dialog.contains(layerElement)) return false;
+      return !(amountField && dialog.contains(amountField));
     });
     for (var i = 0; i < dialogs.length; i++) {
       var dialogText = textOf(dialogs[i], 600);
       var kind = dialogText ? interstitialKind(dialogText) : null;
+      if (!kind && findCheckField(dialogs[i])) kind = 'verification';
+      // A modal Kestrel cannot read is in the way: a person could not press the bid button behind it.
+      if (!kind && isModal(dialogs[i])) kind = 'unknown';
       if (kind) return { kind: kind, text: truncate(dialogText, 600) };
     }
     if (layer && !layer.input) {
       var layerText = textOf(layer.element, 600);
       var layerKind = layerText ? interstitialKind(layerText) : null;
+      if (!layerKind && findCheckField(layer.element)) layerKind = 'verification';
       if (layerKind) return { kind: layerKind, text: truncate(layerText, 600) };
     }
     if (layer && layer.input) {
+      // A working layer may carry small print about terms or payment; only a field for a code or a phone number,
+      // a check phrase, or a blocking notice means a step stands between the amount and the bid.
+      var fullText = textOf(layer.element, 2000);
+      if (findCheckField(layer.element) || TABLE.texts.layerCheck[0].test(fullText)) {
+        return { kind: 'verification', text: truncate(fullText, 600) };
+      }
       var blocking = TABLE.texts.blockingNoticeKinds[0];
       var notices = noticeTexts(layer.element);
       for (var k = 0; k < notices.length; k++) {
@@ -632,6 +694,33 @@
       }
     }
     return null;
+  }
+
+  function isModal(dialog) {
+    return dialog.getAttribute('aria-modal') === 'true' || dialog.getAttribute('role') === 'alertdialog' ||
+      (dialog.tagName === 'DIALOG' && dialog.hasAttribute('open'));
+  }
+
+  // A dialog other than the one holding [element] that lies on top of it: a person could not press through it, so
+  // neither does Kestrel, whatever the dialog says.
+  function blockingCover(element) {
+    if (typeof document.elementFromPoint !== 'function') return null;
+    if (typeof element.scrollIntoView === 'function') {
+      try {
+        element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+      } catch (error) {
+        element.scrollIntoView(false);
+      }
+    }
+    var box = element.getBoundingClientRect();
+    var topmost = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+    if (!topmost || topmost === element || element.contains(topmost) || isCookieBanner(topmost)) return null;
+    var dialogSelector = TABLE.dialogs.map(function (entry) {
+      return entry[0];
+    }).join(', ');
+    var coverDialog = topmost.closest(dialogSelector);
+    if (!coverDialog || coverDialog.contains(element)) return null;
+    return coverDialog;
   }
 
   function elementFor(which) {
@@ -730,6 +819,12 @@
   // One capture listener on window sees trusted taps before eBay's handlers. In "target" mode it lets through
   // only taps on the armed element and swallows the rest, so a native tap that lands anywhere else (a power-bid
   // button, Buy It Now) does nothing. In "swallow" mode (touch probe, late taps after a fallback) it swallows all.
+  // The armed element must still be what it was armed as when the finger lands: eBay may re-render a node.
+  function targetStillValid(guard) {
+    if (!guard.target || !guard.target.isConnected || isInsidePowerBids(guard.target)) return false;
+    return judgeSubmitLabel(labelOf(guard.target)).recognised;
+  }
+
   function guardListener(event) {
     var guard = state.guard;
     if (!guard || !isTrustedEvent(event)) return;
@@ -739,6 +834,12 @@
     if (guard.pressStartedAt !== null && at - guard.pressStartedAt > PRESS_SEQUENCE_MILLIS) guard.pressCompleted = true;
     var onTarget = guard.mode === 'target' && !guard.pressCompleted && guard.target &&
       event.target instanceof window.Node && guard.target.contains(event.target);
+    // Checked on every event of the tap: the label could change between the finger going down and the click.
+    if (onTarget && !targetStillValid(guard)) {
+      guard.labelChanged = true;
+      guard.pressCompleted = true;
+      onTarget = false;
+    }
     if (guard.events.length < 40) {
       guard.events.push({ type: event.type, x: point.x, y: point.y, at: at, onTarget: onTarget });
     }
@@ -746,6 +847,13 @@
       if (PRESS_START_EVENTS[event.type]) {
         guard.reached = true;
         if (guard.pressStartedAt === null) guard.pressStartedAt = at;
+        // The press is recorded where it outlives the guard, so no later fallback can press a second time.
+        if (guard.which === 'submit' && state.press.phase === 'nativeArmed') {
+          state.press.phase = 'pressed';
+          state.press.method = 'native';
+          state.press.perfTime = at;
+          state.press.epochTime = Date.now();
+        }
       }
       if (event.type === 'click') guard.pressCompleted = true;
       return;
@@ -758,11 +866,12 @@
   function armGuard(mode, target, which) {
     disarmGuard();
     var guard = { mode: mode, target: target, which: which, events: [], reached: false, swallowed: 0,
-      armedAt: now(), timer: null, pressStartedAt: null, pressCompleted: false };
+      armedAt: now(), timer: null, pressStartedAt: null, pressCompleted: false, labelChanged: false };
     GUARDED_EVENTS.forEach(function (type) {
       window.addEventListener(type, guardListener, { capture: true, passive: false });
     });
-    guard.timer = window.setTimeout(disarmGuard, GUARD_AUTO_DISARM_MILLIS);
+    // The submit guard stays until Kotlin disarms it: expiring would let a late native tap through unguarded.
+    if (which !== 'submit') guard.timer = window.setTimeout(disarmGuard, GUARD_AUTO_DISARM_MILLIS);
     state.guard = guard;
     return guard;
   }
@@ -776,6 +885,8 @@
     if (guard.timer) window.clearTimeout(guard.timer);
     state.guard = null;
     state.lastGuard = guardSummary(guard);
+    // A submit armed for a native tap that never arrived may not be pressed later: an unguarded tap could still land.
+    if (guard.which === 'submit' && state.press.phase === 'nativeArmed') state.press.phase = 'abandoned';
   }
 
   function guardSummary(guard) {
@@ -802,6 +913,7 @@
     if (layer.input.element.value !== expected) return 'amountChanged';
     if (inlineErrorText(layer)) return 'inlineError';
     if (detectInterstitial(layer)) return 'interstitial';
+    if (blockingCover(submit.element)) return 'covered';
     return null;
   }
 
@@ -821,10 +933,15 @@
     }
   }
 
+  // Hundredths, rounded up: "12.504" counts as 12.51, so an amount even slightly above the ceiling is above it.
   function minorUnits(value) {
-    if (typeof value === 'number' && isFinite(value)) return Math.round(value * 100);
-    if (typeof value === 'string' && /^\s*\d+(?:\.\d{1,3})?\s*$/.test(value)) return Math.round(Number(value) * 100);
-    return null;
+    var text = typeof value === 'number' && isFinite(value) ? String(value) : (typeof value === 'string' ? value.trim() : '');
+    var match = /^(\d+)(?:\.(\d+))?$/.exec(text);
+    if (!match) return null;
+    var fraction = match[2] || '';
+    var minor = Number(match[1]) * 100 + Number((fraction + '00').slice(0, 2));
+    if (/[1-9]/.test(fraction.slice(2))) minor += 1;
+    return isFinite(minor) ? minor : null;
   }
 
   function priceInBody(body) {
@@ -848,8 +965,18 @@
   // never sent. A body Kestrel cannot read is let through and reported, so a format change cannot silently stop
   // every snipe; the typed value and the guarded tap already protect the amount.
   function ceilingVerdict(url, body) {
-    var ceiling = state.observer.ceiling;
+    var observer = state.observer;
+    var ceiling = observer.ceiling;
     var price = priceInBody(body);
+    var action = actionOf(url) || '';
+    // Until Kestrel presses submit (a dry run, or the wait before the snipe), and for the rest of the document once
+    // the page opened a dialog, no bid may leave the page. Other requests (layer loads, checks of the typed amount)
+    // still go: the layer needs them before the press.
+    var held = observer.hold || observer.dialogHoldReason !== null;
+    if (held && TABLE.texts.placingAction[0].test(action)) {
+      return { block: true, reason: observer.dialogHoldReason || 'Kestrel had not pressed the bid button',
+        price: price.known ? price : null };
+    }
     if (!ceiling || !price.known) return { block: false, price: price.known ? price : null, verified: false };
     if (price.currency && price.currency !== ceiling.currency) {
       return { block: true, reason: 'currency ' + price.currency + ' is not ' + ceiling.currency, price: price };
@@ -899,16 +1026,42 @@
     if (typeof window.fetch !== 'function') return false;
     var original = window.fetch;
     var wrapper = function (input, init) {
+      var self = this === undefined ? window : this;
+      var args = arguments;
       var url = typeof input === 'string' ? input : (input && typeof input.url === 'string' ? input.url : String(input));
-      if (!isPlaceBidUrl(url)) return original.apply(this === undefined ? window : this, arguments);
-      var body = init && typeof init.body === 'string' ? init.body : null;
-      var verdict = ceilingVerdict(url, body);
-      if (verdict.block) {
-        recordBlocked('fetch', url, verdict);
-        return Promise.reject(new TypeError('Failed to fetch'));
+      if (!isPlaceBidUrl(url)) return original.apply(self, args);
+      // What is checked is what is sent: the options are copied now, so a later change to them cannot slip past.
+      var options = init && typeof init === 'object' ? Object.assign({}, init) : init;
+      var method = (options && options.method) || (input && typeof input === 'object' && input.method) || 'GET';
+      if (options && typeof options.body === 'string') return send(options.body);
+      // fetch(Request) sends the Request's own body when the options give none (absent or null): read a copy first.
+      if (input && typeof input === 'object' && typeof input.clone === 'function' && (!options || options.body == null)) {
+        var copy;
+        try {
+          copy = input.clone();
+        } catch (error) {
+          return send(null);
+        }
+        return copy.text().then(send, function () {
+          return send(null);
+        });
       }
-      var record = startRecord('fetch', (init && init.method) || (input && input.method) || 'GET', url, verdict);
-      var promise = original.apply(this === undefined ? window : this, arguments);
+      return send(null);
+
+      function send(body) {
+        var verdict = ceilingVerdict(url, typeof body === 'string' ? body : null);
+        if (verdict.block) {
+          recordBlocked('fetch', url, verdict);
+          return Promise.reject(new TypeError('Failed to fetch'));
+        }
+        var record = startRecord('fetch', method, url, verdict);
+        var promise = args.length > 1 ? original.call(self, input, options) : original.call(self, input);
+        observeResponse(promise, record);
+        return promise;
+      }
+    };
+
+    function observeResponse(promise, record) {
       promise.then(function (response) {
         var copy;
         try {
@@ -925,8 +1078,7 @@
       }, function (error) {
         finishRecord(record, null, null, error);
       });
-      return promise;
-    };
+    }
     window.fetch = wrapper;
     state.observer.fetchOriginal = original;
     state.observer.fetchWrapper = wrapper;
@@ -1037,6 +1189,7 @@
         selector: bidButton ? bidButton.selector : null,
         tag: bidButton ? bidButton.tag : null,
         label: bidButton ? bidButton.label : null,
+        recognised: bidButton ? bidButton.recognised : false,
         disabled: bidButton ? bidButton.disabled : false,
         loading: bidButton ? bidButton.loading : false,
         signInHref: bidButton ? bidButton.signInHref : null,
@@ -1169,6 +1322,7 @@
     var bidButton = findBidButton();
     if (!bidButton) return { ok: false, reason: 'bidButtonNotFound' };
     if (bidButton.signInHref) return { ok: false, reason: 'signInRequired', signInHref: bidButton.signInHref };
+    if (!bidButton.recognised) return { ok: false, reason: 'bidButtonNotRecognised', label: bidButton.label };
     if (bidButton.loading) return { ok: false, reason: 'pageNotReady' };
     if (bidButton.disabled) return { ok: false, reason: 'bidButtonDisabled' };
     if (state.guard && state.guard.which === 'bidButton') {
@@ -1230,7 +1384,9 @@
       result.minimumText = minimum ? minimum.text : null;
       result.minimumAmountText = minimum ? minimum.amountText : null;
       result.inlineError = inlineErrorText(layer);
-      result.ready = !!submit.element && !interstitial;
+      var cover = submit.element && !interstitial ? blockingCover(submit.element) : null;
+      if (cover) result.interstitial = { kind: 'unknown', text: truncate(textOf(cover, 600), 600) };
+      result.ready = !!submit.element && !result.interstitial;
     } else if (!interstitial) {
       var text = textOf(layer.element, 300);
       if (TABLE.texts.layerError[0].test(text)) result.layerError = truncate(text, 300);
@@ -1255,6 +1411,9 @@
     if (typeof text !== 'string' || !/^\d{1,9}(?:[.,]\d{1,2})?$/.test(text)) return { ok: false, reason: 'badAmountText' };
     var layer = findLayer();
     if (!layer || !layer.input) return { ok: false, reason: 'amountFieldNotFound' };
+    // Nothing is typed while eBay asks for something else: the amount must never land in a check's field.
+    var check = detectInterstitial(layer);
+    if (check) return { ok: false, reason: 'interstitial', interstitial: check };
     var input = layer.input.element;
     if (!isEnabled(input) || input.readOnly) return { ok: false, reason: 'amountFieldDisabled' };
     var setter = nativeValueSetter(input);
@@ -1284,26 +1443,59 @@
       submitEnabled: submit.enabled,
       submitLabel: submit.label,
       inputSelector: layer.input.selector,
+      documentToken: DOCUMENT_TOKEN,
     };
   }
 
+  // options.hold true blocks every bid request (Kestrel is not pressing submit yet); hold false, with a ceiling,
+  // lets one bid through up to the ceiling. A hold is only released by an explicit hold false.
   function armObserver(options) {
     var observer = state.observer;
     var ceiling = options && typeof options.ceilingMinor === 'number' && isFinite(options.ceilingMinor) &&
       typeof options.currency === 'string' ? { minor: Math.floor(options.ceilingMinor), currency: options.currency } : null;
     if (ceiling) observer.ceiling = ceiling;
+    if (options && options.hold === true) observer.hold = true;
+    if (options && options.hold === false) observer.hold = false;
     if (!observer.armed) {
       observer.fetchWrapped = wrapFetch();
       observer.xhrWrapped = wrapXhr();
       observer.resourceObserved = observeResources();
+      observer.dialogsWatched = watchDialogs();
       observer.armed = true;
     }
+    var held = observer.hold || observer.dialogHoldReason !== null;
     return { ok: true, fetchWrapped: !!observer.fetchWrapped, xhrWrapped: !!observer.xhrWrapped,
-      resourceObserver: !!observer.resourceObserved, ceilingMinor: observer.ceiling ? observer.ceiling.minor : null };
+      resourceObserver: !!observer.resourceObserved, ceilingMinor: observer.ceiling ? observer.ceiling.minor : null,
+      hold: held, holdReason: observer.dialogHoldReason };
+  }
+
+  // A JavaScript dialog the page opens while Kestrel works on it (an alert inside eBay's submit handler, say) is
+  // answered by the WebView, which lets the page run on. Whatever comes after it, no bid leaves this document:
+  // the message is for the user.
+  function watchDialogs() {
+    var observer = state.observer;
+    ['alert', 'confirm', 'prompt'].forEach(function (name) {
+      var original = window[name];
+      if (typeof original !== 'function') return;
+      var wrapper = function (message) {
+        var text = name + ': ' + truncate(message === undefined ? '' : String(message), 300);
+        observer.dialogs.push(text);
+        if (observer.dialogs.length > 10) observer.dialogs.shift();
+        observer.dialogHoldReason = 'the page showed a message first (' + text + ')';
+        return original.apply(window, arguments);
+      };
+      window[name] = wrapper;
+      observer.dialogWraps.push({ name: name, original: original, wrapper: wrapper });
+    });
+    return observer.dialogWraps.length > 0;
   }
 
   function disarmObserver() {
     var observer = state.observer;
+    observer.dialogWraps.forEach(function (wrap) {
+      if (window[wrap.name] === wrap.wrapper) window[wrap.name] = wrap.original;
+    });
+    observer.dialogWraps = [];
     if (observer.fetchWrapper && window.fetch === observer.fetchWrapper) window.fetch = observer.fetchOriginal;
     if (window.XMLHttpRequest && window.XMLHttpRequest.prototype) {
       var proto = window.XMLHttpRequest.prototype;
@@ -1350,6 +1542,7 @@
     var bidButton = findBidButton();
     if (!bidButton) return { ok: false, reason: 'bidButtonNotFound' };
     if (bidButton.signInHref) return { ok: false, reason: 'signInRequired' };
+    if (!bidButton.recognised) return { ok: false, reason: 'bidButtonNotRecognised' };
     if (bidButton.disabled || bidButton.loading) return { ok: false, reason: 'bidButtonNotReady' };
     var buttonCenter = centerOf(bidButton.element);
     if (!buttonCenter.inViewport) return { ok: false, reason: 'notInViewport' };
@@ -1360,18 +1553,14 @@
 
   function tapResult() {
     var guard = state.guard;
-    if (!guard) return { ok: true, armed: false, reached: false, last: state.lastGuard || null };
-    if (guard.which === 'submit' && guard.reached && state.press.phase === 'nativeArmed') {
-      state.press.phase = 'pressed';
-      state.press.method = 'native';
-      var pressEvent = guard.events.filter(function (event) {
-        return event.onTarget;
-      })[0];
-      state.press.perfTime = pressEvent ? pressEvent.at : now();
-      state.press.epochTime = Date.now();
+    var nativePress = state.press.method === 'native';
+    if (!guard) {
+      return { ok: true, armed: false, reached: nativePress, pressPerfTime: state.press.perfTime,
+        last: state.lastGuard || null };
     }
-    return { ok: true, armed: true, which: guard.which, reached: guard.reached, swallowed: guard.swallowed,
-      events: guard.events.slice(0, 20), pressPerfTime: state.press.perfTime };
+    return { ok: true, armed: true, which: guard.which, reached: guard.reached || (guard.which === 'submit' && nativePress),
+      swallowed: guard.swallowed, labelChanged: guard.labelChanged, events: guard.events.slice(0, 20),
+      pressPerfTime: state.press.perfTime };
   }
 
   function disarmTap() {
@@ -1422,16 +1611,17 @@
 
   function submitPress(options) {
     var press = state.press;
-    if (press.phase === 'pressed') return { ok: false, dispatched: false, reason: 'alreadySubmitted' };
+    if (press.phase === 'pressed') {
+      return { ok: false, dispatched: false, reason: press.method === 'native' ? 'nativeTapReached' : 'alreadySubmitted' };
+    }
+    if (press.phase === 'abandoned') return { ok: false, dispatched: false, reason: 'nativeTapUnknown' };
     var layer = findLayer();
     var submit = layer && layer.input ? findSubmit(layer.element) : { element: null };
     if (press.phase === 'nativeArmed') {
-      if (state.guard && state.guard.which === 'submit' && state.guard.reached) {
-        tapResult();
-        return { ok: false, dispatched: false, reason: 'nativeTapReached' };
-      }
       // The native tap never reached the button: swallow any late trusted tap, then press once with DOM events.
-      if (state.guard) state.guard.mode = 'swallow';
+      // Without the guard there is no way to know that no tap landed, so nothing is pressed.
+      if (!state.guard || state.guard.which !== 'submit') return { ok: false, dispatched: false, reason: 'nativeTapUnknown' };
+      state.guard.mode = 'swallow';
       var fallbackProblem = submitProblem(layer, submit, options);
       if (fallbackProblem) return { ok: false, dispatched: false, reason: fallbackProblem };
     } else {
@@ -1478,9 +1668,14 @@
       inlineError: layer ? inlineErrorText(layer) : null,
       records: state.observer.records.slice(),
       blocked: state.observer.blocked.slice(),
+      // Only a request stopped after the press answers the press; one stopped while waiting does not.
+      blockedSincePress: state.press.perfTime === null ? [] : state.observer.blocked.filter(function (entry) {
+        return entry.atPerf >= state.press.perfTime;
+      }),
       pressed: state.press.phase === 'pressed',
       pressMethod: state.press.method,
       pressPerfTime: state.press.perfTime,
+      documentToken: DOCUMENT_TOKEN,
       nowPerf: now(),
     };
   }

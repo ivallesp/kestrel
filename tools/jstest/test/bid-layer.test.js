@@ -98,7 +98,7 @@ test('a DOM-event submit places one bid, and the observer records the reply with
   const page = await openLayer();
   call(page.window, 'typeMax', '12.50');
   const armed = call(page.window, 'armObserver', CEILING_12_50);
-  assert.deepEqual(armed, { ok: true, fetchWrapped: true, xhrWrapped: true, resourceObserver: false, ceilingMinor: 1250 });
+  assert.deepEqual(armed, { ok: true, fetchWrapped: true, xhrWrapped: true, resourceObserver: false, ceilingMinor: 1250, hold: false, holdReason: null });
   const submitted = call(page.window, 'submit', { expectValue: '12.50' });
   assert.equal(submitted.ok, true, JSON.stringify(submitted));
   assert.equal(submitted.dispatched, true);
@@ -304,7 +304,7 @@ test('a native tap that reaches the submit is the one press, and DOM events are 
   trustedTap(page.window, submit, armed.x, armed.y);
   const result = call(page.window, 'tapResult');
   assert.equal(result.reached, true);
-  assert.deepEqual(call(page.window, 'submit', { expectValue: '12.50' }), { ok: false, dispatched: false, reason: 'alreadySubmitted' });
+  assert.deepEqual(call(page.window, 'submit', { expectValue: '12.50' }), { ok: false, dispatched: false, reason: 'nativeTapReached' });
   trustedTap(page.window, submit, armed.x, armed.y);
   await settle(page.window);
   assert.equal(page.window.__fixtureCounts.submitClicks, 1, 'a second native tap on the submit is swallowed');

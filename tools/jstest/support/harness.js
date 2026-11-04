@@ -216,6 +216,24 @@ async function openSyntheticLayer({ scenario = 'leading', respond, trustedHook =
   return { dom, window: dom.window, calls, virtualConsole };
 }
 
+// A small page at [url] with [bodyHtml]; page scripts do not run. Returns the window and the fake network's calls.
+function openPage(url, bodyHtml, { respond = defaultBidResponder } = {}) {
+  let calls = null;
+  const dom = new JSDOM('<!doctype html><title>Test page | eBay</title><body>' + bodyHtml + '</body>', {
+    url,
+    runScripts: 'outside-only',
+    pretendToBeVisual: true,
+    virtualConsole: makeVirtualConsole(),
+    beforeParse(window) {
+      window.__kestrelTestHooks = { isTrusted: (event) => event.__simulatedTrusted === true };
+      calls = installNetworkFakes(window, respond);
+      stubLayout(window, [0, 0, 100, 20]);
+    },
+  });
+  installKestrel(dom.window);
+  return { window: dom.window, calls };
+}
+
 function defaultBidResponder(call) {
   if (call.url.indexOf('/bfl/placebid') >= 0) {
     return { status: 200, body: JSON.stringify({ action: new URL(call.url, 'https://www.ebay.co.uk').searchParams.get('action'), ok: true }) };
@@ -255,6 +273,7 @@ module.exports = {
   itemFixtures,
   kestrelSource,
   openItemPage,
+  openPage,
   openSyntheticLayer,
   settle,
   trustedTap,

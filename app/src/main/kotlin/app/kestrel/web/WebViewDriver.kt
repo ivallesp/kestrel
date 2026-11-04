@@ -48,6 +48,13 @@ class WebViewDriver internal constructor(
     private val recentDiagnostics = ArrayDeque<String>()
     override val diagnostics: List<String> get() = synchronized(recentDiagnostics) { recentDiagnostics.toList() }
 
+    private val dialogs = mutableListOf<String>()
+    override val javaScriptDialogs: List<String> get() = synchronized(dialogs) { dialogs.toList() }
+
+    @Volatile
+    override var javaScriptDialogCount: Int = 0
+        private set
+
     private val pendingScripts: MutableSet<CancellableContinuation<String>> =
         Collections.synchronizedSet(
             mutableSetOf(),
@@ -288,7 +295,7 @@ class WebViewDriver internal constructor(
     private inner class Events : WebViewEvents {
         override fun pageStarted(url: String) {
             currentUrl = url
-            currentLoad?.pageStarted()
+            currentLoad?.pageStarted(url)
         }
 
         override fun pageFinished(
@@ -336,18 +343,32 @@ class WebViewDriver internal constructor(
     }
 
     /**
-     * Nobody sees a headless page, so a JavaScript dialog is answered with its safe default (cancel) and noted.
-     * Permission prompts are refused.
+     * Nobody sees a headless page. A JavaScript dialog must still be answered or the page stops, so it gets the answer
+     * that agrees to nothing (cancel; an alert can only be dismissed) and is kept in [javaScriptDialogs], which the
+     * bid page hands to the user instead of going on. Permission prompts are refused.
      */
     private inner class HeadlessChromeClient : WebChromeClient() {
+        private fun keep(
+            kind: String,
+            message: String?,
+        ) {
+            val text = "$kind: ${message.orEmpty()}".take(DIAGNOSTIC_LIMIT)
+            synchronized(dialogs) {
+                dialogs += text
+                while (dialogs.size > DIAGNOSTICS_KEPT) dialogs.removeAt(0)
+                javaScriptDialogCount += 1
+            }
+            remember("$text (dismissed)")
+        }
+
         override fun onJsAlert(
             view: WebView,
             url: String?,
             message: String?,
             result: JsResult,
         ): Boolean {
-            remember("alert: $message")
-            result.confirm()
+            keep("alert", message)
+            result.cancel()
             return true
         }
 
@@ -357,7 +378,7 @@ class WebViewDriver internal constructor(
             message: String?,
             result: JsResult,
         ): Boolean {
-            remember("confirm dialog cancelled: $message")
+            keep("confirm", message)
             result.cancel()
             return true
         }
@@ -369,7 +390,7 @@ class WebViewDriver internal constructor(
             defaultValue: String?,
             result: JsPromptResult,
         ): Boolean {
-            remember("prompt dialog cancelled: $message")
+            keep("prompt", message)
             result.cancel()
             return true
         }

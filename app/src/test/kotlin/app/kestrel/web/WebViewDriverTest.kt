@@ -279,16 +279,26 @@ class WebViewDriverTest {
         }
 
     @Test
-    fun `JavaScript dialogs on the headless page are dismissed safely and noted`() =
+    fun `JavaScript dialogs on the headless page agree to nothing and are kept for the user`() =
         runTest {
             val driver = driver()
             val chrome = shadowOf(webView).webChromeClient
             val confirm = mockk<android.webkit.JsResult>(relaxed = true)
             assertTrue(chrome.onJsConfirm(webView, item, "Are you sure?", confirm))
             verify { confirm.cancel() }
+            verify(exactly = 0) { confirm.confirm() }
             val alert = mockk<android.webkit.JsResult>(relaxed = true)
-            assertTrue(chrome.onJsAlert(webView, item, "Hello", alert))
-            verify { alert.confirm() }
-            assertTrue(driver.diagnostics.any { it.contains("confirm dialog cancelled: Are you sure?") })
+            assertTrue(chrome.onJsAlert(webView, item, "Please acknowledge these terms", alert))
+            verify { alert.cancel() }
+            val prompt = mockk<android.webkit.JsPromptResult>(relaxed = true)
+            assertTrue(chrome.onJsPrompt(webView, item, "Enter the code", "", prompt))
+            verify { prompt.cancel() }
+            verify(exactly = 0) { prompt.confirm(any()) }
+            assertEquals(3, driver.javaScriptDialogCount)
+            assertEquals(
+                listOf("confirm: Are you sure?", "alert: Please acknowledge these terms", "prompt: Enter the code"),
+                driver.javaScriptDialogs,
+            )
+            assertTrue(driver.diagnostics.any { it.contains("confirm: Are you sure? (dismissed)") })
         }
 }

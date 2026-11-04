@@ -29,6 +29,10 @@ import kotlin.math.roundToLong
 internal data class VerifiedTyping(
     val amount: Money,
     val fieldValue: String,
+    /** How many JavaScript dialogs the page had opened when the amount was verified. */
+    val dialogCount: Int,
+    /** kestrel.js's name for the document the amount was typed in. */
+    val documentToken: String?,
 )
 
 /** Whether a MotionEvent dispatched to this WebView reached the page as a trusted tap at the intended point. */
@@ -66,6 +70,7 @@ class WebBidPage internal constructor(
     private var nativeTouch: NativeTouchCheck? = null
     private var dispatch: SubmitDispatch? = null
     private var lastAutoRefreshStartElapsed: Long? = null
+    private var layerDialogBaseline = 0
 
     override suspend fun openItem(ref: ItemRef): PageState {
         driver.failure?.let { throw PageUnavailableException(it.description) }
@@ -155,7 +160,7 @@ class WebBidPage internal constructor(
 
     override suspend fun armReplyObserver() {
         if (driver.failure != null) return
-        quietly { armObserver() }
+        quietly { armObserver(hold = true) }
         quietly { ensureNativeTouchChecked() }
     }
 
@@ -166,12 +171,17 @@ class WebBidPage internal constructor(
         val typing =
             verifiedTyping ?: throw SubmitNotDispatchedException("The typed maximum was not verified on this page")
         driver.failure?.let { throw SubmitNotDispatchedException(it.description) }
-        try {
-            armObserver()
-        } catch (problem: PageUnavailableException) {
-            throw SubmitNotDispatchedException(problem.message ?: "The page stopped")
-        } catch (problem: WebPageException) {
-            note("submit: the observer could not be armed: ${problem.message}")
+        // The one place the hold on bid requests is released, with the typed maximum as the ceiling.
+        val released =
+            try {
+                armObserver(hold = false)
+            } catch (problem: WebPageException) {
+                throw SubmitNotDispatchedException("The bid request could not be armed: ${problem.message}")
+            }
+        if (!released.ok || released.hold) {
+            throw SubmitNotDispatchedException(
+                "The bid request could not be armed: ${released.holdReason ?: released.error ?: "still held"}",
+            )
         }
         val sent = press(typing)
         dispatch = sent
@@ -194,9 +204,15 @@ class WebBidPage internal constructor(
                     val latency =
                         answeredLatency
                             ?: (clock.elapsedRealtimeMillis() - sent.dispatchedAtElapsedMillis).coerceAtLeast(0)
-                    state.blocked.firstOrNull()?.let { return@waitUntil BidReply.Rejected(blockedText(it), latency) }
+                    state.blockedSincePress.firstOrNull()?.let {
+                        return@waitUntil BidReply.Rejected(
+                            blockedText(it),
+                            latency,
+                        )
+                    }
                     ReplyClassifier.decisive(state.newNotices, state.addedLines, latency)?.let { return@waitUntil it }
-                    val other = ReplyClassifier.otherNotice(state.newNotices)
+                    // An error on the amount field after the press is eBay's answer too (the press required none).
+                    val other = ReplyClassifier.otherNotice(state.newNotices) ?: state.inlineError
                     val now = clock.elapsedRealtimeMillis()
                     when {
                         other == null -> {
@@ -314,6 +330,10 @@ class WebBidPage internal constructor(
     // ---------------------------------------------------------------------------------------------
 
     private suspend fun openLayer(): LayerState {
+        layerDialogBaseline = driver.javaScriptDialogCount
+        // From here until submit() no bid request may leave the page, whatever presses what, even if the layer is
+        // already open.
+        holdBidRequests("openBidLayer")
         decideLayer(layerState(), timedOut = false)?.let { return it }
         awaitHydratedBidButton()?.let { return it }
         ensureNativeTouchChecked()
@@ -392,6 +412,7 @@ class WebBidPage internal constructor(
         timedOut: Boolean,
     ): LayerState? {
         if (!state.ok) throw PageScriptException("layerState failed: ${state.error}")
+        dialogSince(layerDialogBaseline)?.let { return LayerState.NeedsUser(it, report()) }
         val kind = parsers.classify(state.url, state.title)
         if (state.signInRequired || kind == PageKind.SIGN_IN) return LayerState.NeedsSignIn
         if (kind != PageKind.NORMAL) return stateForPage(kind, state.title, state.url)
@@ -442,6 +463,7 @@ class WebBidPage internal constructor(
         amount: Money,
         site: EbaySite,
     ): TypedAmount {
+        holdBidRequests("typeMax")
         val before = layerState()
         val input = before.input ?: return notTyped("eBay's amount field is not open")
         val text = AmountText.forInput(amount, site, input.type)
@@ -462,8 +484,13 @@ class WebBidPage internal constructor(
         val shown = AmountText.readField(fieldValue, site, amount.currency)
         val interstitial = settled.interstitial
         val submit = settled.submit
+        val dialog = dialogSince(layerDialogBaseline)
         val problem =
             when {
+                dialog != null -> {
+                    kestrel("eBay showed a message that needs you: $dialog")
+                }
+
                 interstitial != null -> {
                     kestrel(
                         "eBay is asking for something first (${interstitial.kind}): ${interstitial.text}",
@@ -496,7 +523,11 @@ class WebBidPage internal constructor(
                     null
                 }
             }
-        if (problem == null) verifiedTyping = VerifiedTyping(amount, fieldValue)
+        if (problem ==
+            null
+        ) {
+            verifiedTyping = VerifiedTyping(amount, fieldValue, driver.javaScriptDialogCount, typed.documentToken)
+        }
         note("typed $text, field shows \"$fieldValue\", ${problem ?: "verified"}")
         return TypedAmount(fieldValue, problem, minimum)
     }
@@ -519,6 +550,7 @@ class WebBidPage internal constructor(
     // ---------------------------------------------------------------------------------------------
 
     private suspend fun press(typing: VerifiedTyping): SubmitDispatch {
+        dialogSince(typing.dialogCount)?.let { throw SubmitNotDispatchedException("eBay showed a message first: $it") }
         val expectation = buildJsonObject { put("expectValue", typing.fieldValue) }
         var tapDispatchedAt: Long? = null
         var tapLabel: String? = null
@@ -553,24 +585,54 @@ class WebBidPage internal constructor(
             try {
                 helper.call(PageFunction.SUBMIT, PressSnapshot.serializer(), expectation)
             } catch (problem: WebPageException) {
-                // Nothing is known about this press: the engine must treat it as possibly sent.
-                if (tapDispatchedAt ==
-                    null
-                ) {
-                    throw SubmitNotDispatchedException("The page did not answer: ${problem.message}")
-                }
-                throw problem
+                // The press may have run even though its answer was lost: ask the page before saying anything.
+                return pressAfterLostAnswer(problem, typing, before, tapDispatchedAt, tapLabel)
             }
         val after = clock.elapsedRealtimeMillis()
-        if (pressed.ok &&
-            pressed.dispatched
-        ) {
+        if (pressed.ok && pressed.dispatched) {
             return SubmitDispatch((before + after) / 2, InputMethod.DOM_EVENTS, pressed.label)
         }
-        if (pressed.reason == NATIVE_TAP_REACHED && tapDispatchedAt != null) {
+        if (pressed.reason in nativeOutcomeUnknownOrReached && tapDispatchedAt != null) {
             return SubmitDispatch(tapDispatchedAt, InputMethod.NATIVE_TOUCH, tapLabel)
         }
         throw SubmitNotDispatchedException(describeRefusal(pressed.reason ?: pressed.error))
+    }
+
+    /**
+     * The submit call failed (timeout, page error). The page's own record of the press decides, but only the record of
+     * the document the amount was typed in: after a navigation the helper starts afresh and knows nothing. When the
+     * page cannot tell, the outcome is unknown, which is never reported as "not sent".
+     */
+    private suspend fun pressAfterLostAnswer(
+        problem: WebPageException,
+        typing: VerifiedTyping,
+        before: Long,
+        tapDispatchedAt: Long?,
+        tapLabel: String?,
+    ): SubmitDispatch {
+        val state = replyStateOrNull()
+        val sameDocument = state != null && typing.documentToken != null && state.documentToken == typing.documentToken
+        return when {
+            state == null || !sameDocument -> {
+                throw WebPageException("The page did not answer the press; the bid may have been sent", problem)
+            }
+
+            state.pressed && state.pressMethod == "native" -> {
+                SubmitDispatch(tapDispatchedAt ?: before, InputMethod.NATIVE_TOUCH, tapLabel)
+            }
+
+            state.pressed -> {
+                SubmitDispatch(before, InputMethod.DOM_EVENTS, null)
+            }
+
+            tapDispatchedAt != null -> {
+                SubmitDispatch(tapDispatchedAt, InputMethod.NATIVE_TOUCH, tapLabel)
+            }
+
+            else -> {
+                throw SubmitNotDispatchedException("The page did not press the bid button: ${problem.message}")
+            }
+        }
     }
 
     private suspend fun tapSafely(target: TapTargetSnapshot): Boolean =
@@ -585,16 +647,36 @@ class WebBidPage internal constructor(
     private suspend fun tapResult(): TapResultSnapshot =
         helper.call(PageFunction.TAP_RESULT, TapResultSnapshot.serializer())
 
-    private suspend fun armObserver(): ObserverSnapshot {
+    /**
+     * Arms kestrel.js's watch on the bid request. With [hold], every bid request is blocked (Kestrel is not pressing
+     * yet: a dry run, or the wait before the snipe); without it, one bid up to the verified maximum may go out.
+     */
+    private suspend fun armObserver(hold: Boolean): ObserverSnapshot {
         val typing = verifiedTyping
         val options =
             buildJsonObject {
+                put("hold", hold)
                 if (typing != null) {
                     put("ceilingMinor", typing.amount.minor)
                     put("currency", typing.amount.currency)
                 }
             }
         return helper.call(PageFunction.ARM_OBSERVER, ObserverSnapshot.serializer(), options)
+    }
+
+    /** The newest JavaScript dialog the page opened after [count] dialogs, or null when there was none. */
+    private fun dialogSince(count: Int): String? =
+        if (driver.javaScriptDialogCount > count) driver.javaScriptDialogs.lastOrNull() ?: "a dialog" else null
+
+    /** Blocks bid requests on this document until submit() releases them. A page that stopped is thrown. */
+    private suspend fun holdBidRequests(where: String) {
+        try {
+            armObserver(hold = true)
+        } catch (unavailable: PageUnavailableException) {
+            throw unavailable
+        } catch (problem: WebPageException) {
+            note("$where: the hold on bid requests could not be armed: ${problem.message}")
+        }
     }
 
     private suspend fun ensureNativeTouchChecked(): NativeTouchCheck {
@@ -733,8 +815,10 @@ class WebBidPage internal constructor(
     private companion object {
         const val HTTP_OK = 200
         const val CONFIRM_BID = "confirmbid"
-        const val NATIVE_TAP_REACHED = "nativeTapReached"
         const val NOT_IN_VIEWPORT = "notInViewport"
+
+        // kestrel.js refuses a DOM press with these when a native tap reached the button, or may have.
+        val nativeOutcomeUnknownOrReached = setOf("nativeTapReached", "nativeTapUnknown")
         const val REPORT_LIMIT = 32_000
         const val NOTE_LIMIT = 400
         const val NOTES_KEPT = 40
@@ -754,6 +838,9 @@ class WebBidPage internal constructor(
                 "interstitial" -> "eBay is asking for something before the bid (verification or terms)"
                 "alreadySubmitted" -> "the bid was already pressed on this page"
                 "expectedValueMissing" -> "the typed maximum was not passed to the page"
+                "bidButtonNotRecognised" -> "eBay's bid button does not say bid (it may carry an amount)"
+                "covered" -> "another dialog lies over eBay's bid button"
+                "nativeTapUnknown" -> "a tap on the bid button may have landed, so it is not pressed again"
                 null -> "the page did not say why"
                 else -> reason
             }

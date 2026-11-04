@@ -20,7 +20,11 @@ object ReplyClassifier {
             "\\boutbid\\b" to Standing.OUTBID,
             "\\banother bidder\\b" to Standing.OUTBID,
             "\\bincrease your (?:max(?:imum)? )?bid\\b" to Standing.OUTBID,
-            "\\bno longer the high(?:est)? bidder\\b" to Standing.OUTBID,
+            // Negated leading phrases come before the leading ones: "not the highest bidder" is not a lead.
+            "\\b(?:not|no longer)(?: currently)? (?:the )?high(?:est)? bidder\\b" to Standing.OUTBID,
+            "\\b(?:not|no longer)(?: currently)? in the lead\\b" to Standing.OUTBID,
+            "\\b(?:not|no longer)(?: currently)? winning\\b" to Standing.OUTBID,
+            "\\bnicht (?:mehr )?h\u00f6chstbietende" to Standing.OUTBID,
             "\u00fcberboten" to Standing.OUTBID,
             "\\bin the lead\\b" to Standing.LEADING,
             "\\bhigh(?:est)? bidder\\b" to Standing.LEADING,
