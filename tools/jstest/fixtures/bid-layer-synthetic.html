@@ -1,0 +1,197 @@
+<!doctype html>
+<!--
+  SYNTHETIC FIXTURE. This is not an eBay capture: no signed-in bid layer has ever been archived. It rebuilds the
+  2025-2026 bid-layer markup documented in docs/research/bidflow.md (BF1, BF5-BF9, RS1) so kestrel.js can be
+  tested end to end:
+  - signed-in call to action: button#bidBtn_btn inside div.x-bid-action[data-testid=x-bid-action] (BF1);
+  - layer container .placebid-redesign-wrapper inside a lightbox dialog labelled "Place your bid" (BF5, MF13);
+  - amount input input.textbox__control[type=tel] whose id contains @placebid-section-@offer-section-@price (BF6);
+  - power-bid buttons "Bid £X.XX" in .place-bid-actions__powerbids-wrapper (BF7);
+  - primary submit div.place-bid-actions__submit > button.btn--fluid.btn--primary labelled "Bid" (BF8);
+  - the too-low text "Enter £X or more" (legacy wording, section 5 of bidflow.md);
+  - POST /bfl/placebid?action=trisk, then POST /bfl/placebid?action=confirmbid with {price:{currency,value}} (BF9);
+  - the result notice in span.inline-notice__main > div > span > span (RS1).
+  The inline script at the end imitates eBay's client code just enough to drive these pieces. data-rect attributes
+  give the test layout stub its boxes (jsdom does no layout).
+  window.__fixtureScenario picks eBay's behaviour: leading, outbid, verification, oops, terms.
+-->
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <title>Synthetic auction item for tests | eBay UK</title>
+  <meta Property="og:title" Content="Synthetic auction item for tests | eBay UK">
+  <link rel="canonical" href="https://www.ebay.co.uk/itm/100000000001">
+</head>
+<body>
+  <script type="text/javascript">var GHpre = {"ghxc":[],"ghxs":[],"userAuth":true,"userId":"testbuyer","fn":"Sam","shipToLocation":"SW1A1AA"}</script>
+  <header id="gh">
+    <span class="gh-identity"><span id="gh-ident-srvr-wrap" class="gh-identity__srvr"><span class="gh-identity__greeting">Hi <span><span id="gh-ident-srvr-name">Sam</span>!</span></span></span></span>
+  </header>
+  <div id="mainContent">
+    <h1 class="x-item-title__mainTitle"><span class="ux-textspans ux-textspans--BOLD">Synthetic auction item for tests</span></h1>
+    <div class="x-price-section" data-testid="x-price-section"><span class="ux-textspans">£5.37</span></div>
+    <span class="clipped" role="status" aria-live="polite">Add to Watchlist</span>
+    <ul class="x-buybox-cta" data-testid="x-buybox-cta">
+      <li><div class="vim x-bid-action" data-testid="x-bid-action"><button id="bidBtn_btn" type="button" class="ux-call-to-action btn btn--fluid btn--large btn--primary" data-url="/bfl/placebid/100000000001?currencyId=GBP" data-rect="16 600 380 48"><span class="ux-call-to-action__cell"><span class="ux-call-to-action__text">Submit bid</span></span></button></div></li>
+      <li><div class="vim x-bin-action" data-testid="x-bin-action"><a id="binBtn_btn_1" class="ux-call-to-action fake-btn fake-btn--primary" href="https://www.ebay.co.uk/atc/binctr?item=100000000001" data-rect="16 660 380 48"><span class="ux-call-to-action__text">Buy It Now</span></a></div></li>
+    </ul>
+  </div>
+
+  <div id="bid-layer" class="lightbox-dialog" role="dialog" aria-modal="true" aria-label="Place your bid" hidden data-rect="0 60 411 760">
+    <div class="lightbox-dialog__window" data-rect="0 60 411 760">
+      <div class="lightbox-dialog__header">
+        <h2 class="lightbox-dialog__title">Place your bid</h2>
+        <button class="icon-btn lightbox-dialog__close" type="button" aria-label="Close dialog" data-rect="360 70 40 40"><svg aria-hidden="true"><title>Close</title></svg></button>
+      </div>
+      <div class="placebid-redesign-wrapper" data-rect="0 110 411 700">
+        <div class="place-bid-summary">
+          <p>£5.37 current bid</p>
+          <p>1 bid · 5m 33s left</p>
+        </div>
+        <div class="place-bid-notices"></div>
+        <div class="place-bid-form">
+          <div class="place-bid-actions">
+            <div class="place-bid-actions__powerbids-wrapper">
+              <button class="btn btn--secondary" type="button" data-amount="5.57" data-rect="16 300 120 44">Bid £5.57</button>
+              <button class="btn btn--secondary" type="button" data-amount="6.07" data-rect="146 300 120 44">Bid £6.07</button>
+              <button class="btn btn--secondary" type="button" data-amount="6.57" data-rect="276 300 120 44">Bid £6.57</button>
+            </div>
+            <div class="place-bid-actions__max-bid">
+              <label for="s0-1-0-@placebid-section-@offer-section-@price-textbox">Your maximum bid</label>
+              <span class="textbox"><input class="textbox__control" type="tel" inputmode="decimal" autocomplete="off" id="s0-1-0-@placebid-section-@offer-section-@price-textbox" aria-describedby="placebid-price-description" data-rect="16 380 380 44"></span>
+              <span id="placebid-price-description" class="field__description">Enter £5.57 or more</span>
+            </div>
+            <div class="place-bid-actions__submit"><button class="btn btn--fluid btn--primary" type="button" disabled data-rect="16 460 380 48">Bid</button></div>
+            <p class="place-bid-legal">When you bid, you're committing to buy this item if you win. By bidding you agree to the terms of the User Agreement.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="verify-dialog" class="lightbox-dialog" role="dialog" aria-modal="true" aria-label="Verify it's you" hidden data-rect="0 60 411 400">
+    <h2>Verify it's you</h2>
+    <p>To keep bidding safe, we need to confirm your phone number. We'll text a code to the number ending 1234.</p>
+    <button type="button" class="btn btn--primary" data-rect="16 300 380 48">Send code</button>
+  </div>
+
+  <div id="terms-dialog" class="lightbox-dialog" role="dialog" aria-modal="true" hidden data-rect="0 60 411 400">
+    <h2>Before you bid</h2>
+    <p>This item is subject to an adult item disclaimer. Select I agree to continue.</p>
+    <button type="button" class="btn btn--primary" data-rect="16 300 380 48">I agree</button>
+  </div>
+
+  <script>
+    // Imitation of eBay's client code (synthetic, see the header comment).
+    (function () {
+      var minimum = 5.57;
+      var layer = document.getElementById('bid-layer');
+      var input = layer.querySelector('input.textbox__control');
+      var description = document.getElementById('placebid-price-description');
+      var submit = layer.querySelector('.place-bid-actions__submit button');
+      var notices = layer.querySelector('.place-bid-notices');
+      var form = layer.querySelector('.place-bid-form');
+      window.__fixtureCounts = { submitClicks: 0, powerBidClicks: 0, bidButtonClicks: 0, buyItNowClicks: 0 };
+
+      function scenario() {
+        return window.__fixtureScenario || 'leading';
+      }
+
+      function showNotice(kind, text) {
+        notices.innerHTML = '<div class="inline-notice inline-notice--' + kind + '"><span class="inline-notice__main"><div><span><span></span></span></div></span></div>';
+        notices.querySelector('span span span').textContent = text;
+      }
+
+      function validate() {
+        var value = Number(input.value);
+        var tooLow = input.value === '' || !(value >= minimum);
+        submit.disabled = tooLow;
+        if (input.value !== '' && tooLow) {
+          input.setAttribute('aria-invalid', 'true');
+          description.className = 'field__description field__description--attention';
+          description.setAttribute('role', 'alert');
+        } else {
+          input.removeAttribute('aria-invalid');
+          description.className = 'field__description';
+          description.removeAttribute('role');
+        }
+      }
+
+      function post(url, body, viaXhr) {
+        if (viaXhr) {
+          return new Promise(function (resolve, reject) {
+            var request = new XMLHttpRequest();
+            request.open('POST', url);
+            request.addEventListener('load', function () { resolve(request.responseText); });
+            request.addEventListener('error', function () { reject(new Error('network')); });
+            request.send(JSON.stringify(body));
+          });
+        }
+        return fetch(url, { method: 'POST', body: JSON.stringify(body), credentials: 'include' }).then(function (response) {
+          return response.text();
+        });
+      }
+
+      function placeBid(amountText) {
+        var attempt = 'attempt-' + Date.now();
+        post('/bfl/placebid?action=trisk&_trksid=p4429486.m1', { itemId: '100000000001', attemptId: attempt, srt: 'synthetic-srt' }, true)
+          .then(function () {
+            return post('/bfl/placebid?action=confirmbid&modules=POWER_BID_LAYER&_trksid=p4429486.m1&ocv=1', {
+              decimalPrecision: 2, price: { currency: 'GBP', value: amountText }, itemId: '100000000001',
+              srt: 'synthetic-srt', autoPayContext: { attemptId: attempt } }, false);
+          })
+          .then(function () {
+            if (scenario() === 'outbid') {
+              showNotice('attention', 'Another bidder is winning. Increase your bid.');
+              submit.textContent = 'Increase max bid';
+            } else {
+              showNotice('confirmation', 'Your current bid puts you in the lead.');
+            }
+          })
+          .catch(function () {
+            showNotice('attention', "Oops. Looks like we're having trouble connecting to our server.");
+          });
+      }
+
+      document.getElementById('bidBtn_btn').addEventListener('click', function () {
+        window.__fixtureCounts.bidButtonClicks += 1;
+        if (scenario() === 'verification') {
+          document.getElementById('verify-dialog').hidden = false;
+          return;
+        }
+        if (scenario() === 'terms') {
+          document.getElementById('terms-dialog').hidden = false;
+          return;
+        }
+        if (scenario() === 'oops') {
+          form.hidden = true;
+          showNotice('attention', "Oops. Looks like we're having trouble connecting to our server.");
+        }
+        layer.hidden = false;
+      });
+      document.getElementById('binBtn_btn_1').addEventListener('click', function (event) {
+        event.preventDefault();
+        window.__fixtureCounts.buyItNowClicks += 1;
+      });
+      input.addEventListener('input', validate);
+      input.addEventListener('change', validate);
+      submit.addEventListener('click', function () {
+        window.__fixtureCounts.submitClicks += 1;
+        placeBid(input.value);
+      });
+      Array.prototype.forEach.call(layer.querySelectorAll('.place-bid-actions__powerbids-wrapper button'), function (button) {
+        button.addEventListener('click', function () {
+          window.__fixtureCounts.powerBidClicks += 1;
+          placeBid(button.getAttribute('data-amount'));
+        });
+      });
+      layer.querySelector('.lightbox-dialog__close').addEventListener('click', function () {
+        layer.hidden = true;
+      });
+      document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') layer.hidden = true;
+      });
+    })();
+  </script>
+</body>
+</html>
