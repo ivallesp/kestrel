@@ -101,14 +101,29 @@ internal class BackStackNavigator(
 
     override val current: Destination get() = backStack.lastOrNull() as? Destination ?: Destination.Home
 
+    // A screen already on the stack is gone back to, never stacked a second time (a notification for the lot under
+    // its hand-off page, the result screen handing back to its live page): one Back always leaves it.
     override fun open(destination: Destination) {
-        if (current != destination) changeStack { backStack.add(destination) }
+        if (current == destination) return
+        changeStack { if (!popBackTo(destination)) backStack.add(destination) }
     }
 
     override fun replace(destination: Destination) {
         changeStack {
-            if (backStack.isEmpty()) backStack.add(destination) else backStack[backStack.lastIndex] = destination
+            when {
+                backStack.isEmpty() -> backStack.add(destination)
+                popBackTo(destination) -> Unit
+                else -> backStack[backStack.lastIndex] = destination
+            }
         }
+    }
+
+    /** Removes the screens above [destination] when it is on the stack; false when it is not. */
+    private fun popBackTo(destination: Destination): Boolean {
+        val at = backStack.lastIndexOf(destination)
+        if (at < 0) return false
+        while (backStack.lastIndex > at) backStack.removeAt(backStack.lastIndex)
+        return true
     }
 
     override fun back() {

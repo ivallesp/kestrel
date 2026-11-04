@@ -592,7 +592,9 @@ object LotStateBuilder {
 
             is LotStatus.BidNotSent, is LotStatus.BidFailed -> {
                 val detail = status.detail(now, zone)
-                StatusCard(StatusTone.Failed, CardGlyph.Error, AnnotatedString(chip), detail, status.action(now))
+                // S3 is the receipt until the end, when it turns into S4: "View receipt" here could only lead back.
+                val action = status.action(now).takeIf { it != LotAction.VIEW_RECEIPT }
+                StatusCard(StatusTone.Failed, CardGlyph.Error, AnnotatedString(chip), detail, action)
             }
 
             is LotStatus.Won,

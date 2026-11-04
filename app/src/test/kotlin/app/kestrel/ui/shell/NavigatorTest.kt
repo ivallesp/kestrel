@@ -33,6 +33,20 @@ class NavigatorTest {
     }
 
     @Test
+    fun aScreenAlreadyOnTheStackIsGoneBackToRatherThanStackedAgain() {
+        // A snipe's notification tapped while its hand-off page is on top.
+        navigator.open(Destination.Lot(3))
+        navigator.open(Destination.HandOff(3))
+        navigator.open(Destination.Lot(3))
+        assertEquals(listOf(Destination.Home, Destination.Lot(3)), stack)
+
+        // The result screen handing back to the live page it was opened from.
+        navigator.open(Destination.Result(3))
+        navigator.replace(Destination.Lot(3))
+        assertEquals(listOf(Destination.Home, Destination.Lot(3)), stack)
+    }
+
+    @Test
     fun replaceSwapsTheTopScreen() {
         navigator.open(Destination.Lot(3))
         navigator.replace(Destination.Result(3))

@@ -12,6 +12,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.Instant
 
 /**
  * S3's words and rules (DESIGN S3, 3.12, 3.13), built from the design fixture through the real status mapper. Units
@@ -227,6 +228,17 @@ class LotStateBuilderTest {
         assertEquals(OfflineNote("Offline since 18:02", "Prices are from 18:02."), offline.offline)
         // Raising is the card's action, so there is no second edit row.
         assertNull(fixture.omegaOverMax.lotState().edit)
+    }
+
+    @Test
+    fun beforeTheEndTheRedCardOffersNoReceiptThatWouldOnlyLeadBackHere() {
+        // S4 shows only once the auction has ended (LotPageBuilder.showsResult), and S3 is the receipt until then.
+        val failed = fixture.canonBidFailed
+        val running = failed.copy(now = Instant.ofEpochMilli(failed.snipe.endTimeUtcMillis - 2_000))
+        assertTrue(running.page() is LotPage.Live)
+        val card = running.lotState().card!!
+        assertEquals(StatusTone.Failed, card.tone)
+        assertNull(card.action)
     }
 
     @Test
