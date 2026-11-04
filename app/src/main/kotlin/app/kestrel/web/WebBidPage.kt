@@ -101,6 +101,8 @@ class WebBidPage internal constructor(
     private var lastAutoRefreshStartElapsed: Long? = null
     private var layerDialogBaseline = 0
 
+    override val isUsable: Boolean get() = driver.failure == null
+
     override suspend fun openItem(ref: ItemRef): PageState {
         driver.failure?.let { throw PageUnavailableException(it.description) }
         this.ref = ref
@@ -1026,6 +1028,8 @@ class LayerPreviewPage internal constructor(
     private val page: WebBidPage,
 ) : BidLayerPreview,
     AutoCloseable {
+    override val isUsable: Boolean get() = page.isUsable
+
     override suspend fun openItem(ref: ItemRef): PageState = page.openItem(ref)
 
     override suspend fun readListing(): Listing? = page.readListing()

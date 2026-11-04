@@ -27,6 +27,9 @@ class SnipeEngineTest {
         val clock = TrueTime(time)
         val auction = FakeAuction(scope.testScheduler)
         val page = ScriptedBidPage(scope.testScheduler, auction)
+
+        /** Pages handed out after the first one, in order; the first page again when none is left. */
+        val laterPages = ArrayDeque<ScriptedBidPage>()
         var pagesCreated = 0
         val engine =
             SnipeEngine(
@@ -35,7 +38,7 @@ class SnipeEngineTest {
                 clock,
                 BidPageFactory {
                     pagesCreated++
-                    page
+                    if (pagesCreated == 1) page else laterPages.removeFirstOrNull() ?: page
                 },
                 TEST_MINIMUM_RULE,
             )
@@ -996,6 +999,66 @@ class SnipeEngineTest {
 
             assertEquals(1, harness.page.submitsAtUtc.size)
             assertEquals(SnipeOutcome.WON, result.outcome)
+        }
+
+    @Test
+    fun aRendererThatDiesWhileTheItemLoadsIsReplacedAndTheBidStillGoesOut() =
+        runTest {
+            val harness = WindowHarness(this)
+            val fresh = ScriptedBidPage(testScheduler, harness.auction)
+            fresh.replies += BidReply.Leading("Your current bid puts you in the lead.", 400)
+            harness.laterPages += fresh
+            harness.page.dieOnNextOpenItem = true
+            harness.winAt("30.00")
+
+            val result = harness.run()
+
+            assertEquals(2, harness.pagesCreated)
+            assertTrue(harness.page.closed)
+            assertEquals(1, fresh.submitsAtUtc.size)
+            assertEquals(SnipeOutcome.WON, result.outcome)
+        }
+
+    @Test
+    fun aRendererThatDiesAfterTheItemLoadedIsReplacedBeforeTheLayerOpens() =
+        runTest {
+            val harness = WindowHarness(this)
+            val fresh = ScriptedBidPage(testScheduler, harness.auction)
+            fresh.replies += BidReply.Leading("Your current bid puts you in the lead.", 400)
+            harness.laterPages += fresh
+            harness.winAt("30.00")
+            launch {
+                // The page loaded at T-90 s; Android ends its renderer at T-50 s.
+                delay(70_000)
+                harness.page.dead = true
+            }
+
+            val result = harness.run()
+
+            assertEquals(2, harness.pagesCreated)
+            assertEquals(1, fresh.openItemAtUtc.count { it < END_UTC })
+            assertEquals(listOf(gbp("48.00")), fresh.typed)
+            assertEquals(1, fresh.submitsAtUtc.size)
+            assertEquals(SnipeOutcome.WON, result.outcome)
+        }
+
+    @Test
+    fun aRendererThatDiesTooCloseToTheBidIsNotReplacedAndNothingIsSent() =
+        runTest {
+            val harness = WindowHarness(this)
+            harness.laterPages +=
+                ScriptedBidPage(testScheduler, harness.auction).also { it.submitError = AssertionError() }
+            launch {
+                // Six seconds before the bid: too little time to load a new page, open the layer and type.
+                delay(108_000)
+                harness.page.dead = true
+            }
+
+            val result = harness.run()
+
+            assertEquals(SnipeOutcome.FAILED, result.outcome)
+            assertEquals(null, result.bidSentAtUtcMillis)
+            assertTrue(harness.store.eventsOf(TimelineKind.BID_SENT).isEmpty())
         }
 
     @Test

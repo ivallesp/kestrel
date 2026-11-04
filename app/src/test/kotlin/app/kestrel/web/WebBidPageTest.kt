@@ -289,6 +289,16 @@ class WebBidPageTest {
         }
 
     @Test
+    fun `the page says it can no longer be used once its renderer is gone`() =
+        runTest {
+            val page = page()
+            assertTrue(page.isUsable)
+            driver.failure = DriverFailure.RendererGone(crashed = false)
+            assertFalse(page.isUsable)
+            assertFalse(LayerPreviewPage(page).isUsable)
+        }
+
+    @Test
     fun `a dead renderer fails the layer without touching the page`() =
         runTest {
             val page = page()

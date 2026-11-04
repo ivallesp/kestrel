@@ -435,8 +435,18 @@ class ScriptedBidPage(
     var autoRefreshCalls = 0
     var closed = false
 
+    /** The renderer died: every call fails from now on, as on a WebView whose renderer is gone. */
+    var dead = false
+
+    /** The renderer dies while the next item page loads. */
+    var dieOnNextOpenItem = false
+
+    override val isUsable: Boolean get() = !dead
+
     override suspend fun openItem(ref: ItemRef): PageState {
         delay(1_500)
+        if (dieOnNextOpenItem) dead = true
+        check(!dead) { "The page's renderer crashed" }
         openItemAtUtc += auction.nowUtc()
         return when (val kind = pageKinds.removeFirstOrNull() ?: PageKind.NORMAL) {
             PageKind.NORMAL -> {
@@ -475,16 +485,18 @@ class ScriptedBidPage(
         }
     }
 
-    override suspend fun readListing(): Listing? = readListingResult()
+    override suspend fun readListing(): Listing? = if (dead) null else readListingResult()
 
     override suspend fun openBidLayer(): LayerState {
         delay(layerOpenMillis)
+        if (dead) return LayerState.Failed("The page's renderer crashed", "unavailable")
         layerOpens++
         return layerState()
     }
 
     override suspend fun typeMax(amount: Money): TypedAmount {
         delay(typingMillis)
+        if (dead) return TypedAmount("", "Kestrel: the page's renderer crashed", null, problem = TypingProblem.OTHER)
         typed += amount
         lastTypedAmount = amount
         return typingVerdict(amount)
@@ -517,6 +529,7 @@ class ScriptedBidPage(
 
     override suspend fun autoRefresh(): AutoRefreshState? {
         delay(200)
+        if (dead) return null
         autoRefreshCalls++
         return auction.autoRefresh()
     }
@@ -528,6 +541,7 @@ class ScriptedBidPage(
     override suspend fun submit(): SubmitDispatch {
         // The web layer's rule: one press per page, a second call throws before touching the page.
         check(submitCalls++ == 0) { "submit() was already called on this page: one press per page" }
+        if (dead) throw NotPressedException("The page's renderer crashed")
         submitError?.let { throw it }
         submitsAtUtc += auction.nowUtc()
         onSubmit(submitsAtUtc.size)

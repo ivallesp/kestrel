@@ -331,6 +331,7 @@ internal class SnipeWindow(
             if (clock.nowUtcMillis() >= target()) return null
             checkUserChanges()?.let { return it }
             if (following) {
+                if (replaceDeadPage()) startOverOnNewPage()?.let { return it }
                 followBeforeBid(target())?.let { return it }
                 rescheduleIfEndMovedFar()?.let { return it }
             }
@@ -420,10 +421,10 @@ internal class SnipeWindow(
     }
 
     private suspend fun loadListing(): SnipeResult? {
-        val currentPage =
-            page ?: return finish(SnipeOutcome.FAILED, "Kestrel's browser page is gone, so it could not bid.")
         var retries = 0
         while (true) {
+            val currentPage =
+                page ?: return finish(SnipeOutcome.FAILED, "Kestrel's browser page is gone, so it could not bid.")
             when (val load = loader.loadOnce(currentPage, snipe.ref, pageReadyByUtcMillis)) {
                 is PageLoad.Ready -> {
                     return onListingLoaded(load.listing, load.url)
@@ -434,6 +435,8 @@ internal class SnipeWindow(
                 }
 
                 is PageLoad.Retry -> {
+                    // A dead page fails every load: a fresh one, once, rather than retrying on the dead one.
+                    if (replaceDeadPage()) continue
                     retries++
                     if (retries > PAGE_LOAD_RETRIES) {
                         return finish(
@@ -556,7 +559,9 @@ internal class SnipeWindow(
     }
 
     private suspend fun openLayer(): SnipeResult? {
-        for (attempt in 1..LAYER_ATTEMPTS) {
+        var attempt = 0
+        while (attempt < LAYER_ATTEMPTS) {
+            attempt++
             val currentPage = page ?: break
             val budget =
                 minOf(OPEN_LAYER_TIMEOUT, latestDispatchUtcMillis - LAYER_READY_BEFORE_DISPATCH - clock.nowUtcMillis())
@@ -613,6 +618,12 @@ internal class SnipeWindow(
                         mapOf("attempt" to attempt),
                     )
                 }
+            }
+            if (replaceDeadPage()) {
+                // The item first, on the new page; then the layer gets its full attempts there.
+                loadListing()?.let { return it }
+                attempt = 0
+                continue
             }
             closeLayerIfUnused()
         }
@@ -686,12 +697,46 @@ internal class SnipeWindow(
                 }
             }
         }
+        if (replaceDeadPage()) {
+            // The page died: the item and the layer again on a fresh page, then the typing.
+            loadListing()?.let { return it }
+            openLayer()?.let { return it }
+            return typeAndVerify(amount)
+        }
         val because = lastProblem?.let { " ($it)" } ?: ""
         return finish(
             SnipeOutcome.FAILED,
             "Kestrel could not type your max into eBay's bid field and confirm it$because, so it did not bid.",
             userReason = NeedsUserReason.BID_FAILED,
         )
+    }
+
+    /**
+     * When the page died before the bid (its renderer gone: Android's memory limiter, a crash), it never works again,
+     * and every WebView of the app may have lost the same renderer. With at least [REBUILD_MINIMUM_MILLIS] left, the
+     * window starts once more on a fresh page (android.md WV4). Never after a press: a fresh page could press again.
+     * Returns true when a fresh page is in place; the caller loads the item on it again.
+     */
+    private suspend fun replaceDeadPage(): Boolean {
+        val current = page ?: return false
+        if (current.isUsable || pageReplaced || bid.submits > 0) return false
+        val untilDispatch = latestDispatchUtcMillis - clock.nowUtcMillis()
+        if (untilDispatch < REBUILD_MINIMUM_MILLIS) return false
+        journal.event(
+            snipeId,
+            TimelineKind.PROBLEM,
+            "Kestrel's browser page stopped ${durationText(watch.endUtcMillis - clock.nowUtcMillis())} before the " +
+                "end (Android ended its renderer). Kestrel starts again on a new page.",
+        )
+        layerOpen = false
+        typedAmount = null
+        return replacePage() != null
+    }
+
+    /** On a fresh page: the item again, and the bid layer again once its time has come. */
+    private suspend fun startOverOnNewPage(): SnipeResult? {
+        loadListing()?.let { return it }
+        return if (clock.nowUtcMillis() >= layerOpenAtUtcMillis) prepareLayer() else null
     }
 
     private suspend fun acceptTyped(
@@ -1326,6 +1371,9 @@ internal class SnipeWindow(
 
         /** How long after typing Kestrel waits for eBay to enable its bid button before typing again. */
         const val BID_BUTTON_WAIT_MILLIS = 6_000L
+
+        /** A dead page is replaced only with this much time left: load, open the layer and type on a new page. */
+        const val REBUILD_MINIMUM_MILLIS = 15_000L
 
         /** The instruction must have been read this recently at the lock. */
         const val INSTRUCTION_MAXIMUM_AGE_MILLIS = 5_000L

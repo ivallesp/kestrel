@@ -139,6 +139,9 @@ sealed interface BidReply {
  * The part of the bid page a dry run may use. It cannot submit: [DryRun] only ever receives this type.
  */
 interface BidLayerPreview {
+    /** False once the page can no longer be used (its renderer died, or it was closed); every call then fails. */
+    val isUsable: Boolean get() = true
+
     suspend fun openItem(ref: ItemRef): PageState
 
     suspend fun readListing(): Listing?
