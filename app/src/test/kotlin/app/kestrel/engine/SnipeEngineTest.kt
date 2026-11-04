@@ -660,6 +660,54 @@ class SnipeEngineTest {
             )
         }
 
+    /** The pre-tap BID_SENT write takes longer than its 150 ms limit once, so it never lands. */
+    private fun WindowHarness.slowFirstBidSentWrite() {
+        var slow = true
+        store.updateDelayMillis = { written ->
+            if (slow && written.status == SnipeStatus.BID_SENT) {
+                slow = false
+                200L
+            } else {
+                0L
+            }
+        }
+    }
+
+    @Test
+    fun aBidWhosePreTapWriteMissedIsStoredAsSentAfterTheTap() =
+        runTest {
+            val harness = WindowHarness(this)
+            harness.slowFirstBidSentWrite()
+            harness.page.replies += BidReply.Unconfirmed(null)
+            // The ended page says nothing about the user's standing, so the result stays open.
+            harness.auction.finalPage = FinalPage(price = gbp("30.00"), bidCount = 5)
+            harness.auction.signedIn = null
+
+            val result = harness.run()
+
+            assertEquals(1, harness.page.submitsAtUtc.size)
+            assertEquals(SnipeOutcome.UNKNOWN, result.outcome)
+            // Stored as BIDDING the platform would read "no bid": a false alert, a group sibling let through.
+            assertTrue("${harness.snipe().status}", harness.snipe().status in BID_SENT_STATUSES)
+        }
+
+    @Test
+    fun aWindowStoppedAfterATapWhoseWriteMissedStillRecordsTheBid() =
+        runTest {
+            val harness = WindowHarness(this)
+            harness.slowFirstBidSentWrite()
+            // eBay's reply never comes, and the window is stopped while it waits for it.
+            harness.page.replies += BidReply.Unconfirmed(null)
+            val window = launch { harness.run() }
+            delay(115_000)
+            window.cancel()
+            window.join()
+
+            assertEquals(1, harness.page.submitsAtUtc.size)
+            assertTrue("${harness.snipe().status}", harness.snipe().status in BID_SENT_STATUSES)
+            assertEquals(SnipeOutcome.UNKNOWN, harness.snipe().result?.outcome)
+        }
+
     @Test
     fun bidSentIsStoredBeforeTheTap() =
         runTest {

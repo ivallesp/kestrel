@@ -201,6 +201,9 @@ class FakeStore : SnipeStore {
     /** Reads of a snipe throw while this is set, like a database that cannot be read. */
     var readsFail = false
 
+    /** How long a write of this copy takes; a write cut off by its time limit never lands. */
+    var updateDelayMillis: (Snipe) -> Long = { 0L }
+
     fun put(snipe: Snipe) {
         snipes[snipe.id] = snipe
     }
@@ -220,6 +223,7 @@ class FakeStore : SnipeStore {
     }
 
     override suspend fun update(snipe: Snipe) {
+        updateDelayMillis(snipe).takeIf { it > 0 }?.let { delay(it) }
         snipes[snipe.id] = snipe
     }
 

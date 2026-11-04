@@ -155,7 +155,7 @@ internal class SnipeWindow(
                     bid.replyText,
                     reason,
                 )
-            snipe = writer.update(snipeId, snipe) { it.copy(result = stopped) }
+            snipe = writer.update(snipeId, snipe) { it.copy(status = withBidSent(it.status), result = stopped) }
             journal.event(snipeId, TimelineKind.PROBLEM, reason)
             return
         }
@@ -962,6 +962,7 @@ internal class SnipeWindow(
                     }
             }
         if (notSent != null) return finishNotSent(notSent)
+        storeBidSentIfMissed()
         progress(WindowPhase.BID_SENT)
         when (sender.awaitReply(currentPage)) {
             is BidReply.Leading -> {
@@ -977,6 +978,26 @@ internal class SnipeWindow(
             else -> {}
         }
         return null
+    }
+
+    /**
+     * The pre-tap BID_SENT write has a short limit so it cannot delay the tap; when it missed, the store still says
+     * BIDDING, which the platform reads as "no bid" (a false alert, a group member let through). Written again now,
+     * without the hurry.
+     */
+    private suspend fun storeBidSentIfMissed() {
+        val stored = callWithin(STORE_TIMEOUT) { store.snipe(snipeId) }.valueOrNull() ?: return
+        if (stored.status in BID_SENT_STATUSES) return
+        snipe = writer.update(snipeId, snipe) { it.copy(status = withBidSent(it.status)) }
+    }
+
+    /**
+     * A status that says a bid may be with eBay, whenever one may be. A cancel that came too late for the bid gives
+     * way too, as the store allows: the bid may be at eBay.
+     */
+    private fun withBidSent(status: SnipeStatus): SnipeStatus {
+        val open = !status.isFinal || status == SnipeStatus.CANCELLED
+        return if (bid.sent && status !in BID_SENT_STATUSES && open) SnipeStatus.BID_SENT else status
     }
 
     /**
@@ -1193,7 +1214,10 @@ internal class SnipeWindow(
                 reason = reason,
             )
         val finalStatus = status ?: statusAfter(outcome)
-        snipe = writer.update(snipeId, snipe) { it.copy(status = finalStatus ?: it.status, result = snipeResult) }
+        snipe =
+            writer.update(snipeId, snipe) {
+                it.copy(status = finalStatus ?: withBidSent(it.status), result = snipeResult)
+            }
         journal.event(
             snipeId,
             if (outcome == SnipeOutcome.CANCELLED) TimelineKind.CANCELLED else TimelineKind.RESULT,
