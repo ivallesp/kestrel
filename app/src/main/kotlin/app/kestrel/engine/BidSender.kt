@@ -16,6 +16,12 @@ internal class BidRecord {
     fun evidence(): BidEvidence = BidEvidence(sent, standing)
 }
 
+/** The page pressed nothing, so no bid went out; [needsUser] when eBay put something in front of the bid. */
+internal data class NotSent(
+    val reason: String,
+    val needsUser: Boolean,
+)
+
 /**
  * The only code in Kestrel that presses eBay's submit button. [submit] presses it once, and the window calls it once:
  * the page allows one press, so an unreadable reply is followed on the page and the result read later, never retried.
@@ -29,6 +35,8 @@ internal class BidSender(
     /**
      * Presses submit once. [endUtcMillis] is the end the bid aims at, for the lead. [beforeTap] stores that a bid is
      * going out: if the process dies right after the tap, a restarted window must only follow, never bid again.
+     * Returns why nothing was sent when the page provably pressed nothing ([BidNotSent]); the bid then does not count
+     * as sent and no receipt is written.
      */
     suspend fun submit(
         page: BidPage,
@@ -36,12 +44,24 @@ internal class BidSender(
         fireAtUtcMillis: Long,
         endUtcMillis: Long,
         beforeTap: suspend () -> Unit,
-    ) {
+    ): NotSent? {
         record.submits++
+        beforeTap()
         // From here on the bid counts as sent, even if the call fails: the tap may still have reached eBay.
         record.sent = true
-        beforeTap()
         val call = callWithin(WindowTimings.SUBMIT_TIMEOUT) { page.submit() }
+        val refused = (call as? Call.Threw)?.error
+        if (refused is BidNotSent) {
+            record.sent = false
+            val reason = refused.message ?: "the page did not say why"
+            journal.event(
+                snipeId,
+                TimelineKind.PROBLEM,
+                "Kestrel did not press eBay's bid button: $reason. No bid was sent.",
+                mapOf("attempt" to record.submits, "needsUser" to refused.needsUser),
+            )
+            return NotSent(reason, refused.needsUser)
+        }
         val dispatch = call.valueOrNull()
         val sentAt = dispatch?.let { clock.utcAtElapsedRealtime(it.dispatchedAtElapsedMillis) } ?: clock.nowUtcMillis()
         record.sentAtUtcMillis = sentAt
@@ -68,6 +88,7 @@ internal class BidSender(
                 "${call.failureText("Pressing eBay's bid button")}. The tap may or may not have reached eBay.",
             )
         }
+        return null
     }
 
     /** Waits up to 4 s for eBay's answer to the last tap and records it. */

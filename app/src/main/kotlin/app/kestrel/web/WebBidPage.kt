@@ -197,6 +197,8 @@ class WebBidPage internal constructor(
         if (!released.ok || released.hold) {
             throw SubmitNotDispatchedException(
                 "The bid request could not be armed: ${released.holdReason ?: released.error ?: "still held"}",
+                // A hold that stays because the page showed a message is for the user to read.
+                needsUser = released.holdReason != null,
             )
         }
         val sent = press(typing)
@@ -569,7 +571,9 @@ class WebBidPage internal constructor(
     // ---------------------------------------------------------------------------------------------
 
     private suspend fun press(typing: VerifiedTyping): SubmitDispatch {
-        dialogSince(typing.dialogCount)?.let { throw SubmitNotDispatchedException("eBay showed a message first: $it") }
+        dialogSince(typing.dialogCount)?.let {
+            throw SubmitNotDispatchedException("eBay showed a message first: $it", needsUser = true)
+        }
         val expectation =
             buildJsonObject {
                 put("expectValue", typing.fieldValue)
@@ -590,9 +594,7 @@ class WebBidPage internal constructor(
                 } catch (problem: WebPageException) {
                     throw SubmitNotDispatchedException("The page did not answer before the press: ${problem.message}")
                 }
-            if (!target.ok && target.reason != NOT_IN_VIEWPORT) {
-                throw SubmitNotDispatchedException(describeRefusal(target.reason ?: target.error))
-            }
+            if (!target.ok && target.reason != NOT_IN_VIEWPORT) throw refusal(target.reason ?: target.error)
             val outcome = if (target.ok && target.hit == true) tapAt(target, navigation) else TapOutcome.NOT_TAPPED
             // A touch that started and was cancelled by a navigation may still have reached the button.
             if (outcome == TapOutcome.TOUCHED_ONLY) {
@@ -630,8 +632,12 @@ class WebBidPage internal constructor(
         if (pressed.reason in nativeOutcomeUnknownOrReached && tapDispatchedAt != null) {
             return SubmitDispatch(tapDispatchedAt, InputMethod.NATIVE_TOUCH, tapLabel)
         }
-        throw SubmitNotDispatchedException(describeRefusal(pressed.reason ?: pressed.error))
+        throw refusal(pressed.reason ?: pressed.error)
     }
+
+    /** kestrel.js refused the press, so nothing was pressed; a check or a dialog in the way is for the user. */
+    private fun refusal(reason: String?): SubmitNotDispatchedException =
+        SubmitNotDispatchedException(describeRefusal(reason), needsUser = reason in refusalsForTheUser)
 
     /**
      * The submit call failed (timeout, page error). The page's own record of the press decides, but only the record of
@@ -874,6 +880,9 @@ class WebBidPage internal constructor(
 
         // kestrel.js refuses a DOM press with these when a native tap reached the button, or may have.
         val nativeOutcomeUnknownOrReached = setOf("nativeTapReached", "nativeTapUnknown", "documentChanged")
+
+        // Refusals that mean eBay put something in front of the bid that only the user can deal with.
+        val refusalsForTheUser = setOf("interstitial", "covered")
         const val REPORT_LIMIT = 32_000
         const val NOTE_LIMIT = 400
         const val NOTES_KEPT = 40

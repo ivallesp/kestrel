@@ -578,6 +578,50 @@ class SnipeEngineTest {
         }
 
     @Test
+    fun aPressThePageProvablyNeverMadeIsNotRecordedAsABid() =
+        runTest {
+            val harness = WindowHarness(this)
+            harness.page.submitError = NotPressedException("The typed maximum was not verified on this page")
+
+            val result = harness.run()
+
+            assertEquals(SnipeOutcome.FAILED, result.outcome)
+            assertEquals(SnipeStatus.FAILED, harness.snipe().status)
+            assertEquals(null, result.bidSentAtUtcMillis)
+            assertEquals(null, result.bidLeadMillis)
+            assertTrue(harness.store.eventsOf(TimelineKind.BID_SENT).isEmpty())
+            assertFalse(WindowPhase.BID_SENT in harness.notifier.phases)
+            assertTrue(result.reason!!, result.reason!!.contains("the typed maximum was not verified on this page"))
+            assertEquals(
+                NeedsUserReason.BID_FAILED,
+                harness.notifier.userAlerts
+                    .single()
+                    .first,
+            )
+            // The layer was not used for a bid, so it is closed like a person would close it.
+            assertEquals(1, harness.page.layerCloses)
+        }
+
+    @Test
+    fun aCheckThatStopsThePressIsHandedToTheUser() =
+        runTest {
+            val harness = WindowHarness(this)
+            harness.page.submitError =
+                NotPressedException("eBay is asking for something before the bid (verification or terms)", true)
+
+            val result = harness.run()
+
+            assertEquals(SnipeOutcome.FAILED, result.outcome)
+            assertEquals(null, result.bidSentAtUtcMillis)
+            assertEquals(
+                NeedsUserReason.VERIFICATION,
+                harness.notifier.userAlerts
+                    .single()
+                    .first,
+            )
+        }
+
+    @Test
     fun bidSentIsStoredBeforeTheTap() =
         runTest {
             val harness = WindowHarness(this)

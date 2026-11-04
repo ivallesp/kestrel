@@ -870,18 +870,21 @@ internal class SnipeWindow(
         val endAtFire = watch.endUtcMillis
         progress(WindowPhase.BIDDING)
         // One press per page and per window: an unreadable reply is followed on the page, never pressed again.
-        submitAndAwaitReply(currentPage, endAtFire)
-        return null
+        return submitAndAwaitReply(currentPage, endAtFire)
     }
 
     private suspend fun submitAndAwaitReply(
         currentPage: BidPage,
         endAtFire: Long,
-    ) {
-        sender.submit(currentPage, maxBid, fireAtUtcMillis, endAtFire) {
-            snipe =
-                writer.update(snipeId, snipe, PRE_TAP_STORE_TIMEOUT_MILLIS) { it.copy(status = SnipeStatus.BID_SENT) }
-        }
+    ): SnipeResult? {
+        val notSent =
+            sender.submit(currentPage, maxBid, fireAtUtcMillis, endAtFire) {
+                snipe =
+                    writer.update(snipeId, snipe, PRE_TAP_STORE_TIMEOUT_MILLIS) {
+                        it.copy(status = SnipeStatus.BID_SENT)
+                    }
+            }
+        if (notSent != null) return finishNotSent(notSent)
         progress(WindowPhase.BID_SENT)
         when (sender.awaitReply(currentPage)) {
             is BidReply.Leading -> {
@@ -895,6 +898,28 @@ internal class SnipeWindow(
             }
 
             else -> {}
+        }
+        return null
+    }
+
+    /**
+     * The page refused the press before pressing anything, so eBay never saw a bid. The final FAILED result replaces
+     * the BID_SENT stored before the tap, and the user hears why at once, while there may still be time to bid.
+     */
+    private suspend fun finishNotSent(notSent: NotSent): SnipeResult {
+        val why = notSent.reason.replaceFirstChar { it.lowercase() }
+        return if (notSent.needsUser) {
+            finish(
+                SnipeOutcome.FAILED,
+                "eBay needs you before it accepts a bid ($why), so Kestrel did not bid. Nothing was sent to eBay.",
+                userReason = NeedsUserReason.VERIFICATION,
+            )
+        } else {
+            finish(
+                SnipeOutcome.FAILED,
+                "Kestrel did not press eBay's bid button ($why), so no bid was sent.",
+                userReason = NeedsUserReason.BID_FAILED,
+            )
         }
     }
 

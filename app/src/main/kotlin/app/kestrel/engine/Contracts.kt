@@ -69,6 +69,14 @@ data class SubmitDispatch(
     val buttonLabel: String?,
 )
 
+/**
+ * Marks a failure of [BidPage.submit] in which the page provably pressed nothing, so no bid was sent. [needsUser] is
+ * true when eBay showed something only the user can answer (a check, a dialog over the bid button).
+ */
+interface BidNotSent {
+    val needsUser: Boolean
+}
+
 /** eBay's answer to the bid. */
 sealed interface BidReply {
     val latencyMillis: Long?
@@ -120,7 +128,10 @@ interface BidPage : BidLayerPreview {
     /** Start recording the bid request's reply; call before [submit]. */
     suspend fun armReplyObserver()
 
-    /** Press eBay's submit button once. */
+    /**
+     * Press eBay's submit button once. Throws an exception that is a [BidNotSent] when the page provably pressed
+     * nothing; any other failure means the tap may have reached eBay.
+     */
     suspend fun submit(): SubmitDispatch
 
     suspend fun awaitReply(timeoutMillis: Long): BidReply

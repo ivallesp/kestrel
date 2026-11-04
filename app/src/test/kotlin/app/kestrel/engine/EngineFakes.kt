@@ -378,6 +378,13 @@ class FakeAuction(
     }
 }
 
+/** What the web layer throws when it provably pressed nothing. */
+class NotPressedException(
+    message: String,
+    override val needsUser: Boolean = false,
+) : Exception(message),
+    BidNotSent
+
 /** A bid page whose every answer comes from a script and [FakeAuction]. Calls take realistic virtual time. */
 class ScriptedBidPage(
     private val scheduler: TestCoroutineScheduler,
