@@ -618,6 +618,19 @@ class WebBidPageTest {
         }
 
     @Test
+    fun `a press whose answer a navigation took away is never retried nor reported as not sent`() =
+        runTest {
+            ebay.touchReachesPage = false
+            ebay.submitAnswerNull = true
+            val page = page().readyToSubmit()
+            val outcome = runCatching { page.submit() }.exceptionOrNull()
+            assertTrue(outcome.toString(), outcome is WebPageException)
+            assertFalse("the bid may have been sent", outcome is SubmitNotDispatchedException)
+            assertEquals("the press was not repeated on the new document", 1, driver.callsOf("submit").size)
+            assertEquals(1, ebay.presses)
+        }
+
+    @Test
     fun `a navigation between arming and the tap stops the tap and nothing is pressed`() =
         runTest {
             ebay.navigateAfterSubmitArmed = true

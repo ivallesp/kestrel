@@ -186,7 +186,7 @@ internal class FakePageDriver : PageDriver {
         }
         if (script == "document.readyState") return "complete"
         val match = callPattern.find(script) ?: error("Unexpected script: ${script.take(200)}")
-        if (!helperInstalled) return "null"
+        if (!helperInstalled) return PageScript.HELPER_MISSING
         val arguments = pageJson.parseToJsonElement("[${match.groupValues[2]}]") as JsonArray
         val call = PageCall(match.groupValues[1], arguments)
         calls += call
@@ -313,6 +313,7 @@ internal class SimulatedEbayPage(
     var navigateAfterPress = false
     var navigateOnSubmitTap = false
     var navigateAfterSubmitArmed = false
+    var submitAnswerNull = false
     var bidButtonPresses = 0
 
     init {
@@ -617,6 +618,13 @@ internal class SimulatedEbayPage(
             // The press sent the bid and the page moved on: the next document's helper has no press history.
             documentToken = "document-2"
             pressMethod = null
+        }
+        if (submitAnswerNull) {
+            // The navigation took the answer with it: WebView hands the callback null.
+            driver.pageNavigates()
+            documentToken = "document-2"
+            pressMethod = null
+            return "null"
         }
         if (submitAnswerLost) throw ScriptTimeoutException("A page script did not answer within 5000 ms")
         return json(mapOf("ok" to true, "dispatched" to true, "label" to submitLabel, "perfTime" to 1000.0))

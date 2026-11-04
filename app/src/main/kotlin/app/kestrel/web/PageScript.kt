@@ -47,11 +47,17 @@ class PageScript(
         function: PageFunction,
         arguments: List<JsonElement> = emptyList(),
     ): String =
-        "(function(){var k=window.__kestrel;if(!k||k.version!=='$version'){return null;}" +
+        "(function(){var k=window.__kestrel;if(!k||k.version!=='$version'){return '$HELPER_MISSING';}" +
             "return k.${function.jsName}(${arguments.joinToString(",")});})()"
 
     companion object {
         const val ASSET_PATH = "js/kestrel.js"
+
+        /**
+         * What a call answers when the helper is not in the document, so the function certainly did not run. A null
+         * answer means something else: the function may have run and its answer was lost.
+         */
+        const val HELPER_MISSING = """{"ok":false,"helperMissing":true}"""
         private val versionPattern = Regex("""var VERSION = '([A-Za-z0-9._-]+)'""")
 
         @Volatile
@@ -92,11 +98,16 @@ internal class PageHelper(
     ): JsonObject {
         val expression = script.callExpression(function, arguments.toList())
         var raw = driver.evaluate(expression, timeoutMillis)
-        if (raw == "null") {
+        if (raw == PageScript.HELPER_MISSING) {
+            // Nothing ran, so installing the helper and calling again cannot do anything twice.
             driver.evaluate(script.installExpression, timeoutMillis)
             raw = driver.evaluate(expression, timeoutMillis)
+            if (raw == PageScript.HELPER_MISSING) {
+                throw PageScriptException("kestrel.js could not be installed on ${driver.currentUrl}")
+            }
         }
-        if (raw == "null") throw PageScriptException("kestrel.js could not be installed on ${driver.currentUrl}")
+        // Never retried: the function may have run (a press, say) before its answer was lost.
+        if (raw == "null") throw ScriptAnswerLostException("kestrel.js ${function.jsName} ran but its answer was lost")
         val element =
             try {
                 pageJson.parseToJsonElement(raw)

@@ -101,6 +101,8 @@ internal class ItemPageReader(
                 null
             } catch (slow: ScriptTimeoutException) {
                 null
+            } catch (lost: ScriptAnswerLostException) {
+                null
             }
         val url = probe?.url?.takeIf { it.isNotEmpty() } ?: load?.finalUrl ?: driver.currentUrl.orEmpty()
         val title = probe?.title ?: load?.title.orEmpty()

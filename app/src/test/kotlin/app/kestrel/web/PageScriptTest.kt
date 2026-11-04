@@ -35,7 +35,8 @@ class PageScriptTest {
                 listOf(buildJsonObject { put("expectValue", "12.50") }),
             )
         assertEquals(
-            "(function(){var k=window.__kestrel;if(!k||k.version!=='1'){return null;}" +
+            "(function(){var k=window.__kestrel;if(!k||k.version!=='1')" +
+                "{return '{\"ok\":false,\"helperMissing\":true}';}" +
                 "return k.submit({\"expectValue\":\"12.50\"});})()",
             expression,
         )
@@ -100,10 +101,25 @@ class PageScriptTest {
                     override suspend fun evaluate(
                         script: String,
                         timeoutMillis: Long,
-                    ): String = if (script.endsWith("\n;true")) "true" else "null"
+                    ): String = if (script.endsWith("\n;true")) "true" else PageScript.HELPER_MISSING
                 }
             val helper = PageHelper(driver, PageScript("var VERSION = '1';"))
             assertTrue(runCatching { helper.call(PageFunction.PROBE) }.exceptionOrNull() is PageScriptException)
+        }
+
+    @Test
+    fun `a lost answer is never retried, since the function may have run`() =
+        runTest {
+            val driver = FakePageDriver()
+            var runs = 0
+            driver.on("submit") {
+                runs += 1
+                "null"
+            }
+            val helper = PageHelper(driver, PageScript("var VERSION = '1';"))
+            val lost = runCatching { helper.call(PageFunction.SUBMIT) }.exceptionOrNull()
+            assertTrue(lost is ScriptAnswerLostException)
+            assertEquals(1, runs)
         }
 
     @Test

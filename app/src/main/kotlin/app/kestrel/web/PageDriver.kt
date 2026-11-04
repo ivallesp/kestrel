@@ -150,6 +150,11 @@ class PageScriptException(
     message: String,
 ) : WebPageException(message)
 
+/** A kestrel.js function may have run, but its answer never came back (for example the page navigated). */
+class ScriptAnswerLostException(
+    message: String,
+) : WebPageException(message)
+
 /** No page could be loaded (network failure or timeout). */
 class PageLoadException(
     message: String,
