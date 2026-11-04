@@ -43,6 +43,24 @@ test('a body that reads differently each time is sent as it was checked', async 
   assert.equal(sent[0].method, 'POST');
 });
 
+test('when the Request\'s own body was checked, the options cannot add another one afterwards', async () => {
+  const page = await openSyntheticLayer({ respond: () => ({ status: 200, body: '{}' }) });
+  call(page.window, 'armObserver', { ceilingMinor: 1250, currency: 'GBP', hold: false });
+  let reads = 0;
+  const init = {};
+  Object.defineProperty(init, 'body', {
+    get() {
+      reads += 1;
+      return reads <= 2 ? null : PRICE_1250;
+    },
+  });
+  await page.window.fetch(new Request(CONFIRM_URL, { method: 'POST', body: PRICE_12_50 }), init);
+  const sent = confirmCalls(page);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].body, undefined, 'fetch was given no options body, so it sends the checked Request body');
+  assert.deepEqual(call(page.window, 'replyState').records[0].requestPrice, { value: '12.50', currency: 'GBP' });
+});
+
 test('inherited fetch options travel unchanged', async () => {
   const page = await openSyntheticLayer({ respond: () => ({ status: 200, body: '{}' }) });
   call(page.window, 'armObserver', { ceilingMinor: 1250, currency: 'GBP', hold: false });

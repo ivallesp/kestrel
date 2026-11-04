@@ -76,3 +76,26 @@ test('the bid form\'s own dialog inside a wrapper is the layer, not a check in i
   assert.equal(layer.interstitial, null);
   assert.equal(layer.ready, true);
 });
+
+test('an age check is never answered with the maximum', () => {
+  const page = openPage(ITEM,
+    '<div role="dialog" aria-modal="true"><h2>Confirm your age</h2><label for="age">Your age</label>' +
+    '<input id="age" name="age" type="number" class="textbox__control">' +
+    '<button class="btn btn--primary" type="button">Confirm bid</button></div>');
+  const layer = call(page.window, 'layerState');
+  assert.equal(layer.ready, false);
+  assert.equal(layer.input, null);
+  assert.equal(layer.interstitial.kind, 'age');
+  assert.equal(call(page.window, 'typeMax', '18').ok, false);
+  assert.equal(page.window.document.getElementById('age').value, '');
+});
+
+test('in a dialog that is not known to be the bid layer, only a field that says it takes a bid is the amount field', () => {
+  const unnamed = openPage(ITEM, '<div role="dialog"><input class="textbox__control" id="s0-1-2">' +
+    '<button class="btn btn--primary" type="button">Bid</button></div>');
+  assert.equal(call(unnamed.window, 'layerState').input, null);
+  assert.equal(call(unnamed.window, 'typeMax', '12.50').reason, 'amountFieldNotFound');
+  const labelled = openPage(ITEM, '<div role="dialog"><label for="s0-1-2">Your max bid</label>' +
+    '<input class="textbox__control" id="s0-1-2"><button class="btn btn--primary" type="button">Bid</button></div>');
+  assert.equal(call(labelled.window, 'layerState').ready, true);
+});

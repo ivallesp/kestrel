@@ -31,15 +31,17 @@
       ['[data-testid="x-bid-action"]', 'item page, ebay.co.uk 2026-04-27'],
       ['.x-bid-action', 'item page, ebay.com 2026-01-14'],
     ],
+    // A third entry 'generic' marks a container that is not known to be the bid layer: in one, only a field that says
+    // it takes a bid or an amount (texts.amountField) is taken for the maximum.
     layerContainer: [
       ['.placebid-redesign-wrapper', 'signed-in bid capture, ebay.com 2026-04-30'],
       ['.place-bid-wrapper-ocv', 'bid tool, 2025-11-17'],
       ['#bid-offer-summary', 'bid tool, 2024-07-26'],
       ['[role="dialog"][aria-label="Place your bid"]', 'page model a11yDialogLabel, ebay.co.uk 2026-04-27 (inferred)'],
-      ['.lightbox-dialog__window', 'eBay dialog markup, 2025-2026'],
-      ['.drawer-dialog__window', 'eBay mobile dialog markup, 2025-2026 (inferred)'],
-      ['.fullscreen-dialog__window', 'eBay mobile dialog markup, 2025-2026 (inferred)'],
-      ['[role="dialog"]', 'generic dialog'],
+      ['.lightbox-dialog__window', 'eBay dialog markup, 2025-2026', 'generic'],
+      ['.drawer-dialog__window', 'eBay mobile dialog markup, 2025-2026 (inferred)', 'generic'],
+      ['.fullscreen-dialog__window', 'eBay mobile dialog markup, 2025-2026 (inferred)', 'generic'],
+      ['[role="dialog"]', 'generic dialog', 'generic'],
     ],
     amountInput: [
       ['input[id*="@placebid-section-@offer-section-@price"]', 'signed-in bid capture, ebay.com 2026-04-30'],
@@ -131,10 +133,12 @@
       // retract, cancel), in the same languages.
       submitLabelDeny: [/\d|buy|kaufen|pay\b|checkout|offer|angebot|preisvorschlag|review|retract|zur[u\u00fc]ck|cancel|abbrechen|close|history|watch|verif|code|send|acheter|offre|annuler|historique|comprar|ofert|cancelar|historial|kopen|annuleren|\bkup\b|anuluj/i, 'safety rule'],
       // An input for a verification code or a phone number (id, name, autocomplete, label or placeholder).
-      checkField: [/one-time-code|\botp\b|passcode|verif|captcha|\bpin\b|\bcode\b|phone|mobile|\btel\b/i, 'verification code fields #code, 2025-09; autocomplete tokens'],
+      checkField: [/one-time-code|\botp\b|passcode|verif|captcha|\bpin\b|\bcode\b|phone|mobile|\btel\b|\bage\b|birth|\bdob\b|bday/i, 'verification code fields #code, 2025-09; age checks; autocomplete tokens'],
+      // A field that says it takes the bid amount (id, name, label, placeholder), as a generic dialog's must.
+      amountField: [/bid|price|amount|\bmax|gebot|ench[e\u00e9]r|puja|bod\b|kwot|oferta|offerta/i, 'amount fields @placebid-section-@offer-section-@price, maxbid, "Your max bid"'],
       // In a layer that has the amount field, only these phrases mean a check stands in the way (small print about
       // terms, payment or identity checks is normal there).
-      layerCheck: [/enter (?:the|your|a) (?:\d+[- ]digit )?(?:code|passcode|pin)\b|we(?:'ve| have)? (?:sent|texted|emailed) (?:you )?(?:a |the |your )?(?:code|text|message|verification)|(?:send|resend|get) (?:a |the |me a |new )?code\b|verify (?:your )?(?:phone|mobile)\b|verify it'?s you|confirm (?:it'?s|that it'?s) you|captcha|are you (?:a )?human|not a robot|verify your age|date of birth/i, 'verification steps reported 2025-07 to 2026-11'],
+      layerCheck: [/enter (?:the|your|a) (?:\d+[- ]digit )?(?:code|passcode|pin)\b|we(?:'ve| have)? (?:sent|texted|emailed) (?:you )?(?:a |the |your )?(?:code|text|message|verification)|(?:send|resend|get) (?:a |the |me a |new )?code\b|verify (?:your )?(?:phone|mobile)\b|confirm (?:your|you are of) age|verify it'?s you|confirm (?:it'?s|that it'?s) you|captcha|are you (?:a )?human|not a robot|verify your age|date of birth/i, 'verification steps reported 2025-07 to 2026-11'],
       powerBidLabel: [/^\s*(?:bid|bieten)\s+(\S*\d.*)$/i, 'power-bid buttons "Bid $X.XX", 2024-07-26 and 2025-11-17'],
       minimum: [
         [/\benter\s+(.{1,30}?)\s+or\s+(?:more|higher)\b/i, 'legacy too-low text "Enter $X or more", 2019; gixen-cli 2026'],
@@ -428,6 +432,12 @@
     return TABLE.texts.checkField[0].test(described);
   }
 
+  function saysAmount(input) {
+    var described = [input.id, input.getAttribute('name'), input.getAttribute('aria-label'),
+      input.getAttribute('placeholder'), labelTextOf(input)].join(' ');
+    return TABLE.texts.amountField[0].test(described);
+  }
+
   // The text of the field's own labels: <label for>, a wrapping <label>, and aria-labelledby.
   function labelTextOf(input) {
     var parts = [];
@@ -468,10 +478,13 @@
     var fallback = null;
     for (var i = 0; i < TABLE.layerContainer.length; i++) {
       var nodes = queryAll(document, TABLE.layerContainer[i][0]);
+      var generic = TABLE.layerContainer[i][2] === 'generic';
       for (var j = 0; j < nodes.length; j++) {
         var node = nodes[j];
         if (!isRendered(node) || isCookieBanner(node)) continue;
         var input = findInput(node);
+        // Any textbox in a dialog Kestrel cannot place (an age or account check, say) is not the maximum's field.
+        if (input && generic && !saysAmount(input.element)) input = null;
         if (input) return { element: node, selector: TABLE.layerContainer[i][0], input: input };
         if (!fallback) fallback = { element: node, selector: TABLE.layerContainer[i][0], input: null };
       }
@@ -1090,11 +1103,13 @@
         }
         var record = startRecord('fetch', method, url, verdict);
         var callArgs = args;
-        if (fromOptions) {
-          // Native fetch reads the options again: give it the body that was checked as an own property, with every
-          // other option still read from the caller's object (own or inherited).
+        if (init && typeof init === 'object') {
+          // Native fetch reads the options again: give it the body that was checked as an own property (undefined when
+          // the Request's own body was checked, so that one is sent), with every other option still read from the
+          // caller's object, own or inherited.
           var forwarded = Object.create(init);
-          Object.defineProperty(forwarded, 'body', { value: optionsBody, enumerable: true, configurable: true, writable: true });
+          Object.defineProperty(forwarded, 'body', { value: fromOptions ? optionsBody : undefined, enumerable: true,
+            configurable: true, writable: true });
           callArgs = [input, forwarded];
         }
         var promise = original.apply(self, callArgs);
