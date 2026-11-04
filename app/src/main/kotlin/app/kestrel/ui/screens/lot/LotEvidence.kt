@@ -49,6 +49,14 @@ class LotEvidence(
     /** How long eBay took to reply. */
     val replyMillis: Long? = replyEvent?.detailLong("latencyMillis") ?: snipe.result?.replyLatencyMillis
 
+    /**
+     * True while eBay's latest word on the bid is "in the lead": the latest EBAY_REPLY line of any kind (the live
+     * price passing the max writes one too) says Leading, and the last price seen is not above the max.
+     */
+    val stillLeading: Boolean =
+        history.lastOrNull { it.kind == TimelineKind.EBAY_REPLY }?.detailText("reply") == "Leading" &&
+            !priceAboveMax(snipe)
+
     /** eBay's own words in its reply, quoted exactly. */
     val replyText: String? = replyEvent?.let { quotedText(it.message) } ?: snipe.result?.ebayReplyText
 
@@ -107,6 +115,12 @@ class LotEvidence(
         firstOrNull { it.kind == TimelineKind.EXTENDED }?.detailLong("previousEndUtcMillis")
 
     companion object {
+        private fun priceAboveMax(snipe: Snipe): Boolean {
+            val price = snipe.lastPrice ?: return false
+            val max = snipe.maxBid ?: return false
+            return price.currency == max.currency && price > max
+        }
+
         /** The text between the first and the last double quote: eBay's words inside an engine message. */
         fun quotedText(message: String): String? {
             val first = message.indexOf('"')

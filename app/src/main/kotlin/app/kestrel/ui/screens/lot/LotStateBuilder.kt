@@ -549,7 +549,9 @@ object LotStateBuilder {
                     } else {
                         status.detail(now, zone)
                     }
-                val leading = if (evidence.replyType == "Leading") " You’re in the lead so far." else ""
+                // Only while eBay's latest word is still "in the lead" (DESIGN 3.13): a later outbid line, or a
+                // price above the max, says otherwise even when the same reply also extended the auction.
+                val leading = if (evidence.stillLeading) " You’re in the lead so far." else ""
                 val title = AnnotatedString(status.label(now, zone).text)
                 StatusCard(StatusTone.Bidding, CardGlyph.Gavel, title, reset + leading)
             }

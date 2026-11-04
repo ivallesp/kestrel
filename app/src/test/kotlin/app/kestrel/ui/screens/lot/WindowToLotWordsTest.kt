@@ -89,4 +89,31 @@ class WindowToLotWordsTest {
             )
             assertFalse(result.receipt.any { it.detail?.contains("eBay refused it") == true })
         }
+
+    @Test
+    fun anOutbidThatAlsoExtendsTheAuctionNoLongerSaysYouLead() =
+        runTest {
+            val harness = Harness(this)
+            harness.page.replies += BidReply.Leading("Your current bid puts you in the lead.", 450)
+            harness.auction.finalPage = FinalPage(price = gbp("50.00"), bidCount = 7, userIsHighBidder = false)
+            val run = launch { harness.engine.runWindow(1) }
+            advanceTimeBy(116_000)
+            assertEquals(
+                SnipeStatus.LEADING,
+                harness.store.snipes
+                    .getValue(1)
+                    .status,
+            )
+
+            // Another bidder went above the £48.00 max, and that late bid reset the clock.
+            harness.auction.price = gbp("50.00")
+            harness.auction.bidCount = 5
+            harness.auction.endUtc = END_UTC + 60_000
+            advanceTimeBy(6_000)
+
+            val live = LotStateBuilder.build(harness.inputs())
+            assertTrue(live.status is LotStatus.Extended)
+            assertFalse(live.card!!.detail, live.card!!.detail.contains("in the lead"))
+            run.join()
+        }
 }
