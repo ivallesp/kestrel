@@ -82,11 +82,13 @@ internal class DryRunProcedure(
                     }
 
                     null -> {
+                        // The page did not answer in time; its report still says what it showed.
+                        val report = callWithin(WindowTimings.REPORT_TIMEOUT) { preview.report() }.valueOrNull()
                         return fail(
                             snipe,
                             NeedsUserReason.DRY_RUN_FAILED,
                             "${layerCall.failureText("Opening eBay's bid layer")}.",
-                            null,
+                            report,
                         )
                     }
 

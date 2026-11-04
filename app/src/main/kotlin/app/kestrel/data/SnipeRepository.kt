@@ -34,6 +34,11 @@ class SnipeRepository(
     private val armedCopy: ArmedSnipesCopy,
     private val nowUtcMillis: () -> Long,
     private val formatMoney: (Money) -> String,
+    /**
+     * Runs the armed-copy refresh after an engine write, off the caller's path: the BID_SENT write right before the
+     * tap must not wait for a file write and its fsync. Null refreshes inline.
+     */
+    private val refreshArmedCopyLater: ((suspend () -> Unit) -> Unit)? = null,
 ) : SnipeStore {
     private val snipes = database.snipeDao()
     private val groups = database.groupDao()
@@ -114,13 +119,17 @@ class SnipeRepository(
         return result
     }
 
-    /** Sets, changes or removes (null) the max. Only allowed before the bid window opens. */
+    /**
+     * Sets, changes or removes (null) the max. Also while the bid window is open, until the edits lock 3 s before the
+     * bid (see [SnipeRules.maxOrLeadRefusal]).
+     */
     suspend fun updateMax(
         snipeId: Long,
         maxBid: Money?,
     ): EditResult =
         edit(snipeId) { snipe, now ->
-            SnipeRules.editRefusal(snipe.status)?.let { return@edit EditResult.NotAllowed(it) }
+            // True time read inside the transaction: the lock is a matter of seconds.
+            SnipeRules.maxOrLeadRefusal(snipe, nowUtcMillis())?.let { return@edit EditResult.NotAllowed(it) }
             if (maxBid != null) {
                 maxRefusal(snipe, maxBid)?.let { return@edit EditResult.NotAllowed(it) }
             }
@@ -136,7 +145,12 @@ class SnipeRepository(
         leadSeconds: Int,
     ): EditResult =
         edit(snipeId) { snipe, now ->
-            SnipeRules.editRefusal(snipe.status)?.let { return@edit EditResult.NotAllowed(it) }
+            SnipeRules
+                .maxOrLeadRefusal(
+                    snipe,
+                    nowUtcMillis(),
+                    leadSeconds,
+                )?.let { return@edit EditResult.NotAllowed(it) }
             if (leadSeconds !in SnipeRules.LEAD_SECONDS_RANGE) return@edit EditResult.NotAllowed(leadRangeMessage())
             if (leadSeconds == snipe.leadSeconds) return@edit EditResult.Done(snipe)
             val updated = snipe.copy(leadSeconds = leadSeconds, updatedAtUtcMillis = now)
@@ -177,6 +191,34 @@ class SnipeRepository(
         }
 
     /**
+     * The user says how a bid ended that Kestrel could not read (see [SnipeRules.settleRefusal]). A win then counts
+     * for the snipe's group; a loss lets the group's other snipes bid.
+     */
+    suspend fun settle(
+        snipeId: Long,
+        won: Boolean,
+    ): EditResult =
+        edit(snipeId) { snipe, now ->
+            SnipeRules.settleRefusal(snipe, now)?.let { return@edit EditResult.NotAllowed(it) }
+            val reason = "You marked it ${if (won) "won" else "lost"} after checking eBay."
+            val result =
+                SnipeResult(
+                    outcome = if (won) SnipeOutcome.WON else SnipeOutcome.LOST,
+                    finalPrice = snipe.result?.finalPrice ?: snipe.lastPrice,
+                    bidSentAtUtcMillis = snipe.result?.bidSentAtUtcMillis,
+                    bidLeadMillis = snipe.result?.bidLeadMillis,
+                    replyLatencyMillis = snipe.result?.replyLatencyMillis,
+                    ebayReplyText = snipe.result?.ebayReplyText,
+                    reason = reason,
+                )
+            val status = if (won) SnipeStatus.WON else SnipeStatus.LOST
+            write(
+                snipe.copy(status = status, result = result, updatedAtUtcMillis = now),
+                event(snipe.id, now, TimelineKind.RESULT, reason),
+            )
+        }
+
+    /**
      * Hides the snipe; [undoDelete] brings it back unchanged. Rows stay in the database for a day so an undo always
      * works, then they are purged with their timeline and prices.
      */
@@ -185,7 +227,7 @@ class SnipeRepository(
         val outcome =
             database.withTransaction {
                 val snipe = snipes.find(snipeId)?.toSnipe() ?: return@withTransaction EditResult.NotFound
-                SnipeRules.deleteRefusal(snipe.status)?.let { return@withTransaction EditResult.NotAllowed(it) }
+                SnipeRules.deleteRefusal(snipe, now)?.let { return@withTransaction EditResult.NotAllowed(it) }
                 snipes.markDeleted(snipeId, now)
                 EditResult.Done(snipe)
             }
@@ -228,7 +270,7 @@ class SnipeRepository(
         database.withTransaction {
             val storedRow = snipes.findIncludingDeleted(snipe.id) ?: return@withTransaction
             val stored = storedRow.toSnipe()
-            val statusAccepted = SnipeRules.acceptsEngineStatus(stored, snipe)
+            val statusAccepted = SnipeRules.acceptsEngineStatus(stored, snipe, nowUtcMillis())
             if (!statusAccepted) {
                 Log.w(TAG, "Kept status ${stored.status} of snipe ${snipe.id}; an engine write wanted ${snipe.status}")
             }
@@ -244,7 +286,8 @@ class SnipeRepository(
                 )
             snipes.update(merged.toEntity(deletedAtUtcMillis = storedRow.deletedAtUtcMillis))
         }
-        refreshArmedCopy()
+        val later = refreshArmedCopyLater
+        if (later != null) later { refreshArmedCopy() } else refreshArmedCopy()
     }
 
     override suspend fun addEvent(

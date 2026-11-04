@@ -51,6 +51,20 @@ class DryRunTest {
         }
 
     @Test
+    fun aBidLayerThatNeverAnswersStillLeavesThePageReport() =
+        runTest {
+            val harness = DryRunHarness(this)
+            // The page keeps waiting for eBay's scripts longer than the dry run waits for the page.
+            harness.page.layerOpenMillis = 60_000
+
+            val outcome = harness.run()
+
+            assertTrue(outcome is DryRunOutcome.Failed)
+            val event = harness.store.eventsOf(TimelineKind.DRY_RUN).single()
+            assertTrue(event.detail!!, event.detail!!.contains("Vintage camera | eBay"))
+        }
+
+    @Test
     fun verificationPromptFailsTheDryRunWithAClearReason() =
         runTest {
             val harness = DryRunHarness(this)

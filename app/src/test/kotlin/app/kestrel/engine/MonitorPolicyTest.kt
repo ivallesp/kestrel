@@ -89,7 +89,7 @@ class MonitorPolicyTest {
     @Test
     fun editsLockTwoSecondsBeforeTheBid() {
         assertEquals(end - 6_000, BidTiming.fireAtUtcMillis(end, 6))
-        assertEquals(end - 8_000, BidTiming.editsLockAtUtcMillis(end, 6))
+        assertEquals(end - 9_000, BidTiming.editsLockAtUtcMillis(end, 6))
         // Out-of-range leads are clamped instead of bidding at or after the end.
         assertEquals(end - 1_000, BidTiming.fireAtUtcMillis(end, 0))
         assertEquals(end - 90_000, BidTiming.fireAtUtcMillis(end, 600))

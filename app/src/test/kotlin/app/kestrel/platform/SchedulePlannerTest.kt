@@ -26,6 +26,28 @@ class SchedulePlannerTest {
     }
 
     @Test
+    fun aWindowThatHasNotBidKeepsItsBackupFifteenSecondsAhead() {
+        val bidding = testSnipe(status = SnipeStatus.BIDDING, endTimeUtcMillis = now + 50_000)
+
+        assertEquals(now + 15_000, planner.rollingBackupAt(bidding, now))
+        // Once the bid may be out, or the end has passed, no window is reopened.
+        assertNull(planner.rollingBackupAt(bidding.copy(status = SnipeStatus.BID_SENT), now))
+        assertNull(planner.rollingBackupAt(bidding, now + 50_000))
+    }
+
+    @Test
+    fun aDeferrableCheckNearTheLastHourHasAnExactBackstopAtTheHour() {
+        val end = now + 90 * MINUTE
+        val plan = planner.plan(testSnipe(endTimeUtcMillis = end, lastCheckedAtUtcMillis = now - 50 * MINUTE), now)
+
+        assertTrue(plan.check!!.deferrable)
+        assertEquals(end - HOUR, plan.exactCheckBackstopAtUtcMillis)
+        // Far from the end the next deferrable check comes long before the hour, so it needs none.
+        val far = planner.plan(testSnipe(endTimeUtcMillis = now + 72 * HOUR, lastCheckedAtUtcMillis = now - HOUR), now)
+        assertNull(far.exactCheckBackstopAtUtcMillis)
+    }
+
+    @Test
     fun checksInTheLastHourUseExactAlarms() {
         val end = now + 45 * MINUTE
         val plan = planner.plan(testSnipe(endTimeUtcMillis = end, lastCheckedAtUtcMillis = now - 10 * MINUTE), now)
@@ -161,7 +183,14 @@ class SchedulePlannerTest {
         val second = planner.plan(sent, nowUtcMillis = end + 3 * MINUTE, lastCheckAttemptUtcMillis = end + 3 * MINUTE)
         assertEquals(end + 33 * MINUTE, second.check?.atUtcMillis)
 
-        val tooLate = planner.plan(sent, nowUtcMillis = end + 7 * HOUR, lastCheckAttemptUtcMillis = end + 6 * HOUR)
+        // Past six hours (the phone was off overnight, or eBay kept answering with sign-in pages) every six hours.
+        val later = planner.plan(sent, nowUtcMillis = end + 7 * HOUR, lastCheckAttemptUtcMillis = end + 6 * HOUR)
+        assertEquals(end + 12 * HOUR, later.check?.atUtcMillis)
+        val backOn = planner.plan(sent, nowUtcMillis = end + 30 * HOUR)
+        assertEquals(end + 30 * HOUR + MINUTE, backOn.check?.atUtcMillis)
+
+        val tooLate =
+            planner.plan(sent, nowUtcMillis = end + 3 * 24 * HOUR, lastCheckAttemptUtcMillis = end + 3 * 24 * HOUR)
         assertTrue(tooLate.isEmpty)
     }
 

@@ -6,6 +6,7 @@ import app.kestrel.engine.WindowTimings.CLOSE_LAYER_TIMEOUT
 import app.kestrel.engine.WindowTimings.CREATE_PAGE_TIMEOUT
 import app.kestrel.engine.WindowTimings.DISPATCH_TOLERANCE
 import app.kestrel.engine.WindowTimings.HOLD_TICK
+import app.kestrel.engine.WindowTimings.LAST_READ_BEFORE_FIRE
 import app.kestrel.engine.WindowTimings.LAYER_OPEN_BEFORE_END
 import app.kestrel.engine.WindowTimings.LAYER_OPEN_BEFORE_FIRE
 import app.kestrel.engine.WindowTimings.LAYER_READY_BEFORE_DISPATCH
@@ -25,8 +26,6 @@ import app.kestrel.engine.WindowTimings.RESOLVE_ATTEMPTS
 import app.kestrel.engine.WindowTimings.RESOLVE_RETRY
 import app.kestrel.engine.WindowTimings.RESOLVE_WAIT_MAXIMUM
 import app.kestrel.engine.WindowTimings.RESOLVE_WAIT_MINIMUM
-import app.kestrel.engine.WindowTimings.RETRY_ACTIVE_CHECK_TIMEOUT
-import app.kestrel.engine.WindowTimings.RETRY_MINIMUM_REMAINING
 import app.kestrel.engine.WindowTimings.STORE_TIMEOUT
 import app.kestrel.engine.WindowTimings.TOO_LATE_BEFORE_END
 import app.kestrel.engine.WindowTimings.TYPE_MINIMUM_BUDGET
@@ -47,10 +46,10 @@ import kotlinx.coroutines.withContext
 
 /**
  * One snipe's final window, from T-120 s to the resolved result (ARCHITECTURE section 5): clock check, item page at
- * T-90 s, bid layer and max at T-45 s, edits lock at fire time - 2 s, one bid at end - lead, a retry with the identical
- * amount only when eBay's reply could not be read, then follow the auction through Extended Bidding and read the
- * result. Every wait goes through [clock] and coroutine delay, every call into the page has a time limit, and every way
- * out ends in a stored status, a timeline line and a notification.
+ * T-90 s, bid layer and max at T-45 s, the user's edits lock 3 s before the bid and are read a last time 2 s before
+ * it, one press at end - lead (an unreadable reply is followed on the page, never pressed again), then follow the
+ * auction through Extended Bidding and read the result. Every wait goes through [clock] and coroutine delay, every
+ * call into the page has a time limit, and every way out ends in a stored status, a timeline line and a notification.
  */
 internal class SnipeWindow(
     private val snipeId: Long,
@@ -87,7 +86,10 @@ internal class SnipeWindow(
     private var bidAmountKnown = true
 
     private val fireAtUtcMillis: Long get() = watch.endUtcMillis - leadMillis
-    private val lockAtUtcMillis: Long get() = fireAtUtcMillis - BidTiming.EDIT_LOCK_BEFORE_FIRE_MILLIS
+    private val lockAtUtcMillis: Long get() = fireAtUtcMillis - LAST_READ_BEFORE_FIRE
+
+    // The user's own deadline for edits, a second before the window's last read: the hint below names it.
+    private val userEditsLockAtUtcMillis: Long get() = fireAtUtcMillis - BidTiming.EDIT_LOCK_BEFORE_FIRE_MILLIS
     private val pageLoadAtUtcMillis: Long
         get() = minOf(watch.endUtcMillis - PAGE_LOAD_BEFORE_END, fireAtUtcMillis - PAGE_LOAD_BEFORE_FIRE)
     private val layerOpenAtUtcMillis: Long
@@ -158,7 +160,7 @@ internal class SnipeWindow(
                     bid.replyText,
                     reason,
                 )
-            snipe = writer.update(snipeId, snipe) { it.copy(result = stopped) }
+            snipe = writer.update(snipeId, snipe) { it.copy(status = withBidSent(it.status), result = stopped) }
             journal.event(snipeId, TimelineKind.PROBLEM, reason)
             return
         }
@@ -329,6 +331,7 @@ internal class SnipeWindow(
             if (clock.nowUtcMillis() >= target()) return null
             checkUserChanges()?.let { return it }
             if (following) {
+                if (replaceDeadPage()) startOverOnNewPage()?.let { return it }
                 followBeforeBid(target())?.let { return it }
                 rescheduleIfEndMovedFar()?.let { return it }
             }
@@ -418,10 +421,10 @@ internal class SnipeWindow(
     }
 
     private suspend fun loadListing(): SnipeResult? {
-        val currentPage =
-            page ?: return finish(SnipeOutcome.FAILED, "Kestrel's browser page is gone, so it could not bid.")
         var retries = 0
         while (true) {
+            val currentPage =
+                page ?: return finish(SnipeOutcome.FAILED, "Kestrel's browser page is gone, so it could not bid.")
             when (val load = loader.loadOnce(currentPage, snipe.ref, pageReadyByUtcMillis)) {
                 is PageLoad.Ready -> {
                     return onListingLoaded(load.listing, load.url)
@@ -432,6 +435,8 @@ internal class SnipeWindow(
                 }
 
                 is PageLoad.Retry -> {
+                    // A dead page fails every load: a fresh one, once, rather than retrying on the dead one.
+                    if (replaceDeadPage()) continue
                     retries++
                     if (retries > PAGE_LOAD_RETRIES) {
                         return finish(
@@ -554,7 +559,9 @@ internal class SnipeWindow(
     }
 
     private suspend fun openLayer(): SnipeResult? {
-        for (attempt in 1..LAYER_ATTEMPTS) {
+        var attempt = 0
+        while (attempt < LAYER_ATTEMPTS) {
+            attempt++
             val currentPage = page ?: break
             val budget =
                 minOf(OPEN_LAYER_TIMEOUT, latestDispatchUtcMillis - LAYER_READY_BEFORE_DISPATCH - clock.nowUtcMillis())
@@ -612,6 +619,12 @@ internal class SnipeWindow(
                     )
                 }
             }
+            if (replaceDeadPage()) {
+                // The item first, on the new page; then the layer gets its full attempts there.
+                loadListing()?.let { return it }
+                attempt = 0
+                continue
+            }
             closeLayerIfUnused()
         }
         return finish(
@@ -621,15 +634,20 @@ internal class SnipeWindow(
         )
     }
 
-    /** Types [amount] and reads the field back; the bid only goes ahead when the field provably holds exactly the max. */
+    /**
+     * Types [amount] and has the page verify it. The bid only goes ahead when the page says the field provably holds
+     * exactly the max and eBay's bid button takes it. A check in the way goes to the user at once; a max below eBay's
+     * minimum is left to the lock, which ends the window as "price passed your max" unless the user raises it.
+     */
     private suspend fun typeAndVerify(amount: Money): SnipeResult? {
         typedAmount = null
+        var lastProblem: String? = null
         for (attempt in 1..TYPE_ATTEMPTS) {
             val currentPage = page ?: break
             val budget = minOf(TYPE_TIMEOUT, latestDispatchUtcMillis - clock.nowUtcMillis() - TYPE_MINIMUM_BUDGET)
             if (budget < TYPE_MINIMUM_BUDGET) break
             val call = callWithin(budget) { currentPage.typeMax(amount) }
-            val typed = call.valueOrNull()
+            var typed = call.valueOrNull()
             if (typed == null) {
                 journal.event(
                     snipeId,
@@ -639,31 +657,115 @@ internal class SnipeWindow(
                 )
                 continue
             }
-            if (AmountField.minorUnits(typed.fieldValue) != amount.minor) {
-                journal.event(
-                    snipeId,
-                    TimelineKind.PROBLEM,
-                    "eBay's bid field showed \"${typed.fieldValue}\" instead of ${amount.displayText()}.",
-                    mapOf("attempt" to attempt, "inlineError" to typed.inlineError),
-                )
-                continue
+            // eBay may still be checking the amount: look again without typing, since typing restarts its check.
+            if (typed.problem == TypingProblem.BUTTON_DISABLED) typed = waitForBidButton(currentPage, typed)
+            when {
+                typed.verified && AmountField.minorUnits(typed.fieldValue) == amount.minor -> {
+                    acceptTyped(amount, typed)
+                    return null
+                }
+
+                typed.problem == TypingProblem.NEEDS_USER -> {
+                    return finish(
+                        SnipeOutcome.FAILED,
+                        "eBay needs you before it accepts a bid (\"${typed.inlineError}\"), so Kestrel did not bid.",
+                        userReason = NeedsUserReason.VERIFICATION,
+                    )
+                }
+
+                typed.problem == TypingProblem.BELOW_MINIMUM -> {
+                    watch.recordLayerMinimum(typed.minimum)
+                    journal.event(
+                        snipeId,
+                        TimelineKind.PROBLEM,
+                        "eBay did not take your max ${amount.displayText()}: \"${typed.inlineError}\".",
+                        mapOf("fieldValue" to typed.fieldValue, "minimum" to typed.minimum),
+                    )
+                    alertIfOverMax()
+                    return null
+                }
+
+                else -> {
+                    lastProblem = typed.inlineError
+                    journal.event(
+                        snipeId,
+                        TimelineKind.PROBLEM,
+                        "eBay's bid field showed \"${typed.fieldValue}\" and the page did not confirm your max " +
+                            "${amount.displayText()}: ${typed.inlineError ?: "no reason given"}.",
+                        mapOf("attempt" to attempt, "inlineError" to typed.inlineError, "problem" to typed.problem),
+                    )
+                }
             }
-            typedAmount = amount
-            watch.recordLayerMinimum(typed.minimum)
-            journal.event(
-                snipeId,
-                TimelineKind.LAYER_READY,
-                "Typed your max ${amount.displayText()} and read it back from eBay's field.",
-                mapOf("fieldValue" to typed.fieldValue, "inlineError" to typed.inlineError, "minimum" to typed.minimum),
-            )
-            alertIfOverMax()
-            return null
         }
+        if (replaceDeadPage()) {
+            // The page died: the item and the layer again on a fresh page, then the typing.
+            loadListing()?.let { return it }
+            openLayer()?.let { return it }
+            return typeAndVerify(amount)
+        }
+        val because = lastProblem?.let { " ($it)" } ?: ""
         return finish(
             SnipeOutcome.FAILED,
-            "Kestrel could not type your max into eBay's bid field and confirm it, so it did not bid.",
+            "Kestrel could not type your max into eBay's bid field and confirm it$because, so it did not bid.",
             userReason = NeedsUserReason.BID_FAILED,
         )
+    }
+
+    /**
+     * When the page died before the bid (its renderer gone: Android's memory limiter, a crash), it never works again,
+     * and every WebView of the app may have lost the same renderer. With at least [REBUILD_MINIMUM_MILLIS] left, the
+     * window starts once more on a fresh page (android.md WV4). Never after a press: a fresh page could press again.
+     * Returns true when a fresh page is in place; the caller loads the item on it again.
+     */
+    private suspend fun replaceDeadPage(): Boolean {
+        val current = page ?: return false
+        if (current.isUsable || pageReplaced || bid.submits > 0) return false
+        val untilDispatch = latestDispatchUtcMillis - clock.nowUtcMillis()
+        if (untilDispatch < REBUILD_MINIMUM_MILLIS) return false
+        journal.event(
+            snipeId,
+            TimelineKind.PROBLEM,
+            "Kestrel's browser page stopped ${durationText(watch.endUtcMillis - clock.nowUtcMillis())} before the " +
+                "end (Android ended its renderer). Kestrel starts again on a new page.",
+        )
+        layerOpen = false
+        typedAmount = null
+        return replacePage() != null
+    }
+
+    /** On a fresh page: the item again, and the bid layer again once its time has come. */
+    private suspend fun startOverOnNewPage(): SnipeResult? {
+        loadListing()?.let { return it }
+        return if (clock.nowUtcMillis() >= layerOpenAtUtcMillis) prepareLayer() else null
+    }
+
+    private suspend fun acceptTyped(
+        amount: Money,
+        typed: TypedAmount,
+    ) {
+        typedAmount = amount
+        watch.recordLayerMinimum(typed.minimum)
+        journal.event(
+            snipeId,
+            TimelineKind.LAYER_READY,
+            "Typed your max ${amount.displayText()} and eBay's page confirmed it.",
+            mapOf("fieldValue" to typed.fieldValue, "inlineError" to typed.inlineError, "minimum" to typed.minimum),
+        )
+        alertIfOverMax()
+    }
+
+    /** Looks at the layer again every second, for a while, until eBay enables its bid button for the typed amount. */
+    private suspend fun waitForBidButton(
+        currentPage: BidPage,
+        typed: TypedAmount,
+    ): TypedAmount {
+        var latest = typed
+        val until = minOf(clock.nowUtcMillis() + BID_BUTTON_WAIT_MILLIS, latestDispatchUtcMillis - TYPE_TIMEOUT)
+        while (latest.problem == TypingProblem.BUTTON_DISABLED && clock.nowUtcMillis() + HOLD_TICK <= until) {
+            delay(HOLD_TICK)
+            latest = callWithin(TYPE_TIMEOUT) { currentPage.checkTyped() }.valueOrNull() ?: return latest
+        }
+        return latest
     }
 
     private suspend fun followBeforeBid(deadline: Long): SnipeResult? {
@@ -752,7 +854,7 @@ internal class SnipeWindow(
         if (level == lastAlertedMinimum) return
         lastAlertedMinimum = level
         val current = watch.level?.price ?: level
-        val untilLock = lockAtUtcMillis - clock.nowUtcMillis()
+        val untilLock = userEditsLockAtUtcMillis - clock.nowUtcMillis()
         val raiseHint = if (untilLock > 0) " Raise the max within ${durationText(untilLock)} to still bid." else ""
         journal.event(
             snipeId,
@@ -771,21 +873,9 @@ internal class SnipeWindow(
     private suspend fun endedBeforeBid(): SnipeResult? {
         journal.event(snipeId, TimelineKind.PROBLEM, "eBay's live updates say the auction ended before Kestrel's bid.")
         closeLayerIfUnused()
-        val listing = reloadForResult()
-        val stillRunning = listing?.status == ListingStatus.ACTIVE && listing.endTimeUtcMillis > clock.nowUtcMillis()
-        if (listing != null && stillRunning) {
-            // The page says it is still running. The reload left the bid layer, so the layer is prepared again.
-            journal.event(
-                snipeId,
-                TimelineKind.PROBLEM,
-                "The item page still shows the auction running, so Kestrel carries on.",
-            )
-            watch.startFrom(listing)
-            endedSignalPending = false
-            layerOpen = false
-            typedAmount = null
-            return null
-        }
+        // The reload must leave time to prepare the bid again, so it gets no more than the page-ready deadline.
+        val budget = minOf(OPEN_ITEM_TIMEOUT, pageReadyByUtcMillis - clock.nowUtcMillis())
+        val listing = if (budget > 0) reloadForResult(budget) else null
         if (listing != null && listing.status == ListingStatus.ENDED) {
             val resolution = ResultResolver.resolve(listing, maxBid, bid.evidence(), originalEndUtcMillis)
             return finish(
@@ -795,12 +885,27 @@ internal class SnipeWindow(
                 ebayText = listing.endedText,
             )
         }
-        return finish(
-            SnipeOutcome.FAILED,
-            "eBay's live updates said the auction ended before the bid and the page could not confirm it, so Kestrel " +
-                "did not bid.",
-            userReason = NeedsUserReason.BID_FAILED,
-        )
+        if (listing?.status == ListingStatus.ACTIVE && listing.endTimeUtcMillis > clock.nowUtcMillis()) {
+            journal.event(
+                snipeId,
+                TimelineKind.PROBLEM,
+                "The item page still shows the auction running, so Kestrel carries on.",
+            )
+            watch.startFrom(listing)
+        } else {
+            // An ended listing has no bid button, so going on with the bid is harmless; stopping here could cost it.
+            journal.event(
+                snipeId,
+                TimelineKind.PROBLEM,
+                "The item page could not confirm that the auction ended, so Kestrel carries on with the bid.",
+            )
+            watch.disregardEndedSignal()
+        }
+        endedSignalPending = false
+        // The reload left the bid layer. Past the layer's time it is prepared again now, not at the lock.
+        layerOpen = false
+        typedAmount = null
+        return if (clock.nowUtcMillis() >= layerOpenAtUtcMillis) prepareLayer() else null
     }
 
     // The end moved far into the future (a long extension or a corrected end): release the phone and come back later.
@@ -816,7 +921,8 @@ internal class SnipeWindow(
         return notStarted(SnipeOutcome.NOT_PLACED, reason)
     }
 
-    // At fire time - 2 s the max locks: the last read of the instruction, the group rule and the price check.
+    // At fire time - 2 s, a second after the user's edits locked: the last read of the instruction, the group rule and
+    // the price check.
     private suspend fun lock(): SnipeResult? {
         checkUserChanges()?.let { return it }
         if (clock.nowUtcMillis() - instructionReadAtUtcMillis > INSTRUCTION_MAXIMUM_AGE_MILLIS) {
@@ -828,6 +934,7 @@ internal class SnipeWindow(
             )
         }
         checkGroup(atFire = true)?.let { return it }
+        confirmTypedStillShown()?.let { return it }
         val minimum = watch.minimumNextBid()
         when (prices.isOverMax(minimum, watch.level?.price, watch.level?.bidCount, maxBid)) {
             true -> {
@@ -859,7 +966,30 @@ internal class SnipeWindow(
         return null
     }
 
+    /**
+     * The press only goes through if the field shows exactly what the page verified. In the wait since typing eBay
+     * may have reformatted the field or redrawn the layer, so the page looks once more (which also takes a reformatted
+     * value as the one to expect) and the max is typed again if the field no longer holds it.
+     */
+    private suspend fun confirmTypedStillShown(): SnipeResult? {
+        val currentPage = page ?: return null
+        if (typedAmount != maxBid) return null
+        val budget = minOf(TYPE_TIMEOUT, latestDispatchUtcMillis - clock.nowUtcMillis() - TYPE_MINIMUM_BUDGET)
+        val check = callWithin(budget) { currentPage.checkTyped() }.valueOrNull()
+        if (check != null && check.verified && AmountField.minorUnits(check.fieldValue) == maxBid.minor) return null
+        journal.event(
+            snipeId,
+            TimelineKind.PROBLEM,
+            "At the last look before the bid, eBay's field showed \"${check?.fieldValue}\" " +
+                "(${check?.inlineError ?: "the page did not answer"}). Kestrel types your max again.",
+            mapOf("fieldValue" to check?.fieldValue, "problem" to check?.problem),
+        )
+        return typeAndVerify(maxBid)
+    }
+
     private suspend fun fire(): SnipeResult? {
+        // Posted now: building and posting a notification between the precise wait and the tap would delay the tap.
+        progress(WindowPhase.BIDDING)
         clock.waitPreciselyUntil(fireAtUtcMillis)
         if (clock.nowUtcMillis() > latestDispatchUtcMillis) {
             return finish(
@@ -871,22 +1001,25 @@ internal class SnipeWindow(
         val currentPage =
             page ?: return finish(SnipeOutcome.FAILED, "Kestrel's browser page is gone, so it could not bid.")
         val endAtFire = watch.endUtcMillis
-        progress(WindowPhase.BIDDING)
-        submitAndAwaitReply(currentPage, endAtFire)
-        retryIfUnconfirmed(currentPage, endAtFire)
-        return null
+        // One press per page and per window: an unreadable reply is followed on the page, never pressed again.
+        return submitAndAwaitReply(currentPage, endAtFire)
     }
 
     private suspend fun submitAndAwaitReply(
         currentPage: BidPage,
         endAtFire: Long,
-    ) {
-        sender.submit(currentPage, maxBid, fireAtUtcMillis, endAtFire) {
-            snipe =
-                writer.update(snipeId, snipe, PRE_TAP_STORE_TIMEOUT_MILLIS) { it.copy(status = SnipeStatus.BID_SENT) }
-        }
+    ): SnipeResult? {
+        val notSent =
+            sender.submit(currentPage, maxBid, fireAtUtcMillis, endAtFire, latestDispatchUtcMillis) {
+                snipe =
+                    writer.update(snipeId, snipe, PRE_TAP_STORE_TIMEOUT_MILLIS) {
+                        it.copy(status = SnipeStatus.BID_SENT)
+                    }
+            }
+        if (notSent != null) return finishNotSent(notSent)
+        storeBidSentIfMissed()
         progress(WindowPhase.BID_SENT)
-        when (sender.awaitReply(currentPage)) {
+        when (val reply = sender.awaitReply(currentPage)) {
             is BidReply.Leading -> {
                 setStatus(SnipeStatus.LEADING)
                 progress(WindowPhase.LEADING)
@@ -897,60 +1030,75 @@ internal class SnipeWindow(
                 progress(WindowPhase.OUTBID)
             }
 
+            is BidReply.NeedsUser -> {
+                handOffAfterPress(currentPage, reply)
+            }
+
             else -> {}
         }
+        return null
     }
 
-    // The only second bid Kestrel ever sends: the identical amount, when eBay's reply was lost and time allows.
-    private suspend fun retryIfUnconfirmed(
+    /**
+     * eBay put a check between the press and the bid. Nothing answers it (ARCHITECTURE rule 4); the user hears about
+     * it at once, while there may be time to complete it, and the window follows the auction as for any sent bid.
+     */
+    private suspend fun handOffAfterPress(
         currentPage: BidPage,
-        endAtFire: Long,
+        reply: BidReply.NeedsUser,
     ) {
-        if (bid.standing != BidStanding.UNCONFIRMED || bid.submits > 1) return
-        val amount = typedAmount ?: return
-        if (watch.endUtcMillis - clock.nowUtcMillis() < RETRY_MINIMUM_REMAINING) {
-            noRetry("too little time was left to try again")
-            return
-        }
-        if (!auctionStillRunning(currentPage)) {
-            noRetry("the page no longer shows the auction running")
-            return
-        }
-        // The live update may already show another bidder above the max: then a retry cannot win and is not sent.
-        val minimum = watch.minimumNextBid()
-        val priceAboveMax = prices.isOverMax(minimum, watch.level?.price, watch.level?.bidCount, amount) != false
-        if (bid.standing != BidStanding.UNCONFIRMED || priceAboveMax) {
-            noRetry("the price has passed your max since")
-            return
-        }
-        val budget = minOf(TYPE_TIMEOUT, watch.endUtcMillis - TOO_LATE_BEFORE_END - clock.nowUtcMillis())
-        val typed = callWithin(budget) { currentPage.typeMax(amount) }.valueOrNull()
-        if (typed == null || AmountField.minorUnits(typed.fieldValue) != amount.minor) {
-            noRetry("the bid field could not be confirmed again")
-            return
-        }
-        if (typed.minimum?.isAbove(amount) == true) {
-            noRetry("eBay now needs more than your max")
-            return
-        }
-        callWithin(ARM_OBSERVER_TIMEOUT) { currentPage.armReplyObserver() }
-        if (clock.nowUtcMillis() > watch.endUtcMillis - TOO_LATE_BEFORE_END) return
-        submitAndAwaitReply(currentPage, endAtFire)
+        val text =
+            "eBay asked for something after Kestrel pressed bid (\"${reply.text}\"). " +
+                "Open the listing to complete it; the bid may not count until you do."
+        val pageReport = callWithin(REPORT_TIMEOUT) { currentPage.report() }.valueOrNull()
+        journal.event(
+            snipeId,
+            TimelineKind.NEEDS_USER,
+            text,
+            mapOf("reason" to reply.reason.name, "pageReport" to pageReport),
+        )
+        journal.notify { needsUser(snipe, reply.reason, text) }
     }
 
-    private suspend fun noRetry(why: String) {
-        journal.event(snipeId, TimelineKind.PROBLEM, "No reply from eBay, and $why. No retry.")
+    /**
+     * The pre-tap BID_SENT write has a short limit so it cannot delay the tap; when it missed, the store still says
+     * BIDDING, which the platform reads as "no bid" (a false alert, a group member let through). Written again now,
+     * without the hurry.
+     */
+    private suspend fun storeBidSentIfMissed() {
+        val stored = callWithin(STORE_TIMEOUT) { store.snipe(snipeId) }.valueOrNull() ?: return
+        if (stored.status in BID_SENT_STATUSES) return
+        snipe = writer.update(snipeId, snipe) { it.copy(status = withBidSent(it.status)) }
     }
 
-    private suspend fun auctionStillRunning(currentPage: BidPage): Boolean {
-        val budget =
-            minOf(
-                RETRY_ACTIVE_CHECK_TIMEOUT,
-                watch.endUtcMillis - clock.nowUtcMillis() - RETRY_MINIMUM_REMAINING / 2,
+    /**
+     * A status that says a bid may be with eBay, whenever one may be. A cancel that came too late for the bid gives
+     * way too, as the store allows: the bid may be at eBay.
+     */
+    private fun withBidSent(status: SnipeStatus): SnipeStatus {
+        val open = !status.isFinal || status == SnipeStatus.CANCELLED
+        return if (bid.sent && status !in BID_SENT_STATUSES && open) SnipeStatus.BID_SENT else status
+    }
+
+    /**
+     * The page refused the press before pressing anything, so eBay never saw a bid. The final FAILED result replaces
+     * the BID_SENT stored before the tap, and the user hears why at once, while there may still be time to bid.
+     */
+    private suspend fun finishNotSent(notSent: NotSent): SnipeResult {
+        val why = notSent.reason.replaceFirstChar { it.lowercase() }
+        return if (notSent.needsUser) {
+            finish(
+                SnipeOutcome.FAILED,
+                "eBay needs you before it accepts a bid ($why), so Kestrel did not bid. Nothing was sent to eBay.",
+                userReason = NeedsUserReason.VERIFICATION,
             )
-        val state = poller.poll(currentPage, budget) ?: return false
-        recordUpdate(watch.apply(state))
-        return !state.ended && watch.endUtcMillis > clock.nowUtcMillis()
+        } else {
+            finish(
+                SnipeOutcome.FAILED,
+                "Kestrel did not press eBay's bid button ($why), so no bid was sent.",
+                userReason = NeedsUserReason.BID_FAILED,
+            )
+        }
     }
 
     /** Follows the auction to its true end, which Extended Bidding can move again and again. */
@@ -1027,9 +1175,9 @@ internal class SnipeWindow(
                 "the result.",
         )
 
-    private suspend fun reloadForResult(): Listing? {
+    private suspend fun reloadForResult(timeoutMillis: Long = OPEN_ITEM_TIMEOUT): Listing? {
         val currentPage = page ?: replacePage() ?: return null
-        val call = callWithin(OPEN_ITEM_TIMEOUT) { currentPage.openItem(snipe.ref) }
+        val call = callWithin(timeoutMillis) { currentPage.openItem(snipe.ref) }
         val state = call.valueOrNull()
         if (state == null) {
             journal.event(snipeId, TimelineKind.PROBLEM, "${call.failureText("Reloading the item page")}.")
@@ -1037,7 +1185,14 @@ internal class SnipeWindow(
             if (call is Call.Threw) replacePage()
             return null
         }
-        if (state.kind != PageKind.NORMAL) {
+        // eBay's browser check clears itself; a reload would start it again, so it is waited out in place.
+        val cleared =
+            if (state.kind == PageKind.CHALLENGE) {
+                currentPage.waitOutChallenge(clock, minOf(WindowTimings.CHALLENGE_WAIT, timeoutMillis))
+            } else {
+                null
+            }
+        if (state.kind != PageKind.NORMAL && cleared == null) {
             journal.event(
                 snipeId,
                 TimelineKind.PROBLEM,
@@ -1046,9 +1201,12 @@ internal class SnipeWindow(
             return null
         }
         val listing =
-            state.listing ?: callWithin(WindowTimings.READ_LISTING_TIMEOUT) { currentPage.readListing() }.valueOrNull()
+            cleared
+                ?: state.listing
+                ?: callWithin(WindowTimings.READ_LISTING_TIMEOUT) { currentPage.readListing() }.valueOrNull()
                 ?: return null
-        val otherItem = listing.otherItemThan(snipe.ref, state.url)
+        // The check's own address says nothing about the item, so only the listing itself is compared.
+        val otherItem = listing.otherItemThan(snipe.ref, if (cleared != null) snipe.ref.url else state.url)
         if (otherItem != null) {
             journal.event(
                 snipeId,
@@ -1146,7 +1304,10 @@ internal class SnipeWindow(
                 reason = reason,
             )
         val finalStatus = status ?: statusAfter(outcome)
-        snipe = writer.update(snipeId, snipe) { it.copy(status = finalStatus ?: it.status, result = snipeResult) }
+        snipe =
+            writer.update(snipeId, snipe) {
+                it.copy(status = finalStatus ?: withBidSent(it.status), result = snipeResult)
+            }
         journal.event(
             snipeId,
             if (outcome == SnipeOutcome.CANCELLED) TimelineKind.CANCELLED else TimelineKind.RESULT,
@@ -1218,10 +1379,19 @@ internal class SnipeWindow(
         const val LAYER_ATTEMPTS = 2
         const val TYPE_ATTEMPTS = 2
 
+        /** How long after typing Kestrel waits for eBay to enable its bid button before typing again. */
+        const val BID_BUTTON_WAIT_MILLIS = 6_000L
+
+        /** A dead page is replaced only with this much time left: load, open the layer and type on a new page. */
+        const val REBUILD_MINIMUM_MILLIS = 15_000L
+
         /** The instruction must have been read this recently at the lock. */
         const val INSTRUCTION_MAXIMUM_AGE_MILLIS = 5_000L
 
-        /** Storing BID_SENT right before the tap may not delay the tap by more than twice this (a read and a write). */
+        /**
+         * The limit on each of the two store calls (a read and a write) that put BID_SENT down right before the tap. A
+         * call blocked in I/O can outlast it, so the sender checks the latest dispatch time again after them.
+         */
         const val PRE_TAP_STORE_TIMEOUT_MILLIS = 150L
 
         /** Statuses a window can hand back when it closes early to be scheduled again. */

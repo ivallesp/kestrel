@@ -55,10 +55,29 @@ sealed interface LayerState {
 data class TypedAmount(
     /** The value read back from the field, as text. */
     val fieldValue: String,
-    /** Inline error shown by eBay, for example "Enter £66.00 or more". */
+    /** Inline error shown by eBay, for example "Enter £66.00 or more", or Kestrel's own note of what is wrong. */
     val inlineError: String?,
     val minimum: Money?,
+    /** The page checked that the field holds exactly the amount and eBay's bid button takes it: only then may it bid. */
+    val verified: Boolean = false,
+    /** Why the page did not verify the amount; null when [verified]. */
+    val problem: TypingProblem? = null,
 )
+
+/** Why a typed maximum was not verified, sorted by what the window can do about it. */
+enum class TypingProblem {
+    /** A check, an interstitial or a JavaScript dialog stands in the way: only the user can deal with it. */
+    NEEDS_USER,
+
+    /** The maximum is below eBay's minimum: the price passed it. */
+    BELOW_MINIMUM,
+
+    /** The field holds the amount but eBay's bid button is still disabled; eBay may still be checking the amount. */
+    BUTTON_DISABLED,
+
+    /** Anything else: no field, another value in it, an eBay error, no recognisable bid button. */
+    OTHER,
+}
 
 /** How the submit tap was delivered. */
 enum class InputMethod { NATIVE_TOUCH, DOM_EVENTS }
@@ -68,6 +87,14 @@ data class SubmitDispatch(
     val method: InputMethod,
     val buttonLabel: String?,
 )
+
+/**
+ * Marks a failure of [BidPage.submit] in which the page provably pressed nothing, so no bid was sent. [needsUser] is
+ * true when eBay showed something only the user can answer (a check, a dialog over the bid button).
+ */
+interface BidNotSent {
+    val needsUser: Boolean
+}
 
 /** eBay's answer to the bid. */
 sealed interface BidReply {
@@ -91,8 +118,19 @@ sealed interface BidReply {
         override val latencyMillis: Long?,
     ) : BidReply
 
-    /** No reply could be read in time. */
+    /** No reply could be read in time. [text] is what eBay showed that Kestrel could not place, if anything. */
     data class Unconfirmed(
+        override val latencyMillis: Long?,
+        val text: String? = null,
+    ) : BidReply
+
+    /**
+     * eBay answered the press with something only the user can deal with (phone verification, sign-in, a captcha)
+     * before its confirmbid went out. The bid may still be pending, so it counts as sent; the user is told at once.
+     */
+    data class NeedsUser(
+        val text: String,
+        val reason: NeedsUserReason,
         override val latencyMillis: Long?,
     ) : BidReply
 }
@@ -101,6 +139,9 @@ sealed interface BidReply {
  * The part of the bid page a dry run may use. It cannot submit: [DryRun] only ever receives this type.
  */
 interface BidLayerPreview {
+    /** False once the page can no longer be used (its renderer died, or it was closed); every call then fails. */
+    val isUsable: Boolean get() = true
+
     suspend fun openItem(ref: ItemRef): PageState
 
     suspend fun readListing(): Listing?
@@ -110,6 +151,9 @@ interface BidLayerPreview {
     suspend fun typeMax(amount: Money): TypedAmount
 
     suspend fun closeLayer()
+
+    /** A diagnostic dump (URL, title, visible texts, matched selectors) for the timeline. */
+    suspend fun report(): String
 }
 
 /** The full bid page used by a live snipe window. Implemented in `web/` over a headless WebView. */
@@ -117,16 +161,22 @@ interface BidPage : BidLayerPreview {
     /** Fetch the page's AUTO_REFRESH JSON from inside the page (same origin, with credentials). */
     suspend fun autoRefresh(): AutoRefreshState?
 
+    /**
+     * Reads the layer again, without typing, and verifies the amount [typeMax] typed last, as [typeMax] does. For a
+     * bid button that eBay enables late, and for a last look before the press.
+     */
+    suspend fun checkTyped(): TypedAmount
+
     /** Start recording the bid request's reply; call before [submit]. */
     suspend fun armReplyObserver()
 
-    /** Press eBay's submit button once. */
+    /**
+     * Press eBay's submit button once. Throws an exception that is a [BidNotSent] when the page provably pressed
+     * nothing; any other failure means the tap may have reached eBay.
+     */
     suspend fun submit(): SubmitDispatch
 
     suspend fun awaitReply(timeoutMillis: Long): BidReply
-
-    /** A diagnostic dump (URL, title, visible texts, matched selectors) for the timeline. */
-    suspend fun report(): String
 
     fun close()
 }

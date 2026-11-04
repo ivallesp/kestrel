@@ -1,9 +1,12 @@
 package app.kestrel.platform
 
+import app.kestrel.data.HOUR
+import app.kestrel.data.MINUTE
 import app.kestrel.data.TEST_NOW
 import app.kestrel.data.testSnipe
 import app.kestrel.engine.NeedsUserReason
 import app.kestrel.model.Snipe
+import app.kestrel.model.SnipeOutcome
 import app.kestrel.model.SnipeStatus
 import app.kestrel.model.TimelineKind
 import kotlinx.coroutines.test.runTest
@@ -16,6 +19,8 @@ class SnipeJobAftermathTest {
     private val rescheduled = mutableListOf<Pair<Snipe, Long?>>()
     private val cancelled = mutableListOf<Long>()
 
+    private var scheduleOver = false
+
     private fun aftermath(store: FakeStore) =
         SnipeJobAftermath(
             store = store,
@@ -23,7 +28,50 @@ class SnipeJobAftermathTest {
             reschedule = { snipe, attempt -> rescheduled += snipe to attempt },
             cancelSchedule = { cancelled += it },
             nowUtcMillis = { TEST_NOW },
+            nothingLeftToTry = { _, _ -> scheduleOver },
         )
+
+    @Test
+    fun theLastResultCheckOfABidThatStayedUnreadTellsTheUser() =
+        runTest {
+            scheduleOver = true
+            val sent = testSnipe(id = 1, status = SnipeStatus.BID_SENT, endTimeUtcMillis = TEST_NOW - 3 * 24 * HOUR)
+            val store = FakeStore(sent)
+
+            aftermath(store).jobFinished(1, JobKind.CHECK, startedAtUtcMillis = TEST_NOW - 5_000)
+
+            // The bid may have won, so nothing is decided for the user: the status stays and the group stays blocked.
+            assertEquals(SnipeStatus.BID_SENT, store.snipes.getValue(1).status)
+            assertEquals(NeedsUserReason.UNKNOWN_PAGE, notifier.needsUser.single().first)
+            assertTrue(
+                notifier.needsUser
+                    .single()
+                    .second!!
+                    .contains("mark it won or lost"),
+            )
+        }
+
+    @Test
+    fun theLastResultCheckOfASnipeThatNeverBidEndsIt() =
+        runTest {
+            scheduleOver = true
+            val store =
+                FakeStore(
+                    testSnipe(
+                        id = 1,
+                        status = SnipeStatus.ARMED,
+                        endTimeUtcMillis =
+                            TEST_NOW - 3 * 24 * HOUR,
+                    ),
+                )
+
+            aftermath(store).jobFinished(1, JobKind.CHECK, startedAtUtcMillis = TEST_NOW - 5_000)
+
+            val ended = store.snipes.getValue(1)
+            assertEquals(SnipeStatus.FAILED, ended.status)
+            assertEquals(SnipeOutcome.NOT_PLACED, ended.result?.outcome)
+            assertTrue(notifier.calls.any { it.startsWith("result 1") })
+        }
 
     @Test
     fun aCheckIsRescheduledCountingItsAttempt() =
@@ -40,9 +88,10 @@ class SnipeJobAftermathTest {
             for (status in listOf(SnipeStatus.ARMED, SnipeStatus.BIDDING)) {
                 rescheduled.clear()
                 notifier.needsUser.clear()
-                val store = FakeStore(testSnipe(id = 1, status = status))
+                // The window ran in its usual place, two minutes before the end, and left without a bid.
+                val store = FakeStore(testSnipe(id = 1, status = status, endTimeUtcMillis = TEST_NOW + 30_000))
 
-                aftermath(store).jobFinished(1, JobKind.WINDOW, startedAtUtcMillis = TEST_NOW - 120_000)
+                aftermath(store).jobFinished(1, JobKind.WINDOW, startedAtUtcMillis = TEST_NOW - 90_000)
 
                 assertEquals("$status", SnipeStatus.NEEDS_YOU, store.snipes.getValue(1).status)
                 assertEquals(listOf(NeedsUserReason.BID_FAILED to SnipeJobAftermath.WINDOW_STOPPED), notifier.needsUser)
@@ -51,6 +100,26 @@ class SnipeJobAftermathTest {
                     store.events.takeLast(1),
                 )
                 assertEquals(SnipeStatus.NEEDS_YOU, rescheduled.single().first.status)
+                assertEquals(null, rescheduled.single().second)
+            }
+        }
+
+    @Test
+    fun aWindowThatHandedTheSnipeBackForALaterEndIsRescheduledWithoutAnAlert() =
+        runTest {
+            // The end moved an hour out (or the window started far too early): a new window opens before the new end.
+            for (status in listOf(SnipeStatus.ARMED, SnipeStatus.BIDDING)) {
+                rescheduled.clear()
+                notifier.needsUser.clear()
+                val handedBack = testSnipe(id = 1, status = status, endTimeUtcMillis = TEST_NOW + 60 * MINUTE)
+                val store = FakeStore(handedBack)
+
+                aftermath(store).jobFinished(1, JobKind.WINDOW, startedAtUtcMillis = TEST_NOW - 30_000)
+
+                assertTrue("$status", notifier.needsUser.isEmpty())
+                // A hand-back whose ARMED write did not land is armed again now that no window holds it.
+                assertEquals("$status", SnipeStatus.ARMED, store.snipes.getValue(1).status)
+                assertEquals("$status", SnipeStatus.ARMED, rescheduled.single().first.status)
                 assertEquals(null, rescheduled.single().second)
             }
         }

@@ -23,6 +23,7 @@ import app.kestrel.engine.TimeSources
 import app.kestrel.engine.TrueTime
 import app.kestrel.model.Money
 import app.kestrel.model.Snipe
+import app.kestrel.model.TimelineKind
 import app.kestrel.platform.AndroidAlarmPermissions
 import app.kestrel.platform.AndroidReadinessProbes
 import app.kestrel.platform.AndroidTimeSources
@@ -32,10 +33,13 @@ import app.kestrel.platform.DiskCachedItemPhotos
 import app.kestrel.platform.EngineJobRunner
 import app.kestrel.platform.JobAftermath
 import app.kestrel.platform.JobKind
+import app.kestrel.platform.LastExitNote
 import app.kestrel.platform.LockedBootNotice
 import app.kestrel.platform.MonitorSchedulePolicy
 import app.kestrel.platform.NotificationActionHandler
 import app.kestrel.platform.NotificationTexts
+import app.kestrel.platform.PreviewHandle
+import app.kestrel.platform.PreviewPages
 import app.kestrel.platform.RaiseMaxRules
 import app.kestrel.platform.Readiness
 import app.kestrel.platform.ReadinessProbes
@@ -51,11 +55,13 @@ import app.kestrel.platform.SnipeScheduler
 import app.kestrel.platform.SystemEventHandler
 import app.kestrel.platform.WakeLocks
 import app.kestrel.web.EbaySession
+import app.kestrel.web.ListingFetcher
 import app.kestrel.web.WebBidPageFactory
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * Manual dependency container. Each layer adds its singletons here. Everything is lazy: the process can start before
@@ -77,7 +83,13 @@ open class AppContainer(
     val armedSnipesCopy: ArmedSnipesCopy by lazy { ArmedSnipesCopy.inDeviceProtectedStorage(context) }
     val settings: SettingsStore by lazy { SettingsStore.create(context) }
     val repository: SnipeRepository by lazy {
-        SnipeRepository(database, armedSnipesCopy, nowUtcMillis = { clock.nowUtcMillis() }, formatMoney = formatMoney)
+        SnipeRepository(
+            database,
+            armedSnipesCopy,
+            nowUtcMillis = { clock.nowUtcMillis() },
+            formatMoney = formatMoney,
+            refreshArmedCopyLater = { refresh -> applicationScope.launch { refresh() } },
+        )
     }
 
     // Time.
@@ -90,10 +102,21 @@ open class AppContainer(
 
     // Engine and pages.
 
-    val bidPages: BidPageFactory by lazy { WebBidPageFactory(context) }
+    val bidPages: WebBidPageFactory by lazy { WebBidPageFactory(context, trueTime) }
+
+    /** Submit-free pages for dry runs and checks. */
+    internal val previewPages: PreviewPages by lazy {
+        PreviewPages {
+            val page = bidPages.createPreview()
+            PreviewHandle(page) { page.close() }
+        }
+    }
+
+    /** Loads listings for the add-snipe preview. */
+    val listingFetcher: ListingFetcher by lazy { ListingFetcher(context, trueTime) }
     val snipeEngine: SnipeEngine by lazy { SnipeEngine(repository, notifications, trueTime, bidPages) }
     val dryRun: DryRun by lazy { DryRun(repository, notifications, clock) }
-    val listingCheck: ListingCheck by lazy { ListingCheck(repository, notifications, clock) }
+    val listingCheck: ListingCheck by lazy { ListingCheck(repository, notifications, clock, ::isWindowRunning) }
 
     // Platform.
 
@@ -149,6 +172,7 @@ open class AppContainer(
             dryRun = { dryRun },
             listingCheck = { listingCheck },
             pages = { bidPages },
+            previews = { previewPages },
         )
     }
 
@@ -158,6 +182,26 @@ open class AppContainer(
 
     internal open val wakeLocks: WakeLocks by lazy { AndroidWakeLocks(context) }
 
+    /** Writes the WebView cookies to disk; the service does it after every job. */
+    internal open val flushCookies: suspend () -> Unit = { EbaySession.flush() }
+
+    /** Says in the timeline why Android ended the process when that cut a bid window off. */
+    internal open val lastExitNote: LastExitNote by lazy {
+        val notes = context.getSharedPreferences("process_exits", Context.MODE_PRIVATE)
+        LastExitNote(
+            lastExit = { LastExitNote.lastExitOf(context) },
+            pendingSnipes = { repository.pendingSnipes() },
+            addEvent = { snipeId, message -> repository.addEvent(snipeId, TimelineKind.PROBLEM, message, null) },
+            alreadyNoted = { notes.getLong("notedExitAtUtcMillis", 0L) },
+            markNoted = { notes.edit().putLong("notedExitAtUtcMillis", it).apply() },
+        )
+    }
+
+    /** Keeps a running window's backup alarm ahead of it, so a window that dies with the process opens again. */
+    internal open val keepWindowAlarmed: suspend (Long) -> Unit = { snipeId ->
+        repository.snipe(snipeId)?.let { scheduler.keepWindowBackupAhead(it) }
+    }
+
     internal val jobAftermath: JobAftermath by lazy {
         SnipeJobAftermath(
             store = repository,
@@ -165,6 +209,9 @@ open class AppContainer(
             reschedule = { snipe, lastCheckAttempt -> scheduler.schedule(snipe, lastCheckAttempt) },
             cancelSchedule = { scheduler.cancel(it) },
             nowUtcMillis = { clock.nowUtcMillis() },
+            nothingLeftToTry = { snipe, lastCheckAttempt ->
+                SchedulePlanner(schedulePolicy).plan(snipe, clock.nowUtcMillis(), lastCheckAttempt).isEmpty
+            },
         )
     }
 
