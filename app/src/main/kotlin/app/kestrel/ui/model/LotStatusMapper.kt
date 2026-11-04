@@ -294,7 +294,12 @@ object LotStatusMapper {
                     it.kind == TimelineKind.EBAY_REPLY &&
                         it.detailText("reply") == "Rejected"
                 }
-            return LotStatus.BidFailed(snipe.result?.ebayReplyText ?: refusal?.let { quotedText(it.message) }, at)
+            // eBay is quoted only when it refused the bid; otherwise Kestrel's own finding says what happened.
+            return if (refusal != null) {
+                LotStatus.BidFailed(snipe.result?.ebayReplyText ?: quotedText(refusal.message), at)
+            } else {
+                LotStatus.BidFailed(null, at, reason = snipe.result?.reason)
+            }
         }
         val windowOpened =
             evidence.history.lastOrNull { it.kind == TimelineKind.WINDOW_OPENED }?.atUtcMillis ?: Long.MIN_VALUE

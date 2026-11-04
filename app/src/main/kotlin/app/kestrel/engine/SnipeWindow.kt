@@ -1258,7 +1258,8 @@ internal class SnipeWindow(
             if (refused) SnipeOutcome.FAILED else resolution.outcome,
             if (refused) "eBay refused the bid: \"${bid.replyText}\"" else resolution.reason,
             finalPrice = listing.currentPrice,
-            ebayText = bid.replyText ?: listing.endedText,
+            // eBay's reply to the bid only: the ended page's banner is not an answer to it (the timeline keeps it).
+            ebayText = bid.replyText,
         )
     }
 

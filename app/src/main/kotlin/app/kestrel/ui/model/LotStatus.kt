@@ -221,10 +221,14 @@ sealed interface LotStatus {
         override val kind get() = LotStatusKind.BidNotSent
     }
 
-    /** The bid reached eBay and eBay refused it, saying [ebayText]. */
+    /**
+     * The bid left the phone but did not count: eBay refused it, saying [ebayText], or (without eBay's words) Kestrel
+     * found why, in [reason], for example a press that never registered.
+     */
     data class BidFailed(
         val ebayText: String?,
         val at: Instant,
+        val reason: String? = null,
     ) : LotStatus {
         override val kind get() = LotStatusKind.BidFailed
     }

@@ -236,6 +236,8 @@ fun LotStatus.detail(
 
         is LotStatus.BidFailed -> {
             when {
+                ebayText == null && reason != null -> reason.withCurlyQuotes()
+
                 ebayText == null -> "eBay didn’t accept the bid. Nothing was bid."
 
                 // eBay's own sentence ends with its punctuation, so no full stop follows the closing quote.

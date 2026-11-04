@@ -529,7 +529,13 @@ object LotTimeline {
         reason: String,
     ): Row {
         if (evidence.sentAtMillis != null) {
-            val words = evidence.replyText?.let { "eBay refused it: “$it”" } ?: "eBay refused it"
+            // Only a refusal quotes eBay; a press that did not count otherwise is told in Kestrel's words.
+            val words =
+                if (evidence.replyType == "Rejected") {
+                    evidence.replyText?.let { "eBay refused it: “$it”" } ?: "eBay refused it"
+                } else {
+                    reason
+                }
             return Row(at, StateNames.bidFailed, words, StatusTone.Failed, tenths = true)
         }
         val bidAt = LotTimes.bidAtUtcMillis(evidence.snipe)
