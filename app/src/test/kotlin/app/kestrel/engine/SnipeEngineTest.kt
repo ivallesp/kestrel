@@ -938,6 +938,48 @@ class SnipeEngineTest {
         }
 
     @Test
+    fun strayEndedRepliesWithAShortLeadReopenTheLayerAtOnceAndBidOnTime() =
+        runTest {
+            val harness = WindowHarness(this)
+            harness.store.edit(1) { it.copy(leadSeconds = 3) }
+            // A slow phone: the layer takes 3 s to open and typing 1.3 s.
+            harness.page.layerOpenMillis = 3_000
+            harness.page.typingMillis = 1_300
+            harness.page.replies += BidReply.Leading("Your current bid puts you in the lead.", 400)
+            harness.winAt("30.00")
+            launch {
+                delay(90_000)
+                harness.auction.strayEndedReplies = 2
+            }
+
+            val result = harness.run()
+
+            assertEquals(1, harness.page.submitsAtUtc.size)
+            val lateBy = harness.page.submitsAtUtc.single() - (END_UTC - 3_000L)
+            assertTrue("late by $lateBy ms", lateBy in 0L..50L)
+            assertEquals(SnipeOutcome.WON, result.outcome)
+        }
+
+    @Test
+    fun strayEndedRepliesWhoseConfirmingReloadFailsStillBid() =
+        runTest {
+            val harness = WindowHarness(this)
+            harness.page.replies += BidReply.Leading("Your current bid puts you in the lead.", 400)
+            harness.winAt("30.00")
+            launch {
+                delay(85_000)
+                harness.auction.strayEndedReplies = 2
+                // The reload that should confirm it meets eBay's slow-down page.
+                harness.page.pageKinds += PageKind.RATE_WALL
+            }
+
+            val result = harness.run()
+
+            assertEquals(1, harness.page.submitsAtUtc.size)
+            assertEquals(SnipeOutcome.WON, result.outcome)
+        }
+
+    @Test
     fun restartDoesNotTrustAMaxEditedAfterTheBid() =
         runTest {
             val harness = WindowHarness(this)

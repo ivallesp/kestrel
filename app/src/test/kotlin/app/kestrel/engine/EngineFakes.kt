@@ -414,6 +414,10 @@ class ScriptedBidPage(
     private var lastTypedAmount: Money? = null
     var checks = 0
 
+    /** How long eBay's bid layer takes to open, and typing the max to settle. */
+    var layerOpenMillis = 800L
+    var typingMillis = 300L
+
     /** Replies to successive submits; an unreadable reply when empty. */
     val replies = ArrayDeque<BidReply>()
     var onSubmit: (submitNumber: Int) -> Unit = {}
@@ -474,13 +478,13 @@ class ScriptedBidPage(
     override suspend fun readListing(): Listing? = readListingResult()
 
     override suspend fun openBidLayer(): LayerState {
-        delay(800)
+        delay(layerOpenMillis)
         layerOpens++
         return layerState()
     }
 
     override suspend fun typeMax(amount: Money): TypedAmount {
-        delay(300)
+        delay(typingMillis)
         typed += amount
         lastTypedAmount = amount
         return typingVerdict(amount)

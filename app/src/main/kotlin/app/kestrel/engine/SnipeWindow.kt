@@ -823,21 +823,9 @@ internal class SnipeWindow(
     private suspend fun endedBeforeBid(): SnipeResult? {
         journal.event(snipeId, TimelineKind.PROBLEM, "eBay's live updates say the auction ended before Kestrel's bid.")
         closeLayerIfUnused()
-        val listing = reloadForResult()
-        val stillRunning = listing?.status == ListingStatus.ACTIVE && listing.endTimeUtcMillis > clock.nowUtcMillis()
-        if (listing != null && stillRunning) {
-            // The page says it is still running. The reload left the bid layer, so the layer is prepared again.
-            journal.event(
-                snipeId,
-                TimelineKind.PROBLEM,
-                "The item page still shows the auction running, so Kestrel carries on.",
-            )
-            watch.startFrom(listing)
-            endedSignalPending = false
-            layerOpen = false
-            typedAmount = null
-            return null
-        }
+        // The reload must leave time to prepare the bid again, so it gets no more than the page-ready deadline.
+        val budget = minOf(OPEN_ITEM_TIMEOUT, pageReadyByUtcMillis - clock.nowUtcMillis())
+        val listing = if (budget > 0) reloadForResult(budget) else null
         if (listing != null && listing.status == ListingStatus.ENDED) {
             val resolution = ResultResolver.resolve(listing, maxBid, bid.evidence(), originalEndUtcMillis)
             return finish(
@@ -847,12 +835,27 @@ internal class SnipeWindow(
                 ebayText = listing.endedText,
             )
         }
-        return finish(
-            SnipeOutcome.FAILED,
-            "eBay's live updates said the auction ended before the bid and the page could not confirm it, so Kestrel " +
-                "did not bid.",
-            userReason = NeedsUserReason.BID_FAILED,
-        )
+        if (listing?.status == ListingStatus.ACTIVE && listing.endTimeUtcMillis > clock.nowUtcMillis()) {
+            journal.event(
+                snipeId,
+                TimelineKind.PROBLEM,
+                "The item page still shows the auction running, so Kestrel carries on.",
+            )
+            watch.startFrom(listing)
+        } else {
+            // An ended listing has no bid button, so going on with the bid is harmless; stopping here could cost it.
+            journal.event(
+                snipeId,
+                TimelineKind.PROBLEM,
+                "The item page could not confirm that the auction ended, so Kestrel carries on with the bid.",
+            )
+            watch.disregardEndedSignal()
+        }
+        endedSignalPending = false
+        // The reload left the bid layer. Past the layer's time it is prepared again now, not at the lock.
+        layerOpen = false
+        typedAmount = null
+        return if (clock.nowUtcMillis() >= layerOpenAtUtcMillis) prepareLayer() else null
     }
 
     // The end moved far into the future (a long extension or a corrected end): release the phone and come back later.
@@ -1096,9 +1099,9 @@ internal class SnipeWindow(
                 "the result.",
         )
 
-    private suspend fun reloadForResult(): Listing? {
+    private suspend fun reloadForResult(timeoutMillis: Long = OPEN_ITEM_TIMEOUT): Listing? {
         val currentPage = page ?: replacePage() ?: return null
-        val call = callWithin(OPEN_ITEM_TIMEOUT) { currentPage.openItem(snipe.ref) }
+        val call = callWithin(timeoutMillis) { currentPage.openItem(snipe.ref) }
         val state = call.valueOrNull()
         if (state == null) {
             journal.event(snipeId, TimelineKind.PROBLEM, "${call.failureText("Reloading the item page")}.")
