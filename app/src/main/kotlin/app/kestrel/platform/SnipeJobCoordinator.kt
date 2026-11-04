@@ -49,6 +49,12 @@ internal class SnipeJobCoordinator(
     private val aftermath: JobAftermath,
     private val nowUtcMillis: () -> Long,
     private val onJobsChanged: () -> Unit,
+    /**
+     * Writes the WebView cookies to disk (CookieManager.flush). Chromium writes them every 30 s, but the service
+     * stops right after the last job and a cached process is frozen within seconds: a session cookie eBay rotated
+     * during the job would be lost with it, and the next snipe would find the user signed out.
+     */
+    private val flushCookies: suspend () -> Unit = {},
 ) {
     fun submit(request: SnipeRequest): Submission {
         val kind = request.action.jobKind
@@ -98,6 +104,12 @@ internal class SnipeJobCoordinator(
                     aftermath.jobFinished(request.snipeId, kind, startedAt)
                 } catch (error: Exception) {
                     Log.e(TAG, "Could not reschedule snipe ${request.snipeId} after ${kind.label}", error)
+                }
+                // Before the job leaves the registry, so the service cannot stop before the cookies are on disk.
+                try {
+                    flushCookies()
+                } catch (error: Exception) {
+                    Log.w(TAG, "Could not write the cookies after ${kind.label}", error)
                 }
             }
             registry.unregister(key, currentCoroutineContext().job)

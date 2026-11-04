@@ -239,6 +239,8 @@ class TestContainer(
     override val schedulePolicy: SchedulePolicy = FakePolicy()
     override val jobRunner: SnipeJobRunner get() = fakeRunner
     override val wakeLocks: WakeLocks get() = fakeWakeLocks
+    var cookieFlushes = 0
+    override val flushCookies: suspend () -> Unit = { cookieFlushes++ }
 }
 
 /** The intent an alarm will deliver. Robolectric 4.17 exposes the alarm's PendingIntent only as a deprecated field. */

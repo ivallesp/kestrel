@@ -48,6 +48,7 @@ class SnipeService : Service() {
                 aftermath = container.jobAftermath,
                 nowUtcMillis = { container.clock.nowUtcMillis() },
                 onJobsChanged = ::onJobsChanged,
+                flushCookies = container.flushCookies,
             )
     }
 

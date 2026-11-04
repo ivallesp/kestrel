@@ -180,6 +180,9 @@ open class AppContainer(
 
     internal open val wakeLocks: WakeLocks by lazy { AndroidWakeLocks(context) }
 
+    /** Writes the WebView cookies to disk; the service does it after every job. */
+    internal open val flushCookies: suspend () -> Unit = { EbaySession.flush() }
+
     internal val jobAftermath: JobAftermath by lazy {
         SnipeJobAftermath(
             store = repository,

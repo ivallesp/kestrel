@@ -24,6 +24,8 @@ class SnipeJobCoordinatorTest {
     private val aftermath = RecordingAftermath()
     private var changes = 0
 
+    private val flushes = mutableListOf<Boolean>()
+
     private fun TestScope.coordinator(
         locks: WakeLocks = wakeLocks,
         onJobsChanged: () -> Unit = { changes++ },
@@ -35,7 +37,23 @@ class SnipeJobCoordinatorTest {
         aftermath = aftermath,
         nowUtcMillis = { 1_000L },
         onJobsChanged = onJobsChanged,
+        // Records whether the job was still registered (so the service could not stop yet) when cookies were flushed.
+        flushCookies = { flushes += !registry.isEmpty() },
     )
+
+    @Test
+    fun cookiesAreWrittenToDiskAfterEveryJobBeforeTheServiceMayStop() =
+        runTest {
+            val coordinator = coordinator()
+            for (action in listOf(SnipeAction.WINDOW, SnipeAction.DRY_RUN, SnipeAction.CHECK)) {
+                coordinator.submit(request(action, snipeId = 7))
+                runCurrent()
+                runner.release(action.jobKind, 7)
+                advanceUntilIdle()
+            }
+
+            assertEquals(listOf(true, true, true), flushes)
+        }
 
     private fun request(
         action: SnipeAction,
