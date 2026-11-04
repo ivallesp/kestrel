@@ -8,6 +8,7 @@ import app.kestrel.ui.components.TimelineEntry
 import app.kestrel.ui.model.LotAction
 import app.kestrel.ui.model.LotPhoto
 import app.kestrel.ui.model.LotStatus
+import app.kestrel.ui.screens.add.WordsCheck
 import app.kestrel.ui.screens.result.ResultUiState
 import app.kestrel.ui.theme.StatusTone
 import java.time.Instant
@@ -190,4 +191,6 @@ data class EditSheetState(
     val saving: Boolean = false,
     /** Settings "Suggest odd pence". */
     val suggestOddPence: Boolean = true,
+    /** The max spelt out before it is saved, when it is more than three times the price (as in S2). */
+    val wordsCheck: WordsCheck? = null,
 )

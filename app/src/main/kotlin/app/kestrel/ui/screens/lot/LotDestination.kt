@@ -38,6 +38,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.kestrel.ui.model.DryRunCause
 import app.kestrel.ui.model.LotAction
 import app.kestrel.ui.model.LotStatus
+import app.kestrel.ui.screens.add.WordsCheckDialog
 import app.kestrel.ui.screens.result.ResultScreen
 import app.kestrel.ui.shell.Destination
 import app.kestrel.ui.shell.KestrelNavigator
@@ -168,6 +169,9 @@ fun LotDestination(
             onUseAmount = viewModel::useAmount,
             onSelectLead = viewModel::selectLead,
         )
+        sheet.wordsCheck?.let { check ->
+            WordsCheckDialog(check, onConfirm = viewModel::confirmWords, onDismiss = viewModel::dismissWords)
+        }
     }
 }
 

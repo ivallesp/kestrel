@@ -263,13 +263,23 @@ class LotViewModel(
             sheet.value = request.copy(error = siteRefusal)
             return
         }
-        sheet.value = request.copy(saving = true, error = null)
+        // An extra digit is the easy slip: a max far above the price is spelt out first, as S2 and Home's sheet do.
+        if (!request.wordsConfirmed && MaxRules.needsWordsCheck(max, snipe.lastPrice)) {
+            sheet.value = request.copy(checkingWords = max)
+            return
+        }
+        sheet.value = request.copy(saving = true, error = null, wordsConfirmed = false)
         viewModelScope.launch {
             val lead = request.leadSeconds
             if (request.kind == SheetKind.Set && lead != null && lead != snipe.leadSeconds) {
                 val leadResult = data.setLead(snipeId, lead)
                 if (leadResult is EditResult.NotAllowed) {
-                    sheet.value = request.copy(saving = false, error = leadResult.reason.withCurlyQuotes())
+                    sheet.value =
+                        request.copy(
+                            saving = false,
+                            error = leadResult.reason.withCurlyQuotes(),
+                            wordsConfirmed = false,
+                        )
                     return@launch
                 }
             }
@@ -288,7 +298,8 @@ class LotViewModel(
                 }
 
                 is EditResult.NotAllowed -> {
-                    sheet.value = request.copy(saving = false, error = result.reason.withCurlyQuotes())
+                    sheet.value =
+                        request.copy(saving = false, error = result.reason.withCurlyQuotes(), wordsConfirmed = false)
                 }
 
                 EditResult.NotFound -> {
@@ -296,6 +307,17 @@ class LotViewModel(
                 }
             }
         }
+    }
+
+    /** The max spelt out is what the user meant: save it. */
+    fun confirmWords() {
+        sheet.update { it?.copy(checkingWords = null, wordsConfirmed = true) }
+        save()
+    }
+
+    /** "Change max": back to the field. */
+    fun dismissWords() {
+        sheet.update { it?.copy(checkingWords = null) }
     }
 
     /** "Max changed to £130.00" with Undo until the edits lock; "Armed: bids Thu 13 Nov at 19:29:54" after a set. */

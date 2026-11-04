@@ -134,6 +134,34 @@ class LotViewModelTest {
         }
 
     @Test
+    fun aMaxFarAboveThePriceIsSpeltOutBeforeItIsSaved() =
+        runTest(dispatcher) {
+            // Armed at £120.00 with the price at £88.00: an extra zero typed by mistake.
+            val data = FakeLotData(LotFixtures.canonArmedToday, testScheduler::currentTime)
+            val viewModel = viewModelFor(data)
+
+            fun sheet() = (viewModel.state.value as LotPage.Live).state.sheet
+            viewModel.openSheet(SheetKind.Edit)
+            viewModel.maxInput.setTextAndPlaceCursorAtEnd("1200.00")
+            viewModel.save()
+            runCurrent()
+            assertTrue("nothing is stored yet", data.maxUpdates.isEmpty())
+            assertEquals("£1,200.00", sheet()?.wordsCheck?.amount)
+            assertEquals("Save max", sheet()?.wordsCheck?.confirmLabel)
+
+            viewModel.dismissWords()
+            runCurrent()
+            assertNull(sheet()?.wordsCheck)
+            assertTrue(data.maxUpdates.isEmpty())
+
+            viewModel.save()
+            runCurrent()
+            viewModel.confirmWords()
+            runCurrent()
+            assertEquals(listOf<Money?>(CatalogueFixture.gbp("1200.00")), data.maxUpdates)
+        }
+
+    @Test
     fun aRefusedSaveStaysInTheSheetWithKestrelsWords() =
         runTest(dispatcher) {
             val data = FakeLotData(fixture.canonFinalMinute, testScheduler::currentTime)

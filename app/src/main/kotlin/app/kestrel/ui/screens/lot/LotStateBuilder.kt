@@ -43,6 +43,7 @@ import app.kestrel.ui.model.action
 import app.kestrel.ui.model.chipText
 import app.kestrel.ui.model.detail
 import app.kestrel.ui.model.label
+import app.kestrel.ui.screens.add.AddPlanner
 import app.kestrel.ui.screens.add.MaxRules
 import app.kestrel.ui.screens.result.ResultInputs
 import app.kestrel.ui.screens.result.ResultStateBuilder
@@ -70,7 +71,8 @@ data class LotInputs(
 
 /**
  * An open edit sheet: which one, the lead the user picked in it, why the last save was refused, a save running, and
- * whether it suggests odd pence (Settings).
+ * whether it suggests odd pence (Settings). [checkingWords] is a max far above the price, spelt out before it is
+ * saved; [wordsConfirmed] once the user said it is what they meant.
  */
 @Immutable
 data class SheetRequest(
@@ -79,6 +81,8 @@ data class SheetRequest(
     val error: String? = null,
     val saving: Boolean = false,
     val suggestOddPence: Boolean = true,
+    val checkingWords: Money? = null,
+    val wordsConfirmed: Boolean = false,
 )
 
 /** Picks the page of the lot destination: the live detail, or the result once it is known (S3 crossfades into S4). */
@@ -829,6 +833,10 @@ object LotStateBuilder {
             error = request.error,
             saving = request.saving,
             suggestOddPence = request.suggestOddPence,
+            wordsCheck =
+                request.checkingWords?.let { checking ->
+                    snipe.lastPrice?.let { price -> AddPlanner.wordsCheck(checking, price, confirmLabel = primary) }
+                },
         )
     }
 
