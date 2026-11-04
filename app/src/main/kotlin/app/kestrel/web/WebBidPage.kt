@@ -513,7 +513,10 @@ class WebBidPage internal constructor(
         }
     }
 
-    /** True on this item's page (/itm/<id>, with or without a title slug) and on eBay's bid page (/bfl/placebid). */
+    /**
+     * True on this item's page (/itm/<id>, with or without a title slug or more path, as the engine reads item numbers)
+     * and on eBay's bid page (/bfl/placebid).
+     */
     private fun onItemOrBidPage(url: String): Boolean {
         if (url.isEmpty()) return true
         val path =
@@ -524,7 +527,7 @@ class WebBidPage internal constructor(
             }
         if (path.startsWith("/bfl/placebid")) return true
         val itemId = ref?.itemId ?: return true
-        return Regex("^/itm/(?:[^/]+/)?$itemId/?$").matches(path)
+        return Regex("^/itm/(?:[^/]+/)?$itemId(?:/.*)?$").matches(path)
     }
 
     private suspend fun stateForPage(
@@ -949,7 +952,8 @@ class WebBidPage internal constructor(
                 else -> null
             }
         if (pageReason != null) return state.title.ifBlank { state.url } to pageReason
-        state.interstitial?.let {
+        // A modal Kestrel cannot read (a progress overlay while eBay sends the bid) is not taken for a check.
+        state.interstitial?.takeIf { it.kind != "unknown" }?.let {
             val reason = if (it.kind == "signIn") NeedsUserReason.SIGN_IN else NeedsUserReason.VERIFICATION
             return it.text.ifBlank { it.kind } to reason
         }

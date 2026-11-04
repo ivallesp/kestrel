@@ -820,6 +820,37 @@ class WebBidPageTest {
         }
 
     @Test
+    fun `a modal Kestrel cannot read after the press, such as a progress overlay, is not taken for a check`() =
+        runTest {
+            ebay.replyNotices = { emptyList() }
+            ebay.confirmFinishedPerf = null
+            ebay.interstitialAfterPress = "unknown" to ""
+            val page = page().readyToSubmit()
+            page.submit()
+
+            val reply = page.awaitReply(4_000)
+
+            assertTrue(reply.toString(), reply is BidReply.Unconfirmed)
+        }
+
+    @Test
+    fun `an item page address with a title slug or more path is still the item's`() =
+        runTest {
+            for (address in listOf(
+                "https://www.ebay.co.uk/itm/Britain-after-Rome/127820098965",
+                "https://www.ebay.co.uk/itm/127820098965?hash=item1dc2&var=0",
+                "https://www.ebay.co.uk/itm/127820098965/",
+            )) {
+                val driver = FakePageDriver()
+                val ebay = SimulatedEbayPage(driver)
+                ebay.url = address
+                val page = WebBidPage(driver, PageScript("var VERSION = '1';"), parsers, TestClock(testScheduler))
+                page.openItem(ukItem)
+                assertTrue(address, page.openBidLayer() is LayerState.Ready)
+            }
+        }
+
+    @Test
     fun `a captcha page after the press is the user's`() =
         runTest {
             ebay.replyNotices = { emptyList() }
