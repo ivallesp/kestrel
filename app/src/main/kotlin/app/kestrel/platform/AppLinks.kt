@@ -56,6 +56,8 @@ object AppLinks {
 /** Broadcasts from notification buttons to [NotificationActionReceiver]. */
 internal object NotificationActions {
     const val ACTION_RAISE_MAX = "app.kestrel.action.RAISE_MAX"
+    const val ACTION_STOP_SNIPING = "app.kestrel.action.STOP_SNIPING"
+    const val ACTION_UNDO_CANCEL = "app.kestrel.action.UNDO_CANCEL"
     const val ACTION_WINDOW_DISMISSED = "app.kestrel.action.WINDOW_DISMISSED"
 
     /** The RemoteInput key of the typed new max. */
@@ -84,6 +86,16 @@ internal object NotificationActions {
         context: Context,
         snipeId: Long,
     ): Intent = intent(context, ACTION_WINDOW_DISMISSED, snipeId)
+
+    fun stopSniping(
+        context: Context,
+        snipeId: Long,
+    ): Intent = intent(context, ACTION_STOP_SNIPING, snipeId)
+
+    fun undoCancel(
+        context: Context,
+        snipeId: Long,
+    ): Intent = intent(context, ACTION_UNDO_CANCEL, snipeId)
 
     private fun intent(
         context: Context,

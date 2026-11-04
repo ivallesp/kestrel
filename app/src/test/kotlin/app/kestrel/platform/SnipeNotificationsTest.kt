@@ -234,12 +234,12 @@ class SnipeNotificationsTest {
         assertEquals(NotificationChannels.ATTENTION, alert.channelId)
         assertEquals("Price passed your max", alert.title())
         assertEquals("Now GBP 52.00, your max is GBP 48.00", alert.text())
-        assertEquals(listOf("Raise max", "Open"), alert.actions.map { it.title.toString() })
+        assertEquals(listOf("Raise max", "Stop sniping", "Open"), alert.actions.map { it.title.toString() })
 
         val raise = alert.actions[0]
         val input = raise.remoteInputs.single()
         assertEquals(NotificationActions.KEY_NEW_MAX, input.resultKey)
-        assertEquals("New max (£)", input.label.toString())
+        assertEquals("New max, GBP 53.00 or more", input.label.toString())
         val reply = shadowOf(raise.actionIntent)
         assertTrue("the reply intent must be mutable", reply.flags and PendingIntent.FLAG_MUTABLE != 0)
         assertEquals(NotificationActionReceiver::class.java.name, reply.savedIntent.component?.className)
@@ -248,7 +248,7 @@ class SnipeNotificationsTest {
         assertEquals(5300L, reply.savedIntent.getLongExtra(NotificationActions.EXTRA_MINIMUM_MINOR, 0))
         assertEquals(5200L, reply.savedIntent.getLongExtra(NotificationActions.EXTRA_CURRENT_MINOR, 0))
 
-        val open = shadowOf(alert.actions[1].actionIntent).savedIntent
+        val open = shadowOf(alert.actions[2].actionIntent).savedIntent
         assertEquals(MainActivity::class.java.name, open.component?.className)
         assertEquals(5L, AppLinks.snipeIdFrom(open))
     }
@@ -302,6 +302,18 @@ class SnipeNotificationsTest {
         notifications.withdrawStale(overMax.copy(status = SnipeStatus.ARMED, maxBid = gbp("80.00")))
         assertNull(posted(NotificationIds.priceAlert(snipe.id)))
         assertNull(posted(NotificationIds.result(snipe.id)))
+    }
+
+    @Test
+    fun theRaiseMaxReplyNamesTheMinimumAndOffersItAndTheNextStep() {
+        val overMax = snipe.copy(status = SnipeStatus.PRICE_OVER_MAX, lastPrice = gbp("2150.00"), lastBidCount = 9)
+        notifications.priceOverMax(overMax, gbp("2150.00"), gbp("2200.00"))
+
+        val raise = posted(NotificationIds.priceAlert(snipe.id))!!.actions.first()
+        val input = raise.remoteInputs.single()
+        // DESIGN 5.2: the minimum as the hint (a RemoteInput has only its label), and two choices.
+        assertEquals("New max, GBP 2200.00 or more", input.label.toString())
+        assertEquals(listOf("GBP 2200.00", "GBP 2250.00"), input.choices.map { it.toString() })
     }
 
     @Test

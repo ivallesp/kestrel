@@ -14,6 +14,7 @@ import android.provider.Settings
 import android.util.Log
 import app.kestrel.R
 import app.kestrel.data.SnipeRules
+import app.kestrel.ebay.BidIncrements
 import app.kestrel.engine.EngineClock
 import app.kestrel.engine.NeedsUserReason
 import app.kestrel.engine.SnipeNotifier
@@ -285,8 +286,32 @@ class SnipeNotifications internal constructor(
                 .setContentText(problem ?: texts.priceOverMaxText(snipe, current))
                 .setStyle(Notification.BigTextStyle().bigText(detail))
                 .setCategory(Notification.CATEGORY_STATUS)
-        if (canRaise) builder.addAction(raiseMaxAction(snipe, current, minimumNext))
+        if (canRaise) {
+            builder.addAction(raiseMaxAction(snipe, current, minimumNext))
+            // DESIGN 5.2: the lot goes back to watching; the alert then says how to set a max again.
+            builder.addAction(stopSnipingAction(snipe.id))
+        }
         post(NotificationIds.priceAlert(snipe.id), builder.addAction(openAction(snipe.id)).build())
+    }
+
+    /** After "Stop sniping" on the price alert: the lot only watches now, and the lot screen sets a max again. */
+    internal fun showStoppedSniping(snipe: Snipe) {
+        val setAMax =
+            Notification.Action
+                .Builder(
+                    Icon.createWithResource(context, R.drawable.ic_action_edit),
+                    SET_A_MAX_LABEL,
+                    openSnipe(snipe.id),
+                ).build()
+        val notification =
+            alert(snipe.id, R.drawable.ic_notification_trending_up)
+                .setContentTitle(texts.stoppedSnipingTitle(snipe))
+                .setContentText(texts.stoppedSnipingText())
+                .setCategory(Notification.CATEGORY_STATUS)
+                .setTimeoutAfter(CONFIRMATION_TIMEOUT_MILLIS)
+                .addAction(setAMax)
+                .build()
+        post(NotificationIds.priceAlert(snipe.id), notification)
     }
 
     internal fun showRaiseMaxDone(
@@ -454,7 +479,15 @@ class SnipeNotifications internal constructor(
             .setAutoCancel(true)
             .setContentIntent(openSnipe(snipe.id))
             .apply { photo?.let { setLargeIcon(it) } }
-            .build()
+            .apply {
+                // DESIGN 5.3: a snipe its group cancelled can come back while its auction runs.
+                val canComeBack = SnipeRules.uncancelRefusal(snipe, clock.nowUtcMillis()) == null
+                if (result.outcome == SnipeOutcome.SKIPPED_BY_GROUP &&
+                    canComeBack
+                ) {
+                    addAction(undoCancelAction(snipe.id))
+                }
+            }.build()
     }
 
     // The quiet service notification and clean-up.
@@ -519,7 +552,15 @@ class SnipeNotifications internal constructor(
     ): Notification.Action {
         val currency =
             snipe.maxBid?.currency ?: snipe.lastPrice?.currency ?: current?.currency ?: snipe.ref.site.currency
-        val input = RemoteInput.Builder(NotificationActions.KEY_NEW_MAX).setLabel(texts.raiseMaxLabel(currency)).build()
+        val minimum = minimumNext?.takeIf { it.currency == currency }
+        val input =
+            RemoteInput
+                .Builder(NotificationActions.KEY_NEW_MAX)
+                .setLabel(texts.raiseMaxLabel(currency, minimum))
+                .apply {
+                    // DESIGN 5.2: eBay's minimum and the step after it ("£2,200.00", "£2,250.00").
+                    minimum?.let { setChoices(arrayOf(texts.amount(it), texts.amount(it + nextStep(snipe, it)))) }
+                }.build()
         // The system writes the typed text into the intent, so this one PendingIntent must be mutable.
         val reply =
             PendingIntent.getBroadcast(
@@ -533,6 +574,26 @@ class SnipeNotifications internal constructor(
             .addRemoteInput(input)
             .setAllowGeneratedReplies(false)
             .setSemanticAction(Notification.Action.SEMANTIC_ACTION_REPLY)
+            .build()
+    }
+
+    private fun nextStep(
+        snipe: Snipe,
+        amount: Money,
+    ): Money = BidIncrements.increment(snipe.ref.site, amount)
+
+    private fun stopSnipingAction(snipeId: Long): Notification.Action {
+        val stop =
+            broadcast(NotificationActions.stopSniping(context, snipeId), snipeId, NotificationIds.Slot.RAISE_MAX)
+        return Notification.Action
+            .Builder(Icon.createWithResource(context, R.drawable.ic_action_close), STOP_SNIPING_LABEL, stop)
+            .build()
+    }
+
+    private fun undoCancelAction(snipeId: Long): Notification.Action {
+        val undo = broadcast(NotificationActions.undoCancel(context, snipeId), snipeId, NotificationIds.Slot.RESULT)
+        return Notification.Action
+            .Builder(Icon.createWithResource(context, R.drawable.ic_action_open), UNDO_CANCEL_LABEL, undo)
             .build()
     }
 
@@ -645,6 +706,9 @@ class SnipeNotifications internal constructor(
         const val RAISE_MAX_LABEL = "Raise max"
         const val OPEN_LABEL = "Open"
         const val EDIT_MAX_LABEL = "Edit max"
+        const val STOP_SNIPING_LABEL = "Stop sniping"
+        const val SET_A_MAX_LABEL = "Set a max"
+        const val UNDO_CANCEL_LABEL = "Undo cancel"
 
         /** Phases once the bid went out: the countdown follows the end of the auction then. */
         val AFTER_THE_BID =

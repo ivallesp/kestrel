@@ -165,6 +165,7 @@ class NotificationTextsTest {
             texts.priceOverMaxDetail(snipe, gbp("52.00"), gbp("53.00"), problem = null),
         )
         assertEquals("New max (£)", texts.raiseMaxLabel("GBP"))
+        assertEquals("New max, GBP 2200.00 or more", texts.raiseMaxLabel("GBP", gbp("2200.00")))
         assertEquals("New max (US$)", texts.raiseMaxLabel("USD"))
     }
 

@@ -19,6 +19,8 @@ import app.kestrel.data.testFormatMoney
 import app.kestrel.data.testListing
 import app.kestrel.model.Money
 import app.kestrel.model.Snipe
+import app.kestrel.model.SnipeOutcome
+import app.kestrel.model.SnipeResult
 import app.kestrel.model.SnipeStatus
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -70,6 +72,7 @@ class NotificationActionHandlerTest {
                 cancelSchedule = { cancelled += it },
                 stopJobs = { registry.cancelAll(it) },
                 clearNotifications = { notifications.cancelForSnipe(it) },
+                withdrawStaleAlerts = { notifications.withdrawStale(it) },
             )
         val parse: (
             String,
@@ -119,6 +122,59 @@ class NotificationActionHandlerTest {
         shadowOf(manager).getNotification(NotificationIds.priceAlert(snipeId))
 
     private fun Notification.text(): String? = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
+
+    @Test
+    fun stopSnipingFromTheAlertWatchesTheLotAndSaysHowToSetAMaxAgain() =
+        runTest {
+            val snipe = overMaxSnipe()
+            notifications.priceOverMax(snipe, gbp("52.00"), gbp("53.00"))
+            assertEquals(
+                listOf("Raise max", "Stop sniping", "Open"),
+                alert(snipe.id)!!.actions.map { it.title.toString() },
+            )
+
+            handler.handle(shadowOf(alert(snipe.id)!!.actions[1].actionIntent).savedIntent)
+
+            val watched = repository.snipe(snipe.id)!!
+            assertNull(watched.maxBid)
+            assertEquals(SnipeStatus.WATCHING, watched.status)
+            val stopped = alert(snipe.id)!!
+            assertEquals("Stopped sniping. Set a max again in Kestrel.", stopped.text())
+            assertEquals(listOf("Set a max"), stopped.actions.map { it.title.toString() })
+        }
+
+    @Test
+    fun aSnipeItsGroupCancelledComesBackFromItsResult() =
+        runTest {
+            val snipe = overMaxSnipe()
+            repository.updateMax(snipe.id, gbp("60.00"))
+            val skipped =
+                repository.snipe(snipe.id)!!.copy(
+                    status = SnipeStatus.SKIPPED_BY_GROUP,
+                    result =
+                        SnipeResult(
+                            SnipeOutcome.SKIPPED_BY_GROUP,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            "You won another.",
+                        ),
+                )
+            repository.update(skipped)
+            notifications.result(skipped, skipped.result!!)
+            val result = shadowOf(manager).getNotification(NotificationIds.result(snipe.id))!!
+            assertEquals(listOf("Undo cancel"), result.actions.map { it.title.toString() })
+
+            handler.handle(shadowOf(result.actions.single().actionIntent).savedIntent)
+
+            assertEquals(SnipeStatus.ARMED, repository.snipe(snipe.id)!!.status)
+            assertNull(
+                "the result no longer applies",
+                shadowOf(manager).getNotification(NotificationIds.result(snipe.id)),
+            )
+        }
 
     @Test
     fun aValidReplyRaisesTheMaxReschedulesAndConfirms() =

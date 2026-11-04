@@ -11,7 +11,10 @@ import app.kestrel.model.Money
 import app.kestrel.model.Snipe
 import kotlinx.coroutines.launch
 
-/** Handles the buttons on Kestrel's notifications: Raise max (typed reply) and a dismissed Live Update. */
+/**
+ * Handles the buttons on Kestrel's notifications: Raise max (typed reply) and Stop sniping on the price alert, Undo
+ * cancel on a result its group cancelled, and a dismissed Live Update.
+ */
 class NotificationActionReceiver : BroadcastReceiver() {
     override fun onReceive(
         context: Context,
@@ -47,6 +50,8 @@ internal class NotificationActionHandler(
         if (snipeId <= 0L) return
         when (intent.action) {
             NotificationActions.ACTION_RAISE_MAX -> raiseMax(snipeId, intent)
+            NotificationActions.ACTION_STOP_SNIPING -> stopSniping(snipeId)
+            NotificationActions.ACTION_UNDO_CANCEL -> undoCancel(snipeId)
             NotificationActions.ACTION_WINDOW_DISMISSED -> notifications.onWindowDismissed(snipeId)
         }
     }
@@ -98,6 +103,43 @@ internal class NotificationActionHandler(
                 notifications.cancelPriceAlert(snipe.id)
             }
         }
+    }
+
+    /** The price alert's "Stop sniping": the lot watches without a max (DESIGN 5.2). */
+    private suspend fun stopSniping(snipeId: Long) {
+        val snipe = repository.snipe(snipeId)
+        if (snipe == null || snipe.status.isFinal) {
+            notifications.cancelPriceAlert(snipeId)
+            return
+        }
+        when (val result = actions.updateMax(snipeId, null)) {
+            is EditResult.Done -> {
+                notifications.showStoppedSniping(result.snipe)
+            }
+
+            is EditResult.NotAllowed -> {
+                notifications.showPriceAlert(
+                    snipe,
+                    snipe.lastPrice,
+                    minimumFor(snipe),
+                    result.reason,
+                )
+            }
+
+            EditResult.NotFound -> {
+                notifications.cancelPriceAlert(snipeId)
+            }
+        }
+    }
+
+    /**
+     * "Undo cancel" on the result of a snipe its group cancelled: it bids again, on its own. Once that is no longer
+     * possible the result is shown again without the button.
+     */
+    private suspend fun undoCancel(snipeId: Long) {
+        if (actions.uncancel(snipeId) is EditResult.Done) return
+        val snipe = repository.snipe(snipeId) ?: return
+        snipe.result?.let { notifications.result(snipe, it) }
     }
 
     private fun minimumFor(snipe: Snipe): Money? =

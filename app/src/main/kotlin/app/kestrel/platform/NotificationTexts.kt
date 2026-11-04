@@ -120,7 +120,23 @@ internal class NotificationTexts(
         return listOfNotNull(problem, "${priceOverMaxText(snipe, current)}. $advice", snipe.title).joinToString("\n")
     }
 
-    fun raiseMaxLabel(currency: String): String = "New max (${currencySymbol(currency)})"
+    /**
+     * The reply's label: "New max, £2,200.00 or more" (DESIGN 5.2's hint, since a RemoteInput has only its label), or
+     * "New max (£)" when eBay's minimum is not known.
+     */
+    fun raiseMaxLabel(
+        currency: String,
+        minimum: Money? = null,
+    ): String =
+        minimum?.takeIf { it.currency == currency }?.let { "New max, ${formatMoney(it)} or more" }
+            ?: "New max (${currencySymbol(currency)})"
+
+    /** An amount as the notifications write it: "£2,200.00". */
+    fun amount(money: Money): String = formatMoney(money)
+
+    fun stoppedSnipingTitle(snipe: Snipe): String = fitWithItem("Stopped sniping", snipe.title)
+
+    fun stoppedSnipingText(): String = "Stopped sniping. Set a max again in Kestrel."
 
     fun raiseMaxDoneTitle(newMax: Money): String = fit("Max raised to ${formatMoney(newMax)}")
 
