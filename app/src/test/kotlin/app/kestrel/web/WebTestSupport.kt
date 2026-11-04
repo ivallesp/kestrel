@@ -539,8 +539,16 @@ internal class SimulatedEbayPage(
         )
     }
 
+    /** The bid button leads to a page of its own on eBay's site (a check page) instead of the layer. */
+    var pageOnBidButton: String? = null
+
     private fun showLayer() {
         bidButtonPresses += 1
+        pageOnBidButton?.let {
+            url = it
+            title = "Confirm your identity | eBay"
+            return
+        }
         if (interstitial != null) interstitialShown = true else layerOpen = true
         dialogOnLayerOpen?.let { driver.pageOpensDialog(it) }
     }

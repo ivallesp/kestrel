@@ -1447,10 +1447,33 @@
       result.ready = !!submit.element && !result.interstitial;
     } else if (!interstitial) {
       var text = textOf(layer.element, 300);
-      if (TABLE.texts.layerError[0].test(text)) result.layerError = truncate(text, 300);
-      else result.pendingDialogText = truncate(text, 300) || null;
+      if (TABLE.texts.layerError[0].test(text)) {
+        result.layerError = truncate(text, 300);
+      } else {
+        // A step eBay loads into a frame (an identity or phone check) has no text or field Kestrel can see.
+        var frames = framesIn(layer.element.closest(DIALOG_SELECTOR) || layer.element);
+        var framed = frames.length > 0 ? 'eBay shows a page from ' + frames.map(frameHost).join(', ') + ' in its dialog' : '';
+        result.pendingDialogText = truncate(text, 300) || framed || null;
+      }
     }
     return result;
+  }
+
+  var DIALOG_SELECTOR = TABLE.dialogs.map(function (entry) {
+    return entry[0];
+  }).join(', ');
+
+  function framesIn(root) {
+    return queryAll(root, 'iframe, frame').filter(isRendered);
+  }
+
+  // Only the host: a frame's address can carry tokens.
+  function frameHost(frame) {
+    try {
+      return new URL(frame.getAttribute('src') || '', location.href).host || 'an unnamed source';
+    } catch (error) {
+      return 'an unnamed source';
+    }
   }
 
   function nativeValueSetter(input) {
@@ -1802,6 +1825,10 @@
       dialogs: renderedDialogs().slice(0, 5).map(function (dialog) {
         return { role: dialog.getAttribute('role'), label: dialog.getAttribute('aria-label'),
           text: truncate(textOf(dialog, REPORT_TEXT_LIMIT), REPORT_TEXT_LIMIT) };
+      }),
+      frames: framesIn(document).slice(0, 10).map(function (frame) {
+        var holder = layer ? (layer.element.closest(DIALOG_SELECTOR) || layer.element) : null;
+        return { host: frameHost(frame), inLayer: !!(holder && holder.contains(frame)) };
       }),
       notices: (layer ? noticeTexts(layer.element) : noticeTexts(pageNoticeRoot())).slice(0, 10).map(function (text) {
         return truncate(text, REPORT_TEXT_LIMIT);

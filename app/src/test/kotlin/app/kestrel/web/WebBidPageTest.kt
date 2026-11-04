@@ -253,6 +253,19 @@ class WebBidPageTest {
         }
 
     @Test
+    fun `a check page eBay opens instead of the layer is handed to the user at once`() =
+        runTest {
+            ebay.pageOnBidButton = "https://www.ebay.co.uk/verify/identity?ru=x"
+            val page = page()
+            page.openItem(ukItem)
+            val startedAt = testScheduler.currentTime
+            val layer = page.openBidLayer()
+            assertTrue(layer.toString(), layer is LayerState.NeedsUser)
+            assertEquals("Confirm your identity | eBay", (layer as LayerState.NeedsUser).text)
+            assertTrue("no wait for a layer that is not coming", testScheduler.currentTime - startedAt < 8_000)
+        }
+
+    @Test
     fun `eBay's layer error fails with its text`() =
         runTest {
             ebay.layerError = "Oops. Looks like we're having trouble connecting to our server."

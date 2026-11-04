@@ -24,6 +24,8 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import java.net.URI
+import java.net.URISyntaxException
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.roundToLong
 
@@ -471,6 +473,8 @@ class WebBidPage internal constructor(
         val kind = parsers.classify(state.url, state.title)
         if (state.signInRequired || kind == PageKind.SIGN_IN) return LayerState.NeedsSignIn
         if (kind != PageKind.NORMAL) return stateForPage(kind, state.title, state.url)
+        // eBay's own site, but neither this item nor its bid page: a step of its own (a check page) for the user.
+        if (!onItemOrBidPage(state.url)) return LayerState.NeedsUser(state.title.ifBlank { state.url }, report())
         state.interstitial?.let { return LayerState.NeedsUser(it.text.ifBlank { it.kind }, report()) }
         val submit = state.submit
         if (state.ready && state.input != null && submit != null && submit.found) {
@@ -500,6 +504,20 @@ class WebBidPage internal constructor(
                 LayerState.Failed("eBay's bid layer did not open", report())
             }
         }
+    }
+
+    /** True on this item's page (/itm/<id>, with or without a title slug) and on eBay's bid page (/bfl/placebid). */
+    private fun onItemOrBidPage(url: String): Boolean {
+        if (url.isEmpty()) return true
+        val path =
+            try {
+                URI(url).path.orEmpty()
+            } catch (unreadable: URISyntaxException) {
+                return false
+            }
+        if (path.startsWith("/bfl/placebid")) return true
+        val itemId = ref?.itemId ?: return true
+        return Regex("^/itm/(?:[^/]+/)?$itemId/?$").matches(path)
     }
 
     private suspend fun stateForPage(

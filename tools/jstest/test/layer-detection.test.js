@@ -99,3 +99,20 @@ test('in a dialog that is not known to be the bid layer, only a field that says 
     '<input class="textbox__control" id="s0-1-2"><button class="btn btn--primary" type="button">Bid</button></div>');
   assert.equal(call(labelled.window, 'layerState').ready, true);
 });
+
+test('a check eBay hosts in a frame inside its dialog is pending for the user, not a layer that did not open', () => {
+  // The 2026-04 UK bid dialog keeps a section for content eBay loads from elsewhere; an identity check can arrive there.
+  const page = openPage(ITEM,
+    '<div class="lightbox-dialog txn-wrapper-vim__dialog" role="dialog" aria-modal="true" data-rect="0 60 411 760">' +
+    '<div class="lightbox-dialog__window" data-rect="0 60 411 760">' +
+    '<section class="txn-wrapper__external-content" data-rect="0 60 411 700">' +
+    '<iframe src="https://pages.ebay.co.uk/verify/phone?token=secret" data-rect="0 60 411 700"></iframe>' +
+    '</section></div></div>');
+  const layer = call(page.window, 'layerState');
+  assert.equal(layer.input, null);
+  assert.ok(layer.pendingDialogText, JSON.stringify(layer));
+  assert.match(layer.pendingDialogText, /pages\.ebay\.co\.uk/);
+  const report = call(page.window, 'report');
+  assert.deepEqual(report.frames, [{ host: 'pages.ebay.co.uk', inLayer: true }]);
+  assert.ok(!JSON.stringify(report).includes('secret'), 'frame addresses are reported by host only');
+});
