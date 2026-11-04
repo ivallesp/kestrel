@@ -1,0 +1,16 @@
+{
+  "name": "kestrel-jstest",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tests for app/src/main/assets/js/kestrel.js in jsdom, against archived eBay item pages and a synthetic bid layer. No test sends a network request.",
+  "license": "UNLICENSED",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "devDependencies": {
+    "jsdom": "29.1.1"
+  }
+}
