@@ -37,11 +37,9 @@ class NotificationActionReceiver : BroadcastReceiver() {
 
 internal class NotificationActionHandler(
     private val repository: SnipeRepository,
+    private val actions: SnipeActions,
     private val notifications: SnipeNotifications,
-    private val jobs: SnipeJobRegistry,
     private val rules: RaiseMaxRules,
-    private val reschedule: (Snipe) -> Unit,
-    private val cancelSchedule: (Long) -> Unit,
     private val minimumNextBid: (Snipe) -> Money?,
 ) {
     suspend fun handle(intent: Intent) {
@@ -88,9 +86,8 @@ internal class NotificationActionHandler(
         current: Money?,
         minimum: Money?,
     ) {
-        when (val result = repository.updateMax(snipe.id, newMax)) {
+        when (val result = actions.updateMax(snipe.id, newMax)) {
             is EditResult.Done -> {
-                reschedule(result.snipe)
                 notifications.showRaiseMaxDone(result.snipe, newMax)
             }
 
@@ -104,23 +101,14 @@ internal class NotificationActionHandler(
         }
     }
 
+    /** [SnipeActions.cancel] already stops everything; only a refusal or a vanished snipe needs more here. */
     private suspend fun cancelSnipe(snipeId: Long) {
-        when (val result = repository.cancel(snipeId)) {
-            is EditResult.Done -> {
-                // Stored first, so an engine that re-reads the snipe already sees it cancelled.
-                jobs.cancelAll(snipeId)
-                cancelSchedule(snipeId)
-                notifications.cancelForSnipe(snipeId)
-            }
-
-            is EditResult.NotAllowed -> {
-                repository.snipe(snipeId)?.let { notifications.showCancelRefused(it, result.reason) }
-            }
-
-            EditResult.NotFound -> {
-                cancelSchedule(snipeId)
-                notifications.cancelForSnipe(snipeId)
-            }
+        val result = actions.cancel(snipeId)
+        if (result is EditResult.NotAllowed) {
+            val snipe = repository.snipe(snipeId) ?: return
+            notifications.showCancelRefused(snipe, result.reason)
+        } else if (result == EditResult.NotFound) {
+            notifications.cancelForSnipe(snipeId)
         }
     }
 

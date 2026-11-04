@@ -41,6 +41,7 @@ import app.kestrel.platform.ReadinessProbes
 import app.kestrel.platform.RescheduleWorker
 import app.kestrel.platform.SchedulePlanner
 import app.kestrel.platform.SchedulePolicy
+import app.kestrel.platform.SnipeActions
 import app.kestrel.platform.SnipeJobAftermath
 import app.kestrel.platform.SnipeJobRegistry
 import app.kestrel.platform.SnipeJobRunner
@@ -123,6 +124,17 @@ open class AppContainer(
 
     val readiness: Readiness by lazy { Readiness(context, readinessProbes, notificationTexts::dayAndTime) }
 
+    /** The UI changes snipes through this, so alarms, running jobs and notifications always follow. */
+    val snipeActions: SnipeActions by lazy {
+        SnipeActions(
+            repository = repository,
+            reschedule = { scheduler.schedule(it) },
+            cancelSchedule = { scheduler.cancel(it) },
+            stopJobs = { jobRegistry.cancelAll(it) },
+            clearNotifications = { notifications.cancelForSnipe(it) },
+        )
+    }
+
     internal open val notificationTexts: NotificationTexts by lazy {
         NotificationTexts(formatMoney = formatMoney, use24HourClock = { DateFormat.is24HourFormat(context) })
     }
@@ -182,11 +194,9 @@ open class AppContainer(
     internal val notificationActions: NotificationActionHandler by lazy {
         NotificationActionHandler(
             repository = repository,
+            actions = snipeActions,
             notifications = notifications,
-            jobs = jobRegistry,
             rules = RaiseMaxRules(parseAmount = parseMoney, formatMoney = formatMoney),
-            reschedule = { scheduler.schedule(it) },
-            cancelSchedule = { scheduler.cancel(it) },
             minimumNextBid = minimumNextBid,
         )
     }

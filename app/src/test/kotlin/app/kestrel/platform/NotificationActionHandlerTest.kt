@@ -62,30 +62,26 @@ class NotificationActionHandlerTest {
     fun setUp() {
         NotificationChannels.create(context)
         database = KestrelDatabase.inMemory(context)
-        repository =
-            SnipeRepository(
-                database,
-                ArmedSnipesCopy(
-                    File(context.noBackupFilesDir, "armed-${System.nanoTime()}.json"),
-                ),
-                {
-                    clock.now
-                },
-                ::testFormatMoney,
+        val armedCopy = ArmedSnipesCopy(File(context.noBackupFilesDir, "armed-${System.nanoTime()}.json"))
+        repository = SnipeRepository(database, armedCopy, { clock.now }, ::testFormatMoney)
+        val actions =
+            SnipeActions(
+                repository = repository,
+                reschedule = { rescheduled += it },
+                cancelSchedule = { cancelled += it },
+                stopJobs = { registry.cancelAll(it) },
+                clearNotifications = { notifications.cancelForSnipe(it) },
             )
+        val parse: (
+            String,
+            String,
+        ) -> Money? = { text, currency -> text.toBigDecimalOrNull()?.let { Money.of(it, currency) } }
         handler =
             NotificationActionHandler(
                 repository = repository,
+                actions = actions,
                 notifications = notifications,
-                jobs = registry,
-                rules =
-                    RaiseMaxRules({ text, currency ->
-                        text.toBigDecimalOrNull()?.let {
-                            Money.of(it, currency)
-                        }
-                    }, ::testFormatMoney),
-                reschedule = { rescheduled += it },
-                cancelSchedule = { cancelled += it },
+                rules = RaiseMaxRules(parse, ::testFormatMoney),
                 minimumNextBid = { engineMinimum },
             )
     }
