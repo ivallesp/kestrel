@@ -454,6 +454,11 @@ class WebBidPage internal constructor(
                 LayerState.NeedsSignIn
             }
 
+            // A modal, or a dialog over the bid button: a person could not press through it either.
+            opened.reason == "dialogInTheWay" -> {
+                LayerState.NeedsUser(opened.text ?: "eBay shows a dialog in front of its bid button", report())
+            }
+
             else -> {
                 LayerState.Failed(
                     "Kestrel could not press eBay's bid button (${opened.reason ?: opened.error})",

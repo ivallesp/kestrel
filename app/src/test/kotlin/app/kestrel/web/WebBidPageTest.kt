@@ -253,6 +253,20 @@ class WebBidPageTest {
         }
 
     @Test
+    fun `a modal in front of the bid button is the user's, not pressed through`() =
+        runTest {
+            ebay.touchReachesPage = false
+            driver.on("openBidLayer") {
+                json(mapOf("ok" to false, "reason" to "dialogInTheWay", "text" to "Choose how you want to pay"))
+            }
+            val page = page()
+            page.openItem(ukItem)
+            val layer = page.openBidLayer()
+            assertTrue(layer.toString(), layer is LayerState.NeedsUser)
+            assertEquals("Choose how you want to pay", (layer as LayerState.NeedsUser).text)
+        }
+
+    @Test
     fun `a check page eBay opens instead of the layer is handed to the user at once`() =
         runTest {
             ebay.pageOnBidButton = "https://www.ebay.co.uk/verify/identity?ru=x"

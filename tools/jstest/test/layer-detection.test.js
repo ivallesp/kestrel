@@ -100,6 +100,38 @@ test('in a dialog that is not known to be the bid layer, only a field that says 
   assert.equal(call(labelled.window, 'layerState').ready, true);
 });
 
+const BID_BUTTON = '<div class="x-bid-action" data-testid="x-bid-action">' +
+  '<button id="bidBtn_btn" type="button" data-rect="16 600 380 48">Submit bid</button></div>';
+
+function countBidButtonClicks(page) {
+  const counts = { clicks: 0 };
+  page.window.document.getElementById('bidBtn_btn').addEventListener('click', () => {
+    counts.clicks += 1;
+  });
+  return counts;
+}
+
+test('a small dialog that is not the bid layer does not stop the bid button from being pressed', () => {
+  const page = openPage(ITEM, BID_BUTTON +
+    '<div role="dialog" data-rect="0 100 411 80"><p>Extended bidding: this auction may extend.</p></div>');
+  const counts = countBidButtonClicks(page);
+  const opened = call(page.window, 'openBidLayer');
+  assert.equal(opened.ok, true, JSON.stringify(opened));
+  assert.notEqual(opened.alreadyOpen, true);
+  assert.equal(counts.clicks, 1);
+});
+
+test('a modal dialog in front of the bid button is not pressed through', () => {
+  const page = openPage(ITEM, BID_BUTTON +
+    '<div role="dialog" aria-modal="true" data-rect="0 100 411 80"><p>Choose how you want to pay</p></div>');
+  const counts = countBidButtonClicks(page);
+  const opened = call(page.window, 'openBidLayer');
+  assert.equal(opened.ok, false);
+  assert.equal(opened.reason, 'dialogInTheWay');
+  assert.equal(opened.text, 'Choose how you want to pay');
+  assert.equal(counts.clicks, 0);
+});
+
 test('a check eBay hosts in a frame inside its dialog is pending for the user, not a layer that did not open', () => {
   // The 2026-04 UK bid dialog keeps a section for content eBay loads from elsewhere; an identity check can arrive there.
   const page = openPage(ITEM,

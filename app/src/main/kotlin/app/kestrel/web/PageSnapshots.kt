@@ -114,6 +114,8 @@ internal data class OpenSnapshot(
     val alreadyOpen: Boolean = false,
     val selector: String? = null,
     val label: String? = null,
+    /** The text of a dialog in front of the bid button, when that is why nothing was pressed. */
+    val text: String? = null,
 )
 
 @Serializable

@@ -1374,14 +1374,28 @@
       error: result.error, elapsedMillis: result.elapsedMillis };
   }
 
+  function isGenericLayer(selector) {
+    for (var i = 0; i < TABLE.layerContainer.length; i++) {
+      if (TABLE.layerContainer[i][0] === selector) return TABLE.layerContainer[i][2] === 'generic';
+    }
+    return false;
+  }
+
   function openBidLayer() {
-    if (findLayer()) return { ok: true, alreadyOpen: true };
+    // Only an amount field, or a container known to be the bid layer, means the layer is already open: any other
+    // dialog (a notice about extended bidding, say) is not the layer.
+    var open = findLayer();
+    if (open && (open.input || !isGenericLayer(open.selector))) return { ok: true, alreadyOpen: true };
     var bidButton = findBidButton();
     if (!bidButton) return { ok: false, reason: 'bidButtonNotFound' };
     if (bidButton.signInHref) return { ok: false, reason: 'signInRequired', signInHref: bidButton.signInHref };
     if (!bidButton.recognised) return { ok: false, reason: 'bidButtonNotRecognised', label: bidButton.label };
     if (bidButton.loading) return { ok: false, reason: 'pageNotReady' };
     if (bidButton.disabled) return { ok: false, reason: 'bidButtonDisabled' };
+    // A person could not press through a modal, or a dialog over the button: neither does Kestrel.
+    if (open && (isModal(open.element.closest(DIALOG_SELECTOR) || open.element) || blockingCover(bidButton.element))) {
+      return { ok: false, reason: 'dialogInTheWay', text: truncate(textOf(open.element, 300), 300) || null };
+    }
     if (state.guard && state.guard.which === 'bidButton') {
       if (state.guard.reached) return { ok: false, reason: 'nativeTapReached' };
       state.guard.mode = 'swallow';
