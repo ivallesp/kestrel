@@ -34,6 +34,23 @@ object AppLinks {
 
     /** True when the link asks for the snipe's edit sheet. */
     fun editMaxFrom(intent: Intent?): Boolean = intent?.getBooleanExtra(EXTRA_EDIT_MAX, false) == true
+
+    const val EXTRA_HAND_OFF_ID = "app.kestrel.extra.HAND_OFF_SNIPE_ID"
+
+    /**
+     * The snipe's listing in Kestrel's visible browser, where the user answers what eBay asks (DESIGN 5.4 "Open eBay
+     * page"). MainActivity never shows over the lock screen, so the phone is unlocked first.
+     */
+    fun openHandOff(
+        context: Context,
+        snipeId: Long,
+    ): Intent =
+        Intent(Intent.ACTION_VIEW, "kestrel://snipe/$snipeId/hand-off".toUri(), context, MainActivity::class.java)
+            .putExtra(EXTRA_HAND_OFF_ID, snipeId)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+
+    /** The snipe whose listing a notification asked to hand to the user, or null. */
+    fun handOffIdFrom(intent: Intent?): Long? = intent?.getLongExtra(EXTRA_HAND_OFF_ID, 0L)?.takeIf { it > 0L }
 }
 
 /** Broadcasts from notification buttons to [NotificationActionReceiver]. */

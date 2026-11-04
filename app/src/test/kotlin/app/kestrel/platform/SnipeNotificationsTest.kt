@@ -249,6 +249,24 @@ class SnipeNotificationsTest {
     }
 
     @Test
+    fun aCheckOnlyTheUserCanAnswerOpensEbaysPageInKestrel() {
+        // DESIGN 5.4: "Open eBay page" (in-app, at the challenge).
+        for (reason in listOf(NeedsUserReason.CAPTCHA, NeedsUserReason.VERIFICATION)) {
+            notifications.needsUser(snipe, reason, detail = "eBay showed a security check.")
+            val alert = posted(NotificationIds.needsUser(snipe.id))!!
+            assertEquals(listOf("Open eBay page"), alert.actions.map { it.title.toString() })
+            val action = shadowOf(alert.actions.single().actionIntent).savedIntent
+            assertEquals(Destination.HandOff(5), LaunchIntents.destinationOf(action))
+            assertEquals(Destination.HandOff(5), LaunchIntents.destinationOf(shadowOf(alert.contentIntent).savedIntent))
+        }
+        // A sign-in is fixed in S6 from the lot, so that alert still opens the lot.
+        notifications.needsUser(snipe, NeedsUserReason.SIGN_IN, detail = null)
+        val signIn = posted(NotificationIds.needsUser(snipe.id))!!
+        assertEquals(listOf("Open"), signIn.actions.map { it.title.toString() })
+        assertEquals(Destination.Lot(5), LaunchIntents.destinationOf(shadowOf(signIn.contentIntent).savedIntent))
+    }
+
+    @Test
     fun aNeedsYouAlertNeverTakesOverTheScreen() {
         // DESIGN 5.4 and MF46: never full-screen, neither minutes before the bid nor days after the end.
         notifications.needsUser(snipe, NeedsUserReason.CAPTCHA, detail = "eBay showed a security check.")

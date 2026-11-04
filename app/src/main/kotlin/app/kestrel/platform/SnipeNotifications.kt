@@ -307,7 +307,12 @@ class SnipeNotifications internal constructor(
                 .setContentText(texts.needsUserText(reason, detail))
                 .setStyle(Notification.BigTextStyle().bigText(texts.needsUserDetail(snipe, reason, detail)))
                 .setCategory(Notification.CATEGORY_ERROR)
-                .addAction(openAction(snipe.id))
+        // A check only the user can answer opens eBay's page in Kestrel (DESIGN 5.4 "Open eBay page").
+        if (reason == NeedsUserReason.CAPTCHA || reason == NeedsUserReason.VERIFICATION) {
+            builder.setContentIntent(openHandOff(snipe.id)).addAction(openEbayPageAction(snipe.id))
+        } else {
+            builder.addAction(openAction(snipe.id))
+        }
         post(NotificationIds.needsUser(snipe.id), builder.build())
     }
 
@@ -486,6 +491,23 @@ class SnipeNotifications internal constructor(
             .Builder(Icon.createWithResource(context, R.drawable.ic_action_open), OPEN_LABEL, openSnipe(snipeId))
             .build()
 
+    private fun openEbayPageAction(snipeId: Long): Notification.Action =
+        Notification.Action
+            .Builder(
+                Icon.createWithResource(context, R.drawable.ic_action_open),
+                OPEN_EBAY_PAGE_LABEL,
+                openHandOff(snipeId),
+            ).build()
+
+    /** The hand-off page; its own link address keeps it apart from [openSnipe] under the same request code. */
+    private fun openHandOff(snipeId: Long): PendingIntent =
+        PendingIntent.getActivity(
+            context,
+            NotificationIds.requestCode(snipeId, NotificationIds.Slot.OPEN),
+            AppLinks.openHandOff(context, snipeId),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+
     /** Opens S3 with the edit sheet; its own link address keeps it apart from [openSnipe] under the same code. */
     private fun editMaxAction(snipeId: Long): Notification.Action {
         val edit =
@@ -573,6 +595,7 @@ class SnipeNotifications internal constructor(
         const val RAISE_MAX_LABEL = "Raise max"
         const val OPEN_LABEL = "Open"
         const val EDIT_MAX_LABEL = "Edit max"
+        const val OPEN_EBAY_PAGE_LABEL = "Open eBay page"
         const val CONFIRMATION_TIMEOUT_MILLIS = 5 * 60_000L
         const val WINDOW_NOTIFICATION_LINGER_MILLIS = 60 * 60_000L
         const val MINIMUM_TIMEOUT_MILLIS = 5 * 60_000L

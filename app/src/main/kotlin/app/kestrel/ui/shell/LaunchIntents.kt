@@ -9,10 +9,12 @@ object LaunchIntents {
      * - A notification's snipe link (AppLinks, kestrel://snipe/<id>) opens that snipe's detail, with its edit sheet
      *   for the Live Update's "Edit max".
      * - A shared text/plain (the eBay app's or a browser's Share) opens Add with the text; Add finds the listing in it.
+     * - A hand-off link (AppLinks.openHandOff) opens the listing in Kestrel's visible browser.
      * - Anything else (the launcher) asks for nothing.
      */
     fun destinationOf(intent: Intent?): Destination? {
         if (intent == null) return null
+        AppLinks.handOffIdFrom(intent)?.let { return Destination.HandOff(it) }
         AppLinks.snipeIdFrom(intent)?.let { return Destination.Lot(it, editMax = AppLinks.editMaxFrom(intent)) }
         if (intent.action == Intent.ACTION_SEND && intent.type?.startsWith("text/plain") == true) {
             val shared = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()?.trim()
@@ -31,7 +33,12 @@ object LaunchIntents {
     ): List<Destination> =
         when {
             !onboardingDone -> listOf(Destination.Onboarding)
+
             asked == null || asked == Destination.Home -> listOf(Destination.Home)
+
+            // Back from eBay's page lands on the snipe it is about.
+            asked is Destination.HandOff -> listOf(Destination.Home, Destination.Lot(asked.id), asked)
+
             else -> listOf(Destination.Home, asked)
         }
 }

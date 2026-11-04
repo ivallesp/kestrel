@@ -25,6 +25,17 @@ class LaunchIntentsTest {
     }
 
     @Test
+    fun aHandOffLinkOpensEbaysPageOverTheSnipe() {
+        val link = AppLinks.openHandOff(context, 42)
+        assertEquals(Destination.HandOff(42), LaunchIntents.destinationOf(link))
+        // Back from eBay's page lands on the snipe it is about.
+        assertEquals(
+            listOf(Destination.Home, Destination.Lot(42), Destination.HandOff(42)),
+            LaunchIntents.startStack(onboardingDone = true, asked = Destination.HandOff(42)),
+        )
+    }
+
+    @Test
     fun aSharedTextOpensAddWithTheText() {
         val share =
             Intent(Intent.ACTION_SEND)
