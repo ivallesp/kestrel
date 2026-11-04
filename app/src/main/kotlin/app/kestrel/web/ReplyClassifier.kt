@@ -7,8 +7,8 @@ enum class Standing { LEADING, OUTBID, OTHER }
 
 /**
  * Maps the texts eBay shows after a bid to a [BidReply], always keeping eBay's own words. The two documented
- * replies come first; the looser matches cover wording variants. Outbid wording is checked before leading wording,
- * so "no longer the highest bidder" reads as outbid.
+ * replies come first; the looser matches cover wording variants. Within a sentence outbid wording is checked before
+ * leading wording, so "no longer the highest bidder" reads as outbid.
  */
 object ReplyClassifier {
     private val rules: List<Pair<Regex, Standing>> =
@@ -32,10 +32,55 @@ object ReplyClassifier {
             "h\u00f6chstbietende" to Standing.LEADING,
         ).map { (pattern, standing) -> Regex(pattern, RegexOption.IGNORE_CASE) to standing }
 
+    /**
+     * Each sentence is read on its own, in order, and the first one that says where the user stands decides. A
+     * sentence that only says the user could be outbid later ("We'll let you know if you're outbid") says nothing.
+     */
     fun standingOf(text: String): Standing {
         val normalized = text.replace('\u2019', '\'')
-        return rules.firstOrNull { (pattern, _) -> pattern.containsMatchIn(normalized) }?.second ?: Standing.OTHER
+        for (sentence in normalized.split(sentenceBreak)) {
+            val standing = rules.firstOrNull { (pattern, _) -> pattern.containsMatchIn(sentence) }?.second ?: continue
+            if (standing == Standing.OUTBID && outbidLater.containsMatchIn(sentence)) continue
+            return standing
+        }
+        return Standing.OTHER
     }
+
+    private val sentenceBreak = Regex("""(?<=[.!?])\s+|\n+""")
+    private val outbidLater =
+        Regex(
+            """\bif you(?:'re| are| get)? (?:be )?outbid\b|\bif (?:someone|anyone|another bidder)\b|""" +
+                """\b(?:could|might|may|can) (?:still )?(?:be )?outbid\b|\blet you know if\b""",
+            RegexOption.IGNORE_CASE,
+        )
+
+    // Words with which eBay refuses or fails a bid. An unknown notice without them is not taken as a refusal.
+    private val refusal =
+        Regex(
+            listOf(
+                """\b(?:can't|cannot|can not|couldn't|could not|unable|not able)\b""",
+                """\b(?:isn't|wasn't|not)\s+(?:been\s+)?(?:accepted|placed|allowed|eligible|possible|available|valid)\b""",
+                """\btoo low\b""",
+                """\benter\b.{0,40}\bor (?:more|higher)\b""",
+                """\bminimum bid\b""",
+                """\bended\b""",
+                """\bno longer available\b""",
+                """\brestrict""",
+                """\bblocked\b""",
+                """\berror\b""",
+                """\bsomething went wrong\b""",
+                """\btry again\b""",
+                """\boops\b""",
+                """\bsorry\b""",
+                """\bcontact the seller\b""",
+                """\bnot met\b""",
+                """\bnicht m\u00f6glich\b|\bfehler\b|\bbeendet\b""",
+            ).joinToString("|"),
+            RegexOption.IGNORE_CASE,
+        )
+
+    /** True when [text] says eBay refused or could not take the bid, as opposed to an unknown success or status. */
+    fun isRefusal(text: String): Boolean = refusal.containsMatchIn(text.replace('\u2019', '\''))
 
     /**
      * A leading or outbid reply from the notices that appeared after the press, or failing that from lines that

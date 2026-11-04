@@ -745,6 +745,23 @@ class WebBidPageTest {
         }
 
     @Test
+    fun `an unknown notice that stays is not taken as eBay refusing the bid`() =
+        runTest {
+            // A success wording Kestrel was never shown, or a progress line on a slow confirmbid.
+            for (notice in listOf("Bid placed", "Placing your bid…")) {
+                val driver = FakePageDriver()
+                val ebay = SimulatedEbayPage(driver)
+                ebay.replyNotices = { listOf(notice) }
+                val page = WebBidPage(driver, PageScript("var VERSION = '1';"), parsers, TestClock(testScheduler))
+                page.readyToSubmit()
+                page.submit()
+                val reply = page.awaitReply(4_000)
+                assertTrue("$notice: $reply", reply is BidReply.Unconfirmed)
+                assertEquals("eBay's own words are kept", notice, (reply as BidReply.Unconfirmed).text)
+            }
+        }
+
+    @Test
     fun `a check eBay shows after the press before any confirmbid is the user's, not a lost reply`() =
         runTest {
             ebay.replyNotices = { emptyList() }

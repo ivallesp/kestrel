@@ -41,6 +41,34 @@ class ReplyClassifierTest {
     }
 
     @Test
+    fun `a leading sentence beats a conditional one about being outbid`() {
+        listOf(
+            "You're the highest bidder. We'll let you know if you're outbid.",
+            "You're currently the highest bidder. Another bidder could still outbid you.",
+            "Your current bid puts you in the lead. If another bidder bids more, you may be outbid.",
+        ).forEach { assertEquals(it, Standing.LEADING, ReplyClassifier.standingOf(it)) }
+        // A plain outbid sentence still decides, wherever it stands.
+        listOf(
+            "You've been outbid. Increase your bid to stay in the lead.",
+            "Sorry. You've been outbid. We'll let you know if anything changes.",
+        ).forEach { assertEquals(it, Standing.OUTBID, ReplyClassifier.standingOf(it)) }
+    }
+
+    @Test
+    fun `refusals are told from unknown successes and status lines`() {
+        listOf(
+            "This listing has ended.",
+            "Enter £15.00 or more",
+            "You are not eligible to bid on this item",
+            "The sale of lasers is subject to restrictions on eBay.com.au",
+            "Oops. Looks like we're having trouble connecting to our server.",
+            "Your bid could not be placed. Please try again.",
+        ).forEach { assertTrue(it, ReplyClassifier.isRefusal(it)) }
+        listOf("Bid placed", "Your bid has been placed", "Placing your bid…", "Bid confirmed")
+            .forEach { assertFalse(it, ReplyClassifier.isRefusal(it)) }
+    }
+
+    @Test
     fun `other texts are neither`() {
         listOf(
             "Enter £5.57 or more",

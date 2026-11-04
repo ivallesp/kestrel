@@ -129,7 +129,9 @@ internal class BidSender(
 
                 is BidReply.Unconfirmed -> {
                     record.standing = BidStanding.UNCONFIRMED
-                    "eBay's reply could not be read within ${timeout / 1_000} s."
+                    reply.text?.let { record.replyText = it }
+                    val shown = reply.text?.let { " eBay showed: \"$it\"" } ?: ""
+                    "eBay's reply could not be read within ${timeout / 1_000} s.$shown"
                 }
 
                 is BidReply.NeedsUser -> {

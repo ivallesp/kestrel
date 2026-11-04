@@ -233,6 +233,7 @@ class WebBidPage internal constructor(
         // that keeps changing is a countdown or a status line, not a reply.
         var candidate: String? = null
         var candidateSince = 0L
+        var unplaced: String? = null
         var answeredLatency: Long? = null
         val reply =
             try {
@@ -267,6 +268,13 @@ class WebBidPage internal constructor(
                             null
                         }
 
+                        // A wording Kestrel does not know (a success it never saw, "Placing your bid…") is no refusal:
+                        // keep reading until a leading or outbid notice comes, or the wait ends.
+                        !ReplyClassifier.isRefusal(other) -> {
+                            unplaced = other
+                            null
+                        }
+
                         now - candidateSince >= timing.otherNoticeGraceMillis -> {
                             BidReply.Rejected(other, latency)
                         }
@@ -279,8 +287,8 @@ class WebBidPage internal constructor(
             } finally {
                 quietly { helper.call(PageFunction.DISARM_TAP) }
             }
-        // Unconfirmed carries a latency only when eBay did answer the bid request (without a readable text).
-        val answer = reply ?: BidReply.Unconfirmed(answeredLatency)
+        // Unconfirmed carries a latency only when eBay did answer the bid request, and eBay's text when it showed one.
+        val answer = reply ?: BidReply.Unconfirmed(answeredLatency, unplaced)
         note("reply: $answer")
         return answer
     }

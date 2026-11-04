@@ -118,9 +118,10 @@ sealed interface BidReply {
         override val latencyMillis: Long?,
     ) : BidReply
 
-    /** No reply could be read in time. */
+    /** No reply could be read in time. [text] is what eBay showed that Kestrel could not place, if anything. */
     data class Unconfirmed(
         override val latencyMillis: Long?,
+        val text: String? = null,
     ) : BidReply
 
     /**
