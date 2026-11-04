@@ -26,6 +26,10 @@ internal class NotificationTexts(
     /** "Sun 21:43": the day is named rather than "today" or "tomorrow", which readers often get wrong. */
     fun dayAndTime(utcMillis: Long): String = format(utcMillis, if (use24HourClock()) "EEE HH:mm" else "EEE h:mm a")
 
+    /** "18:21:40 GMT": a time with seconds carries its zone (DESIGN 5). */
+    fun clockWithSeconds(utcMillis: Long): String =
+        format(utcMillis, if (use24HourClock()) "HH:mm:ss z" else "h:mm:ss a z")
+
     // The final window's Live Update.
 
     fun windowTitle(
@@ -149,6 +153,10 @@ internal class NotificationTexts(
             NeedsUserReason.OFFLINE -> "Kestrel couldn't reach eBay."
             NeedsUserReason.BID_FAILED -> "Kestrel couldn't place the bid."
         }
+
+    /** The window stopped before its bid, and the auction runs until [endUtcMillis]. */
+    fun bidLeftToUserText(endUtcMillis: Long): String =
+        "Kestrel did not bid. You can still bid on eBay yourself before ${clockWithSeconds(endUtcMillis)}."
 
     fun needsUserDetail(
         snipe: Snipe,

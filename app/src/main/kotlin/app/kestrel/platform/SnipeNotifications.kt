@@ -316,6 +316,30 @@ class SnipeNotifications internal constructor(
         post(NotificationIds.needsUser(snipe.id), builder.build())
     }
 
+    /**
+     * The window stopped without bidding (a captcha at T-90 s, a sign-in page, a layer that did not open) while the
+     * auction runs: the user can still bid on eBay's page, which the alert opens. It goes away at the end.
+     */
+    override fun bidLeftToUser(
+        snipe: Snipe,
+        reason: NeedsUserReason,
+        detail: String,
+    ) {
+        val text = texts.bidLeftToUserText(snipe.endTimeUtcMillis)
+        val untilEnd = snipe.endTimeUtcMillis - clock.nowUtcMillis()
+        val notification =
+            alert(snipe.id, R.drawable.ic_notification_error)
+                .setContentTitle(texts.needsUserTitle(reason))
+                .setContentText(text)
+                .setStyle(Notification.BigTextStyle().bigText(listOf(text, detail, snipe.title).joinToString("\n")))
+                .setCategory(Notification.CATEGORY_ERROR)
+                .setContentIntent(openHandOff(snipe.id))
+                .addAction(openEbayPageAction(snipe.id))
+                .setTimeoutAfter(untilEnd.coerceAtLeast(1L))
+                .build()
+        post(NotificationIds.needsUser(snipe.id), notification)
+    }
+
     /** Android blocked the service from starting in the background; a tap starts it, which Android allows. */
     internal fun showTapToArm(request: SnipeRequest) {
         if (request.action == SnipeAction.CHECK) return

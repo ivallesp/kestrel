@@ -1291,7 +1291,6 @@ internal class SnipeWindow(
                     "pageReport" to pageReport,
                 ),
             )
-            journal.notify { needsUser(snipe, userReason, reason) }
         }
         val snipeResult =
             SnipeResult(
@@ -1324,6 +1323,14 @@ internal class SnipeWindow(
             ),
         )
         journal.notify { result(snipe, snipeResult) }
+        // After the result, which clears the snipe's alerts: the hand-off must outlive it (ARCHITECTURE rule 4).
+        if (userReason != null && watch.endUtcMillis > clock.nowUtcMillis()) {
+            if (bid.sentAtUtcMillis == null) {
+                journal.notify { bidLeftToUser(snipe, userReason, reason) }
+            } else {
+                journal.notify { needsUser(snipe, userReason, reason) }
+            }
+        }
         if (outcome == SnipeOutcome.WON) groups.cancelRestAfterWin(snipe)
         return snipeResult
     }

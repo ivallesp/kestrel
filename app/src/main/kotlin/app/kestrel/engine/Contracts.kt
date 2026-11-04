@@ -248,6 +248,16 @@ interface SnipeNotifier {
         detail: String?,
     )
 
+    /**
+     * The bid window stopped before its bid because of [reason] ([detail] in the engine's words), and the auction is
+     * still running: only the user can bid now, on eBay. Called after [result], which clears earlier alerts.
+     */
+    fun bidLeftToUser(
+        snipe: Snipe,
+        reason: NeedsUserReason,
+        detail: String,
+    ) = needsUser(snipe, reason, detail)
+
     fun result(
         snipe: Snipe,
         result: SnipeResult,
