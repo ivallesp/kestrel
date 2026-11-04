@@ -1,6 +1,5 @@
 package app.kestrel.ui
 
-import android.app.KeyguardManager
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
@@ -32,7 +31,8 @@ import kotlinx.coroutines.launch
  * - The launcher opens Home, or Onboarding on the first launch.
  * - A shared text (ACTION_SEND, text/plain) opens Add with the text.
  * - A notification's snipe link (AppLinks) opens that snipe, in onCreate and in onNewIntent.
- * - Only the needs-you alert's full-screen intent may show the window over the lock screen and turn the screen on.
+ * - It never shows over the lock screen: no alert uses a full-screen intent (DESIGN 5.4), and the hand-off page is
+ *   signed in to the user's eBay account, so a notification tap asks for the unlock first.
  */
 class MainActivity : ComponentActivity() {
     private val incoming = Channel<Destination>(Channel.BUFFERED)
@@ -44,7 +44,6 @@ class MainActivity : ComponentActivity() {
         val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        allowOverLockScreen(intent)
         splash.setKeepOnScreenCondition { !contentReady }
         val app = application as KestrelApp
         // A restored activity already has its back stack; only a fresh start reads the launch intent.
@@ -87,15 +86,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        allowOverLockScreen(intent)
         LaunchIntents.destinationOf(intent)?.let { incoming.trySend(it) }
-    }
-
-    private fun allowOverLockScreen(intent: Intent?) {
-        val locked = getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == true
-        val allowed = LaunchIntents.showOverLockScreen(intent, keyguardLocked = locked)
-        setShowWhenLocked(allowed)
-        setTurnScreenOn(allowed)
     }
 
     private companion object {

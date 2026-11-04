@@ -33,16 +33,4 @@ object LaunchIntents {
             asked == null || asked == Destination.Home -> listOf(Destination.Home)
             else -> listOf(Destination.Home, asked)
         }
-
-    /**
-     * Whether the window may show over the lock screen and turn the screen on. Only for the needs-you alert's
-     * full-screen intent, which Android fires while the phone is locked; a tap on a notification asks for the unlock
-     * first, so the keyguard is already gone by then. [fromAlert] is for an explicit marker on that intent, when the
-     * platform adds one.
-     */
-    fun showOverLockScreen(
-        intent: Intent?,
-        keyguardLocked: Boolean,
-        fromAlert: Boolean = false,
-    ): Boolean = AppLinks.snipeIdFrom(intent) != null && (fromAlert || keyguardLocked)
 }

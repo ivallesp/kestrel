@@ -53,14 +53,4 @@ class LaunchIntentsTest {
             LaunchIntents.startStack(onboardingDone = true, asked = Destination.Lot(1)),
         )
     }
-
-    @Test
-    fun onlyTheAlertOverALockedPhoneMayShowOverTheLockScreen() {
-        val alert = AppLinks.openSnipe(context, 7)
-        assertTrue(LaunchIntents.showOverLockScreen(alert, keyguardLocked = true))
-        assertFalse(LaunchIntents.showOverLockScreen(alert, keyguardLocked = false))
-        assertTrue(LaunchIntents.showOverLockScreen(alert, keyguardLocked = false, fromAlert = true))
-        val launcher = Intent(Intent.ACTION_MAIN)
-        assertFalse(LaunchIntents.showOverLockScreen(launcher, keyguardLocked = true))
-    }
 }
