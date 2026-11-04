@@ -92,8 +92,9 @@ fun GroupDestination(
                             navigator.open(Destination.HandOff(snipeId))
                         }
 
+                        // As on the list: the lot's detail shows what failed and its own fix.
                         LotAction.FIX -> {
-                            navigator.open(Destination.Ready)
+                            navigator.open(Destination.Lot(snipeId))
                         }
 
                         LotAction.VIEW_RECEIPT -> {

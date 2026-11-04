@@ -3,7 +3,9 @@ package app.kestrel.ui.shell
 import androidx.navigation3.runtime.NavKey
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -68,4 +70,46 @@ class NavigatorTest {
             navigator.leaveMessage(ShellMessage("Armed: bids Thu 13 Nov at 20:04:12"))
             assertEquals("Armed: bids Thu 13 Nov at 20:04:12", navigator.messages.first().text)
         }
+
+    @Test
+    fun aScreenThatLeavesAMessageAndGoesBackLeavesItForTheScreenUnderneath() =
+        runBlocking {
+            navigator.open(Destination.Add("https://www.ebay.co.uk/itm/127504318862"))
+            val add = navigator.forEntry(Destination.Add("https://www.ebay.co.uk/itm/127504318862"))
+            val home = navigator.forEntry(Destination.Home)
+            add.leaveMessage(ShellMessage("Armed: bids Thu 13 Nov at 20:04:12"))
+            add.back()
+            assertNull(
+                "Add is gone, so it takes nothing",
+                withTimeoutOrNull(SHORT_WAIT_MILLIS) { add.messages.first() },
+            )
+            assertEquals("Armed: bids Thu 13 Nov at 20:04:12", home.messages.first().text)
+        }
+
+    @Test
+    fun aMessageLeftWithoutMovingIsForTheScreenOnTop() =
+        runBlocking {
+            // The edit sheet over the list saves and closes; the list stays on top and shows its snackbar.
+            val home = navigator.forEntry(Destination.Home)
+            home.leaveMessage(ShellMessage("Max raised to £2,200.00"))
+            assertEquals("Max raised to £2,200.00", home.messages.first().text)
+            assertNull(withTimeoutOrNull(SHORT_WAIT_MILLIS) { home.messages.first() })
+        }
+
+    @Test
+    fun aMessageNoScreenTookIsDroppedByTheNextMove() =
+        runBlocking {
+            navigator.open(Destination.Onboarding)
+            navigator.open(Destination.SignInBrowser)
+            navigator.leaveMessage(ShellMessage("Sign-in didn’t finish."))
+            navigator.back()
+            // Onboarding shows no snackbars; once it moves on, the message is no one's.
+            navigator.resetTo(Destination.Home)
+            val home = navigator.forEntry(Destination.Home)
+            assertNull(withTimeoutOrNull(SHORT_WAIT_MILLIS) { home.messages.first() })
+        }
+
+    private companion object {
+        const val SHORT_WAIT_MILLIS = 200L
+    }
 }

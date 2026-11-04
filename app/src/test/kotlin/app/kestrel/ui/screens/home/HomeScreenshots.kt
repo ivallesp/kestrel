@@ -24,6 +24,9 @@ import app.kestrel.ui.fixture.CatalogueFixture
 import app.kestrel.ui.harness.PhoneInsets
 import app.kestrel.ui.harness.ScreenshotSurface
 import app.kestrel.ui.harness.ScreenshotTest
+import app.kestrel.ui.screens.add.AddFixtures
+import app.kestrel.ui.screens.add.EditMaxSheetBody
+import app.kestrel.ui.screens.add.SheetPreview
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Test
 
@@ -331,6 +334,21 @@ class HomeScreenshots : ScreenshotTest() {
     fun rowsLargeTextLight() =
         capture("S1-rows-1", darkTheme = false, time = "18:08", fontScale = 1.3f) {
             RowStatesPage("Rows: open", listOf(fixture.omegaOverMax, fixture.walkmanArmed, fixture.polaroidWatching))
+        }
+
+    // "Raise max" on the Omega row opens the raise sheet over the list (DESIGN S1 behaviour).
+
+    @Test
+    fun raiseSheetOverTheListLight() = raiseSheetOverTheList(darkTheme = false)
+
+    @Test
+    fun raiseSheetOverTheListDark() = raiseSheetOverTheList(darkTheme = true)
+
+    private fun raiseSheetOverTheList(darkTheme: Boolean) =
+        capture("S1-raise-max-sheet", darkTheme = darkTheme, time = "18:08") {
+            SheetPreview(title = AddFixtures.raiseSheet.title, backdrop = { Home(HomeFixtures.home) }) {
+                EditMaxSheetBody(state = AddFixtures.raiseSheet)
+            }
         }
 
     private fun wonMiniDisc() = fixture.miniDisc.copy(status = SnipeStatus.WON)

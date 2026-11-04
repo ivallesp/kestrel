@@ -56,10 +56,7 @@ data class SettingsUiState(
     /** Snipes that will bid, for the sign-out dialog. */
     val armedSnipes: Int,
     val defaultLeadSeconds: Int,
-    val liveUpdateMinutes: Int,
     val themeMode: ThemeMode,
-    val pureBlack: Boolean,
-    val haptics: Boolean,
     /** Null until the first readiness check finishes. */
     val readiness: PhoneReadiness?,
     /** "0.1.0 (1)" */
@@ -79,13 +76,7 @@ interface SettingsSources {
 
     suspend fun setDefaultLeadSeconds(seconds: Int)
 
-    suspend fun setLiveUpdateMinutes(minutes: Int)
-
     suspend fun setThemeMode(mode: ThemeMode)
-
-    suspend fun setPureBlack(enabled: Boolean)
-
-    suspend fun setHaptics(enabled: Boolean)
 
     /** Removes the eBay cookies and the stored name. */
     suspend fun signOut()
@@ -126,10 +117,7 @@ class SettingsViewModel(
                 account = if (name != null || cookie) AccountState.SignedIn(name) else AccountState.SignedOut,
                 armedSnipes = snipes.count { it.maxBid != null && it.status.isActiveBid },
                 defaultLeadSeconds = settings.defaultLeadSeconds,
-                liveUpdateMinutes = settings.liveUpdateMinutes,
                 themeMode = settings.themeMode,
-                pureBlack = settings.pureBlack,
-                haptics = settings.haptics,
                 readiness = phone,
                 version = version,
                 confirmingSignOut = dialogs.first,
@@ -143,10 +131,7 @@ class SettingsViewModel(
                 account = AccountState.SignedOut,
                 armedSnipes = 0,
                 defaultLeadSeconds = Settings.DEFAULT_LEAD_SECONDS,
-                liveUpdateMinutes = Settings.DEFAULT_LIVE_UPDATE_MINUTES,
                 themeMode = ThemeMode.SYSTEM,
-                pureBlack = false,
-                haptics = true,
                 readiness = null,
                 version = version,
                 confirmingSignOut = false,
@@ -179,13 +164,7 @@ class SettingsViewModel(
 
     fun setDefaultLead(seconds: Int) = launchStore { sources.setDefaultLeadSeconds(seconds) }
 
-    fun setLiveUpdateMinutes(minutes: Int) = launchStore { sources.setLiveUpdateMinutes(minutes) }
-
     fun setThemeMode(mode: ThemeMode) = launchStore { sources.setThemeMode(mode) }
-
-    fun setPureBlack(enabled: Boolean) = launchStore { sources.setPureBlack(enabled) }
-
-    fun setHaptics(enabled: Boolean) = launchStore { sources.setHaptics(enabled) }
 
     fun askToSignOut() {
         confirmingSignOut.value = true
@@ -247,13 +226,7 @@ internal class ContainerSettingsSources(
 
     override suspend fun setDefaultLeadSeconds(seconds: Int) = container.settings.setDefaultLeadSeconds(seconds)
 
-    override suspend fun setLiveUpdateMinutes(minutes: Int) = container.settings.setLiveUpdateMinutes(minutes)
-
     override suspend fun setThemeMode(mode: ThemeMode) = container.settings.setThemeMode(mode)
-
-    override suspend fun setPureBlack(enabled: Boolean) = container.settings.setPureBlack(enabled)
-
-    override suspend fun setHaptics(enabled: Boolean) = container.settings.setHaptics(enabled)
 
     override suspend fun signOut() {
         EbaySession.signOut()

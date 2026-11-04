@@ -89,6 +89,24 @@ class ShellTest {
     }
 
     @Test
+    fun aMessageLeftOnTheWayOutShowsOnTheScreenUnderneath() {
+        composeRule.setContent {
+            KestrelTheme(darkTheme = false, reduceMotion = true) {
+                KestrelShell(
+                    startStack = listOf(Destination.Home, Destination.SignInBrowser),
+                    onFinishOnboarding = {},
+                    onExit = {},
+                )
+            }
+        }
+        composeRule.onNodeWithContentDescription("Close").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Snipes").assertIsDisplayed()
+        waitForText("Sign-in didn’t finish.")
+        composeRule.onNodeWithText("Sign-in didn’t finish.").assertIsDisplayed()
+    }
+
+    @Test
     fun finishingOnboardingOpensHome() {
         var stored = false
         composeRule.setContent {

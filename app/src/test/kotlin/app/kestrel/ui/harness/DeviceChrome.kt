@@ -37,18 +37,24 @@ val GestureBarHeight = 24.dp
 /** The insets every screenshot passes to its screen, as Android would on the phone. */
 val PhoneInsets = WindowInsets(top = StatusBarHeight, bottom = GestureBarHeight)
 
+private val LightChrome = Color(0xFFF7F3EC)
+private val DarkChrome = Color(0xFF1E1B16)
+
 /**
  * Draws the status bar (clock, Wi-Fi, signal, battery) and the gesture handle over a screen, the way Android composites
- * them over an edge-to-edge app. [lightIcons] is for dark theme and screens with a photograph at the top (S3).
+ * them over an edge-to-edge app. [lightIcons] is for dark theme and screens with a photograph at the top (S3);
+ * [lightHandle] follows the theme only, because S3 changes the status-bar icons and never the navigation bar's.
  */
 @Composable
 fun DeviceChrome(
     time: String,
     lightIcons: Boolean,
     modifier: Modifier = Modifier,
+    lightHandle: Boolean = lightIcons,
     content: @Composable () -> Unit,
 ) {
-    val iconColour = if (lightIcons) Color(0xFFF7F3EC) else Color(0xFF1E1B16)
+    val iconColour = if (lightIcons) LightChrome else DarkChrome
+    val handleColour = if (lightHandle) LightChrome else DarkChrome
     Box(modifier.fillMaxSize()) {
         content()
         Row(
@@ -79,7 +85,7 @@ fun DeviceChrome(
                     .width(108.dp)
                     .height(4.dp)
                     .clip(CircleShape)
-                    .background(iconColour.copy(alpha = 0.55f)),
+                    .background(handleColour.copy(alpha = 0.55f)),
         )
     }
 }

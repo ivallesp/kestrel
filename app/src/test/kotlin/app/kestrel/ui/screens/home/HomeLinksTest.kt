@@ -3,6 +3,7 @@ package app.kestrel.ui.screens.home
 import app.kestrel.model.SnipeStatus
 import app.kestrel.ui.fixture.CatalogueFixture
 import app.kestrel.ui.model.LotAction
+import app.kestrel.ui.screens.add.EditMaxMode
 import app.kestrel.ui.shell.Destination
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -39,6 +40,16 @@ class HomeLinksTest {
         assertEquals(Destination.Lot(2), HomeLinks.destinationFor(2, LotAction.RAISE_MAX, omega))
         assertEquals(Destination.Lot(5), HomeLinks.destinationFor(5, LotAction.SET_MAX, null))
         assertEquals(Destination.Result(7), HomeLinks.destinationFor(7, LotAction.VIEW_RECEIPT, null))
+    }
+
+    @Test
+    fun maxButtonsOpenTheirSheetOverTheList() {
+        assertEquals(EditMaxMode.Raise, HomeLinks.sheetFor(LotAction.RAISE_MAX))
+        assertEquals(EditMaxMode.Set, HomeLinks.sheetFor(LotAction.SET_MAX))
+        assertEquals(EditMaxMode.Edit, HomeLinks.sheetFor(LotAction.EDIT_MAX))
+        listOf(LotAction.SIGN_IN, LotAction.OPEN_EBAY_PAGE, LotAction.FIX, LotAction.VIEW_RECEIPT).forEach {
+            assertNull(HomeLinks.sheetFor(it))
+        }
     }
 
     @Test

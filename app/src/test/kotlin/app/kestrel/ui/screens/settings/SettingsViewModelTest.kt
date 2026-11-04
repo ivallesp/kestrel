@@ -45,13 +45,7 @@ class SettingsViewModelTest {
         override suspend fun setDefaultLeadSeconds(seconds: Int) =
             stored.update { it.copy(defaultLeadSeconds = seconds) }
 
-        override suspend fun setLiveUpdateMinutes(minutes: Int) = stored.update { it.copy(liveUpdateMinutes = minutes) }
-
         override suspend fun setThemeMode(mode: ThemeMode) = stored.update { it.copy(themeMode = mode) }
-
-        override suspend fun setPureBlack(enabled: Boolean) = stored.update { it.copy(pureBlack = enabled) }
-
-        override suspend fun setHaptics(enabled: Boolean) = stored.update { it.copy(haptics = enabled) }
 
         override suspend fun signOut() {
             signOuts++
@@ -97,17 +91,11 @@ class SettingsViewModelTest {
             val viewModel = SettingsViewModel(store, FakeReadiness(), version = "1.0 (1)")
             backgroundScope.launch { viewModel.state.collect {} }
             viewModel.setDefaultLead(10)
-            viewModel.setLiveUpdateMinutes(30)
             viewModel.setThemeMode(ThemeMode.DARK)
-            viewModel.setPureBlack(true)
-            viewModel.setHaptics(false)
             runCurrent()
             val stored = store.stored.value
             assertEquals(10, stored.defaultLeadSeconds)
-            assertEquals(30, stored.liveUpdateMinutes)
             assertEquals(ThemeMode.DARK, stored.themeMode)
-            assertTrue(stored.pureBlack)
-            assertFalse(stored.haptics)
             assertEquals(ThemeMode.DARK, viewModel.state.value.themeMode)
         }
 

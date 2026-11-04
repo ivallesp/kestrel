@@ -109,10 +109,7 @@ internal object SettingsFixtures {
             account = AccountState.SignedIn(fixture.ACCOUNT),
             armedSnipes = fixture.snipes.count { it.maxBid != null && it.status.isActiveBid },
             defaultLeadSeconds = 6,
-            liveUpdateMinutes = 10,
             themeMode = ThemeMode.SYSTEM,
-            pureBlack = false,
-            haptics = true,
             readiness = PhoneReadiness(problems = 1, checkedAt = fixture.readinessCheckedAt),
             version = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
             confirmingSignOut = false,
@@ -141,17 +138,11 @@ internal object NoSettingsActions : SettingsActions {
 
     override fun setDefaultLead(seconds: Int) = Unit
 
-    override fun setLiveUpdateMinutes(minutes: Int) = Unit
-
     override fun openNotificationSettings() = Unit
 
     override fun openReady() = Unit
 
     override fun setTheme(mode: ThemeMode) = Unit
-
-    override fun setPureBlack(enabled: Boolean) = Unit
-
-    override fun setHaptics(enabled: Boolean) = Unit
 
     override fun openSheet(sheet: SettingsSheet) = Unit
 

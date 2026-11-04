@@ -221,8 +221,14 @@ class LotStatusWordsTest {
         val moment = fixture.canonBidFailed
         assertEquals("Bid failed", moment.labelText())
         assertEquals(
-            "eBay didn’t accept the bid: “Your bid wasn’t placed. Please try again.”. Nothing was bid.",
+            "eBay didn’t accept the bid: “Your bid wasn’t placed. Please try again.” Nothing was bid.",
             moment.detailText(),
+        )
+        // Only eBay's own punctuation ends its sentence; a reply without one gets the full stop after the quote.
+        val unpunctuated = LotStatus.BidFailed(ebayText = "Bid not accepted", at = moment.now)
+        assertEquals(
+            "eBay didn’t accept the bid: “Bid not accepted”. Nothing was bid.",
+            unpunctuated.detail(moment.now),
         )
     }
 

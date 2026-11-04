@@ -32,9 +32,10 @@ import kotlinx.coroutines.flow.emptyFlow
 
 /**
  * The app: one Navigation 3 NavDisplay over [Destination] keys, inside a SharedTransitionLayout so a lot's plate
- * travels from the list to its detail. Each entry keeps its own saved state and ViewModels. [startStack] is the back
- * stack of a fresh start (a restored one wins); [incoming] carries screens asked for while the app runs (a share, a
- * notification). [onExit] leaves the app from the last screen.
+ * travels from the list to its detail. Each entry keeps its own saved state and ViewModels, and gets a navigator whose
+ * messages wait until its screen is on top. [startStack] is the back stack of a fresh start (a restored one wins);
+ * [incoming] carries screens asked for while the app runs (a share, a notification). [onExit] leaves the app from
+ * the last screen.
  */
 @Composable
 fun KestrelShell(
@@ -65,30 +66,50 @@ fun KestrelShell(
             predictivePopTransitionSpec = transitions.predictivePop,
             entryProvider =
                 entryProvider {
-                    entry<Destination.Home> { Screen(sharedScope) { HomeDestination(navigator) } }
-                    entry<Destination.Add> { key -> Screen(sharedScope) { AddDestination(key.link, navigator) } }
-                    entry<Destination.Lot> { key -> Screen(sharedScope) { LotDestination(key.id, navigator) } }
-                    entry<Destination.Result> { key -> Screen(sharedScope) { ResultDestination(key.id, navigator) } }
-                    entry<Destination.Ready> { Screen(sharedScope) { ReadyDestination(navigator) } }
-                    entry<Destination.SignIn> { Screen(sharedScope) { SignInDestination(navigator) } }
-                    entry<Destination.SignInBrowser> { Screen(sharedScope) { SignInBrowserDestination(navigator) } }
-                    entry<Destination.HandOff> { key -> Screen(sharedScope) { HandOffDestination(key.id, navigator) } }
-                    entry<Destination.Group> { key -> Screen(sharedScope) { GroupDestination(key.id, navigator) } }
-                    entry<Destination.Settings> { Screen(sharedScope) { SettingsDestination(navigator) } }
-                    entry<Destination.History> { Screen(sharedScope) { HistoryDestination(navigator) } }
-                    entry<Destination.Onboarding> { Screen(sharedScope) { OnboardingDestination(navigator) } }
+                    entry<Destination.Home> { key -> Screen(sharedScope, navigator, key) { HomeDestination(it) } }
+                    entry<Destination.Add> { key ->
+                        Screen(sharedScope, navigator, key) { AddDestination(key.link, it) }
+                    }
+                    entry<Destination.Lot> { key -> Screen(sharedScope, navigator, key) { LotDestination(key.id, it) } }
+                    entry<Destination.Result> { key ->
+                        Screen(sharedScope, navigator, key) { ResultDestination(key.id, it) }
+                    }
+                    entry<Destination.Ready> { key -> Screen(sharedScope, navigator, key) { ReadyDestination(it) } }
+                    entry<Destination.SignIn> { key -> Screen(sharedScope, navigator, key) { SignInDestination(it) } }
+                    entry<Destination.SignInBrowser> { key ->
+                        Screen(sharedScope, navigator, key) { SignInBrowserDestination(it) }
+                    }
+                    entry<Destination.HandOff> { key ->
+                        Screen(sharedScope, navigator, key) { HandOffDestination(key.id, it) }
+                    }
+                    entry<Destination.Group> { key ->
+                        Screen(sharedScope, navigator, key) { GroupDestination(key.id, it) }
+                    }
+                    entry<Destination.Settings> { key ->
+                        Screen(sharedScope, navigator, key) { SettingsDestination(it) }
+                    }
+                    entry<Destination.History> { key -> Screen(sharedScope, navigator, key) { HistoryDestination(it) } }
+                    entry<Destination.Onboarding> { key ->
+                        Screen(sharedScope, navigator, key) { OnboardingDestination(it) }
+                    }
                 },
         )
     }
 }
 
-/** Gives a screen the scopes its lot plates need for the shared-element transition. */
+/**
+ * Gives the screen of back-stack [entry] the scopes its lot plates need for the shared-element transition, and its
+ * own view of the navigator, whose messages wait until this screen is on top.
+ */
 @Composable
 private fun Screen(
     sharedScope: SharedTransitionScope,
-    content: @Composable () -> Unit,
+    navigator: BackStackNavigator,
+    entry: Destination,
+    content: @Composable (KestrelNavigator) -> Unit,
 ) {
     val animatedScope = LocalNavAnimatedContentScope.current
     val transition = remember(sharedScope, animatedScope) { PlateTransition(sharedScope, animatedScope) }
-    CompositionLocalProvider(LocalPlateTransition provides transition, content = content)
+    val entryNavigator = remember(navigator, entry) { navigator.forEntry(entry) }
+    CompositionLocalProvider(LocalPlateTransition provides transition) { content(entryNavigator) }
 }

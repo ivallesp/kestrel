@@ -276,7 +276,8 @@ class LotScreenshots : ScreenshotTest() {
     fun setMaxSheetLight() = sheet("S3-set-max-sheet", fixture.polaroidWatching, SheetKind.Set, "", "18:08")
 
     @Test
-    fun setMaxSheetTypedLight() = sheet("S3-set-max-sheet-typed", fixture.polaroidWatching, SheetKind.Set, "70", "18:08")
+    fun setMaxSheetTypedLight() =
+        sheet("S3-set-max-sheet-typed", fixture.polaroidWatching, SheetKind.Set, "70", "18:08")
 }
 
 /** S3 under the sheet's scrim, with the sheet drawn at the bottom the way KestrelBottomSheet draws it. */

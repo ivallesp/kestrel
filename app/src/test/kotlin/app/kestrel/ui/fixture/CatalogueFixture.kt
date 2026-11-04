@@ -575,14 +575,18 @@ object CatalogueFixture {
 
     /** The user stopped the Game Boy. */
     val gameBoyCancelled: LotMoment
-        get() =
-            LotMoment(
-                snipe = gameBoy.copy(status = SnipeStatus.CANCELLED),
+        get() {
+            // Armed that morning, so the receipt never shows a cancel before the snipe existed.
+            val armed = millis("2025-11-08T11:05:12Z")
+            val snipe = gameBoy.copy(createdAtUtcMillis = armed, lastCheckedAtUtcMillis = armed)
+            return LotMoment(
+                snipe = snipe.copy(status = SnipeStatus.CANCELLED),
                 events =
-                    added(gameBoy) +
-                        event(gameBoy, 9, "2025-11-08T16:20:00Z", TimelineKind.CANCELLED, "Cancelled by you."),
+                    added(snipe) +
+                        event(snipe, 9, "2025-11-08T16:20:00Z", TimelineKind.CANCELLED, "Cancelled by you."),
                 now = now,
             )
+        }
 
     /** The seller ended the Game Boy listing early. */
     val gameBoyEndedEarly: LotMoment

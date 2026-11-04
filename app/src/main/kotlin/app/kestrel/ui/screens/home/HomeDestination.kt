@@ -11,8 +11,11 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -22,6 +25,8 @@ import app.kestrel.model.ParsedLink
 import app.kestrel.ui.model.DryRunCause
 import app.kestrel.ui.model.LotAction
 import app.kestrel.ui.model.LotStatus
+import app.kestrel.ui.screens.add.EditMaxMode
+import app.kestrel.ui.screens.add.EditMaxSheet
 import app.kestrel.ui.shell.Destination
 import app.kestrel.ui.shell.KestrelNavigator
 import app.kestrel.ui.shell.kestrelViewModel
@@ -32,7 +37,8 @@ import app.kestrel.ui.shell.show
  *
  * Collects the ViewModel's state while the screen is visible, shows the navigator's and the ViewModel's snackbars,
  * re-checks the phone whenever the screen comes back (for example from a system page the pill's Fix opened), and
- * turns the screen's actions into navigation.
+ * turns the screen's actions into navigation. "Raise max" and "Set a max" open their sheet over the list (DESIGN S1);
+ * a save leaves its snackbar through the navigator, which this screen collects.
  */
 @Composable
 fun HomeDestination(
@@ -51,8 +57,14 @@ fun HomeDestination(
         onPauseOrDispose {}
     }
     val context = LocalContext.current
+    var editingId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var editingMode by rememberSaveable { mutableStateOf<EditMaxMode?>(null) }
     val actions =
         remember(navigator, viewModel, context) {
+            val edit: (Long, EditMaxMode) -> Unit = { snipeId, mode ->
+                editingMode = mode
+                editingId = snipeId
+            }
             HomeActions(
                 onOpenLot = { navigator.open(Destination.Lot(it)) },
                 onOpenResult = { navigator.open(Destination.Result(it)) },
@@ -78,13 +90,16 @@ fun HomeDestination(
                 },
                 onAdd = { navigator.open(Destination.Add(HomeLinks.linkToAdd(clipboardText(context)))) },
                 onRefresh = viewModel::refresh,
-                // The raise sheet lives with the lot's detail; S3 opens it for this lot.
-                onRaiseMax = { navigator.open(Destination.Lot(it)) },
+                onRaiseMax = { edit(it, EditMaxMode.Raise) },
                 onQuickRaise = viewModel::quickRaise,
                 onStopSniping = viewModel::stopSniping,
                 onLotAction = { id, action ->
-                    val lot = latestState.lotOf(id)
-                    navigator.open(HomeLinks.destinationFor(id, action, lot?.status))
+                    val sheet = HomeLinks.sheetFor(action)
+                    if (sheet != null) {
+                        edit(id, sheet)
+                    } else {
+                        navigator.open(HomeLinks.destinationFor(id, action, latestState.lotOf(id)?.status))
+                    }
                 },
                 onSeeAllFinished = { navigator.open(Destination.History) },
             )
@@ -96,6 +111,17 @@ fun HomeDestination(
         snackbarHostState = snackbarHostState,
         actions = actions,
     )
+    editingId?.let { snipeId ->
+        EditMaxSheet(
+            snipeId = snipeId,
+            navigator = navigator,
+            onDismiss = {
+                editingId = null
+                editingMode = null
+            },
+            mode = editingMode,
+        )
+    }
 }
 
 /** Where S1's links and buttons lead. Pure, so each one is tested. */
@@ -113,9 +139,19 @@ internal object HomeLinks {
         }
     }
 
+    /** The sheet a row's max button opens over the list: "Set a max", "Raise max" or "Edit max"; null for the rest. */
+    fun sheetFor(action: LotAction): EditMaxMode? =
+        when (action) {
+            LotAction.SET_MAX -> EditMaxMode.Set
+            LotAction.RAISE_MAX -> EditMaxMode.Raise
+            LotAction.EDIT_MAX -> EditMaxMode.Edit
+            else -> null
+        }
+
     /**
-     * The screen a row's button opens. "Set a max" and the raise sheet open with the lot's detail (S3); a dry run
-     * that met eBay's sign-in page, like "Sign in", opens the sign-in; eBay's own checks open the page in Kestrel.
+     * The screen a row's button opens. A dry run that met eBay's sign-in page, like "Sign in", opens the sign-in;
+     * eBay's own checks open the page in Kestrel. The max buttons open their sheet ([sheetFor]); should one get here,
+     * the lot's detail (S3) has the same sheets.
      */
     fun destinationFor(
         snipeId: Long,

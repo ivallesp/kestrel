@@ -164,18 +164,13 @@ class SetupTouchTargetsTest {
                 override fun setTheme(mode: ThemeMode) {
                     chosen += "theme $mode"
                 }
-
-                override fun setHaptics(enabled: Boolean) {
-                    chosen += "haptics $enabled"
-                }
             }
         show { SettingsScreen(state = SettingsFixtures.signedIn, actions = actions, windowInsets = PhoneInsets) }
         assertEveryClickableIsAtLeast48Dp()
         composeRule.onNode(hasText("Sign out") and hasClickAction()).performClick()
         composeRule.onNode(hasText(secondsText(10)) and hasClickAction()).performClick()
         composeRule.onNode(hasText("Dark") and hasClickAction()).performScrollTo().performClick()
-        composeRule.onNode(hasText("Haptics") and hasClickAction()).performScrollTo().performClick()
-        assertEquals(listOf("sign out", "lead 10", "theme DARK", "haptics false"), chosen)
+        assertEquals(listOf("sign out", "lead 10", "theme DARK"), chosen)
     }
 
     @Test

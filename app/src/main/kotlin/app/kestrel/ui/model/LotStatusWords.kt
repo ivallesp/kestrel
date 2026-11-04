@@ -225,10 +225,13 @@ fun LotStatus.detail(
         }
 
         is LotStatus.BidFailed -> {
-            if (ebayText == null) {
-                "eBay didn’t accept the bid. Nothing was bid."
-            } else {
-                "eBay didn’t accept the bid: “$ebayText”. Nothing was bid."
+            when {
+                ebayText == null -> "eBay didn’t accept the bid. Nothing was bid."
+
+                // eBay's own sentence ends with its punctuation, so no full stop follows the closing quote.
+                endsASentence(ebayText) -> "eBay didn’t accept the bid: “$ebayText” Nothing was bid."
+
+                else -> "eBay didn’t accept the bid: “$ebayText”. Nothing was bid."
             }
         }
     }
@@ -484,3 +487,6 @@ private fun moment(
     } else {
         "${instant.dayDate(zone)} at ${clockFor(now, instant, zone)}"
     }
+
+/** True when [text] ends with a full stop, a question or exclamation mark, or an ellipsis. */
+private fun endsASentence(text: String): Boolean = text.trimEnd().lastOrNull()?.let { it in ".!?…" } == true

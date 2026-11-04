@@ -107,7 +107,7 @@ fun ScreenshotSurface(
         LocalDensity provides Density(density.density, fontScale),
     ) {
         KestrelTheme(darkTheme = darkTheme, reduceMotion = reduceMotion) {
-            DeviceChrome(time = time, lightIcons = lightIcons, content = content)
+            DeviceChrome(time = time, lightIcons = lightIcons, lightHandle = darkTheme, content = content)
         }
     }
 }

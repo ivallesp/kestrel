@@ -28,7 +28,6 @@ import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
@@ -74,17 +73,11 @@ interface SettingsActions {
 
     fun setDefaultLead(seconds: Int)
 
-    fun setLiveUpdateMinutes(minutes: Int)
-
     fun openNotificationSettings()
 
     fun openReady()
 
     fun setTheme(mode: ThemeMode)
-
-    fun setPureBlack(enabled: Boolean)
-
-    fun setHaptics(enabled: Boolean)
 
     fun openSheet(sheet: SettingsSheet)
 
@@ -93,9 +86,6 @@ interface SettingsActions {
 
 /** The lead times on offer (DESIGN 3.17): 3 s, 6 s and 10 s. */
 val LeadTimeChoices: List<Int> = listOf(3, 6, 10)
-
-/** How early the countdown may appear in the status bar, in minutes before the end. */
-val LiveUpdateChoices: List<Int> = listOf(5, 10, 30)
 
 /**
  * Settings (DESIGN Settings): the account with sign-out behind a confirmation, bidding and alert defaults, the
@@ -135,45 +125,16 @@ fun SettingsScreen(
                     Section("Account", first = true) { AccountRow(state, actions) }
                     Section("Bidding") { LeadTimeRow(state, actions) }
                     Section("Alerts") {
-                        LiveUpdateRow(state, actions, index = 0, count = 2)
-                        Gap()
                         LinkRow(
                             title = "Notification settings",
                             detail = "Live Updates, sounds and lock screen",
                             onClick = actions::openNotificationSettings,
-                            index = 1,
-                            count = 2,
+                            index = 0,
+                            count = 1,
                         )
                     }
                     Section("This phone") { ReadyRow(state, actions) }
-                    Section("Appearance") {
-                        ThemeRow(state, actions)
-                        Gap()
-                        SwitchRow(
-                            title = "Pure black",
-                            detail =
-                                if (state.themeMode == ThemeMode.LIGHT) {
-                                    "Only in dark theme"
-                                } else {
-                                    "A black page in dark theme, for OLED screens"
-                                },
-                            checked = state.pureBlack,
-                            enabled = state.themeMode != ThemeMode.LIGHT,
-                            onChange = actions::setPureBlack,
-                            index = 1,
-                            count = 3,
-                        )
-                        Gap()
-                        SwitchRow(
-                            title = "Haptics",
-                            detail = "A light tap when you arm or change a snipe",
-                            checked = state.haptics,
-                            enabled = true,
-                            onChange = actions::setHaptics,
-                            index = 2,
-                            count = 3,
-                        )
-                    }
+                    Section("Appearance") { ThemeRow(state, actions) }
                     Section("Help") {
                         LinkRow(
                             title = "How Kestrel bids",
@@ -311,25 +272,6 @@ private fun LeadTimeRow(
 }
 
 @Composable
-private fun LiveUpdateRow(
-    state: SettingsUiState,
-    actions: SettingsActions,
-    index: Int,
-    count: Int,
-) {
-    ChoiceRow(
-        title = "Live Update",
-        detail = "How long before the end the countdown appears in the status bar",
-        options = LiveUpdateChoices.map { "$it\u202Fmin" },
-        selectedIndex = LiveUpdateChoices.indexOf(state.liveUpdateMinutes),
-        onSelect = { actions.setLiveUpdateMinutes(LiveUpdateChoices[it]) },
-        note = null,
-        index = index,
-        count = count,
-    )
-}
-
-@Composable
 private fun ThemeRow(
     state: SettingsUiState,
     actions: SettingsActions,
@@ -343,7 +285,7 @@ private fun ThemeRow(
         onSelect = { actions.setTheme(modes[it]) },
         note = null,
         index = 0,
-        count = 3,
+        count = 1,
     )
 }
 
@@ -440,44 +382,6 @@ private fun ChoiceRow(
                     )
                 }
             }
-        },
-    ) {
-        Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-    }
-}
-
-/** A row that toggles a switch; the whole row is the target. */
-@Composable
-private fun SwitchRow(
-    title: String,
-    detail: String,
-    checked: Boolean,
-    enabled: Boolean,
-    onChange: (Boolean) -> Unit,
-    index: Int,
-    count: Int,
-) {
-    val card = KestrelTheme.catalogue.card
-    SegmentedListItem(
-        checked = checked,
-        onCheckedChange = onChange,
-        enabled = enabled,
-        shapes = ListItemDefaults.segmentedShapes(index = index, count = count),
-        // The switch shows the state; the row stays a card whether it is on, off or unavailable.
-        colors =
-            ListItemDefaults.segmentedColors(
-                containerColor = card,
-                selectedContainerColor = card,
-                disabledContainerColor = card,
-            ),
-        contentPadding = RowPadding,
-        trailingContent = { Switch(checked = checked, onCheckedChange = null, enabled = enabled) },
-        supportingContent = {
-            Text(
-                detail,
-                style = DetailStyle,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         },
     ) {
         Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)

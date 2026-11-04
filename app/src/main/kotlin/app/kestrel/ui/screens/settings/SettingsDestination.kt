@@ -54,8 +54,6 @@ fun SettingsDestination(
 
                 override fun setDefaultLead(seconds: Int) = viewModel.setDefaultLead(seconds)
 
-                override fun setLiveUpdateMinutes(minutes: Int) = viewModel.setLiveUpdateMinutes(minutes)
-
                 override fun openNotificationSettings() {
                     val intent =
                         Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
@@ -68,10 +66,6 @@ fun SettingsDestination(
                 override fun openReady() = navigator.open(Destination.Ready)
 
                 override fun setTheme(mode: ThemeMode) = viewModel.setThemeMode(mode)
-
-                override fun setPureBlack(enabled: Boolean) = viewModel.setPureBlack(enabled)
-
-                override fun setHaptics(enabled: Boolean) = viewModel.setHaptics(enabled)
 
                 override fun openSheet(sheet: SettingsSheet) = viewModel.openSheet(sheet)
 
