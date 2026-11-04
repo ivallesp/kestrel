@@ -177,6 +177,19 @@ test('a verification step is handed to the user, never answered', async () => {
   assert.equal(call(page.window, 'submit', { expectValue: '12.50' }).reason, 'bidLayerClosed');
 });
 
+test('a check eBay shows after the press is reported with the reply, with no confirmbid sent', async () => {
+  const page = await openLayer({ scenario: 'verifyAfterPress' });
+  call(page.window, 'typeMax', '12.50');
+  call(page.window, 'armObserver', CEILING_12_50);
+  assert.equal(call(page.window, 'submit', { expectValue: '12.50' }).dispatched, true);
+  await settle(page.window);
+  const reply = call(page.window, 'replyState');
+  assert.ok(reply.interstitial, JSON.stringify(reply));
+  assert.equal(reply.interstitial.kind, 'verification');
+  assert.match(reply.interstitial.text, /confirm your phone number/);
+  assert.deepEqual(reply.records.map((record) => record.action), ['trisk']);
+});
+
 test('a terms step is handed to the user', async () => {
   const page = await openSyntheticLayer({ scenario: 'terms' });
   call(page.window, 'openBidLayer');
@@ -419,6 +432,8 @@ test('report collects what matched, the observer records and recent errors', asy
   assert.equal(report.matched.amountInput, 'input[id*="@placebid-section-@offer-section-@price"]');
   assert.equal(report.matched.submitButton, 'div.place-bid-actions__submit > button.btn--primary');
   assert.equal(report.matched.submitLabel, 'Bid');
+  // The bid button's state, so a button that never hydrated is diagnosable from the report alone.
+  assert.deepEqual(report.matched.bidButtonState, { disabled: false, loading: false, visible: true, recognised: true });
   assert.equal(report.press.phase, 'pressed');
   assert.equal(report.observer.records.length, 2);
   assert.equal(report.signedIn, true);

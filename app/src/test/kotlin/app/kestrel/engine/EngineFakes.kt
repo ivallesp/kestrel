@@ -201,6 +201,9 @@ class FakeStore : SnipeStore {
     /** Reads of a snipe throw while this is set, like a database that cannot be read. */
     var readsFail = false
 
+    /** How long a write of this copy takes; a write cut off by its time limit never lands. */
+    var updateDelayMillis: (Snipe) -> Long = { 0L }
+
     fun put(snipe: Snipe) {
         snipes[snipe.id] = snipe
     }
@@ -220,6 +223,7 @@ class FakeStore : SnipeStore {
     }
 
     override suspend fun update(snipe: Snipe) {
+        updateDelayMillis(snipe).takeIf { it > 0 }?.let { delay(it) }
         snipes[snipe.id] = snipe
     }
 
@@ -249,6 +253,10 @@ class FakeStore : SnipeStore {
 class FakeNotifier : SnipeNotifier {
     val windowsOpened = mutableListOf<Long>()
     val phases = mutableListOf<WindowPhase>()
+
+    /** When each phase was shown, by [clock]. */
+    var clock: () -> Long = { 0L }
+    val phaseTimes = mutableListOf<Pair<WindowPhase, Long>>()
     val windowsClosed = mutableListOf<Long>()
     val priceAlerts = mutableListOf<Pair<Money, Money?>>()
     val userAlerts = mutableListOf<Pair<NeedsUserReason, String?>>()
@@ -267,6 +275,7 @@ class FakeNotifier : SnipeNotifier {
         detail: String?,
     ) {
         phases += phase
+        phaseTimes += phase to clock()
     }
 
     override fun windowClosed(snipeId: Long) {
@@ -378,6 +387,13 @@ class FakeAuction(
     }
 }
 
+/** What the web layer throws when it provably pressed nothing. */
+class NotPressedException(
+    message: String,
+    override val needsUser: Boolean = false,
+) : Exception(message),
+    BidNotSent
+
 /** A bid page whose every answer comes from a script and [FakeAuction]. Calls take realistic virtual time. */
 class ScriptedBidPage(
     private val scheduler: TestCoroutineScheduler,
@@ -393,6 +409,15 @@ class ScriptedBidPage(
     var typedMinimum: () -> Money? = { null }
     var typedInlineError: () -> String? = { null }
 
+    /** The page's verdict on the typed amount; by default worked out from the field and the error. */
+    var typedProblem: () -> TypingProblem? = { null }
+    private var lastTypedAmount: Money? = null
+    var checks = 0
+
+    /** How long eBay's bid layer takes to open, and typing the max to settle. */
+    var layerOpenMillis = 800L
+    var typingMillis = 300L
+
     /** Replies to successive submits; an unreadable reply when empty. */
     val replies = ArrayDeque<BidReply>()
     var onSubmit: (submitNumber: Int) -> Unit = {}
@@ -403,14 +428,25 @@ class ScriptedBidPage(
     val openItemAtUtc = mutableListOf<Long>()
     val typed = mutableListOf<Money>()
     val submitsAtUtc = mutableListOf<Long>()
+    var submitCalls = 0
     var layerOpens = 0
     var layerCloses = 0
     var observerArms = 0
     var autoRefreshCalls = 0
     var closed = false
 
+    /** The renderer died: every call fails from now on, as on a WebView whose renderer is gone. */
+    var dead = false
+
+    /** The renderer dies while the next item page loads. */
+    var dieOnNextOpenItem = false
+
+    override val isUsable: Boolean get() = !dead
+
     override suspend fun openItem(ref: ItemRef): PageState {
         delay(1_500)
+        if (dieOnNextOpenItem) dead = true
+        check(!dead) { "The page's renderer crashed" }
         openItemAtUtc += auction.nowUtc()
         return when (val kind = pageKinds.removeFirstOrNull() ?: PageKind.NORMAL) {
             PageKind.NORMAL -> {
@@ -449,18 +485,42 @@ class ScriptedBidPage(
         }
     }
 
-    override suspend fun readListing(): Listing? = readListingResult()
+    override suspend fun readListing(): Listing? = if (dead) null else readListingResult()
 
     override suspend fun openBidLayer(): LayerState {
-        delay(800)
+        delay(layerOpenMillis)
+        if (dead) return LayerState.Failed("The page's renderer crashed", "unavailable")
         layerOpens++
         return layerState()
     }
 
     override suspend fun typeMax(amount: Money): TypedAmount {
-        delay(300)
+        delay(typingMillis)
+        if (dead) return TypedAmount("", "Kestrel: the page's renderer crashed", null, problem = TypingProblem.OTHER)
         typed += amount
-        return TypedAmount(fieldValueFor(amount), typedInlineError(), typedMinimum())
+        lastTypedAmount = amount
+        return typingVerdict(amount)
+    }
+
+    override suspend fun checkTyped(): TypedAmount {
+        delay(50)
+        checks++
+        val amount =
+            lastTypedAmount ?: return TypedAmount("", "Kestrel: nothing was typed", null, problem = TypingProblem.OTHER)
+        return typingVerdict(amount)
+    }
+
+    // The web page's verdict: verified only with exactly the amount in the field, no error and no problem.
+    private fun typingVerdict(amount: Money): TypedAmount {
+        val field = fieldValueFor(amount)
+        val error = typedInlineError()
+        val problem =
+            typedProblem() ?: when {
+                AmountField.minorUnits(field) != amount.minor -> TypingProblem.OTHER
+                error != null -> TypingProblem.OTHER
+                else -> null
+            }
+        return TypedAmount(field, error, typedMinimum(), verified = problem == null, problem = problem)
     }
 
     override suspend fun closeLayer() {
@@ -469,6 +529,7 @@ class ScriptedBidPage(
 
     override suspend fun autoRefresh(): AutoRefreshState? {
         delay(200)
+        if (dead) return null
         autoRefreshCalls++
         return auction.autoRefresh()
     }
@@ -478,6 +539,9 @@ class ScriptedBidPage(
     }
 
     override suspend fun submit(): SubmitDispatch {
+        // The web layer's rule: one press per page, a second call throws before touching the page.
+        check(submitCalls++ == 0) { "submit() was already called on this page: one press per page" }
+        if (dead) throw NotPressedException("The page's renderer crashed")
         submitError?.let { throw it }
         submitsAtUtc += auction.nowUtc()
         onSubmit(submitsAtUtc.size)

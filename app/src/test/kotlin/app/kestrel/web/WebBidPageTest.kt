@@ -4,11 +4,14 @@ import app.kestrel.engine.BidPage
 import app.kestrel.engine.BidReply
 import app.kestrel.engine.InputMethod
 import app.kestrel.engine.LayerState
+import app.kestrel.engine.NeedsUserReason
+import app.kestrel.engine.TypingProblem
 import app.kestrel.model.Money
 import app.kestrel.model.PageKind
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -55,7 +58,7 @@ class WebBidPageTest {
         }
 
     @Test
-    fun `a self-clearing challenge is waited out in place, never reloaded`() =
+    fun `a self-clearing challenge is returned at once and read in place once it clears, never reloaded`() =
         runTest {
             ebay.url = "https://www.ebay.co.uk/splashui/challenge?ap=1&appName=orch&ru=x"
             ebay.title = "Pardon Our Interruption..."
@@ -66,10 +69,15 @@ class WebBidPageTest {
                 }
                 json(mapOf("ok" to true, "url" to ebay.url, "title" to ebay.title, "readyState" to "complete"))
             }
-            val state = page().openItem(ukItem)
-            assertEquals(PageKind.NORMAL, state.kind)
+            val page = page()
+            // The engine waits the check out within its own deadline; the page does not wait inside openItem.
+            val state = page.openItem(ukItem)
+            assertEquals(PageKind.CHALLENGE, state.kind)
+            assertNull(state.listing)
+            var listing = page.readListing()
+            repeat(5) { if (listing == null) listing = page.readListing() }
+            assertNotNull(listing)
             assertEquals(1, driver.loads.size)
-            assertNotNull(state.listing)
         }
 
     @Test
@@ -246,6 +254,33 @@ class WebBidPageTest {
         }
 
     @Test
+    fun `a modal in front of the bid button is the user's, not pressed through`() =
+        runTest {
+            ebay.touchReachesPage = false
+            driver.on("openBidLayer") {
+                json(mapOf("ok" to false, "reason" to "dialogInTheWay", "text" to "Choose how you want to pay"))
+            }
+            val page = page()
+            page.openItem(ukItem)
+            val layer = page.openBidLayer()
+            assertTrue(layer.toString(), layer is LayerState.NeedsUser)
+            assertEquals("Choose how you want to pay", (layer as LayerState.NeedsUser).text)
+        }
+
+    @Test
+    fun `a check page eBay opens instead of the layer is handed to the user at once`() =
+        runTest {
+            ebay.pageOnBidButton = "https://www.ebay.co.uk/verify/identity?ru=x"
+            val page = page()
+            page.openItem(ukItem)
+            val startedAt = testScheduler.currentTime
+            val layer = page.openBidLayer()
+            assertTrue(layer.toString(), layer is LayerState.NeedsUser)
+            assertEquals("Confirm your identity | eBay", (layer as LayerState.NeedsUser).text)
+            assertTrue("no wait for a layer that is not coming", testScheduler.currentTime - startedAt < 8_000)
+        }
+
+    @Test
     fun `eBay's layer error fails with its text`() =
         runTest {
             ebay.layerError = "Oops. Looks like we're having trouble connecting to our server."
@@ -284,6 +319,16 @@ class WebBidPageTest {
             page.openItem(ukItem)
             val layer = page.openBidLayer() as LayerState.Failed
             assertTrue(layer.reason, layer.reason.contains("Review bid"))
+        }
+
+    @Test
+    fun `the page says it can no longer be used once its renderer is gone`() =
+        runTest {
+            val page = page()
+            assertTrue(page.isUsable)
+            driver.failure = DriverFailure.RendererGone(crashed = false)
+            assertFalse(page.isUsable)
+            assertFalse(LayerPreviewPage(page).isUsable)
         }
 
     @Test
@@ -384,6 +429,39 @@ class WebBidPageTest {
         }
 
     @Test
+    fun `a check eBay shows after typing is a typing problem for the user`() =
+        runTest {
+            ebay.interstitialAfterTyping = "verification" to "Verify your phone number to bid"
+            val page = page()
+            page.openItem(ukItem)
+            page.openBidLayer()
+            val typed = page.typeMax(max)
+            assertFalse(typed.verified)
+            assertEquals(TypingProblem.NEEDS_USER, typed.problem)
+        }
+
+    @Test
+    fun `a bid button eBay enables late is confirmed by a check that does not type again`() =
+        runTest {
+            ebay.clock = { testScheduler.currentTime }
+            ebay.submitEnableDelayMillis = 3_000
+            val page = page()
+            page.openItem(ukItem)
+            page.openBidLayer()
+            val typed = page.typeMax(max)
+            assertEquals(TypingProblem.BUTTON_DISABLED, typed.problem)
+            assertFalse(typed.verified)
+            testScheduler.advanceTimeBy(3_000)
+            val checked = page.checkTyped()
+            assertTrue(checked.toString(), checked.verified)
+            assertNull(checked.problem)
+            assertEquals(1, driver.callsOf("typeMax").size)
+            page.armReplyObserver()
+            page.submit()
+            assertEquals(1, ebay.presses)
+        }
+
+    @Test
     fun `a maximum in another currency than the listing's is never typed`() =
         runTest {
             val page = page()
@@ -446,11 +524,27 @@ class WebBidPageTest {
         }
 
     @Test
+    fun `after the press nothing types again or re-arms the hold over the bid's own requests`() =
+        runTest {
+            val page = page().readyToSubmit()
+            page.submit()
+            val armsAtPress = ebay.observerArms.toList()
+            val typed = page.typeMax(max)
+            page.armReplyObserver()
+            assertEquals("Kestrel: this page's one press was already used", typed.inlineError)
+            assertEquals(armsAtPress, ebay.observerArms)
+            assertFalse("eBay's confirmbid after the press must not be held", ebay.hold)
+            assertEquals(1, driver.callsOf("typeMax").size)
+        }
+
+    @Test
     fun `a refused first submit still uses up the page's one press`() =
         runTest {
             val page = page()
             assertTrue(runCatching { page.submit() }.exceptionOrNull() is SubmitNotDispatchedException)
-            page.readyToSubmit()
+            page.openItem(ukItem)
+            assertTrue(page.openBidLayer() is LayerState.Ready)
+            assertEquals("Kestrel: this page's one press was already used", page.typeMax(max).inlineError)
             assertTrue(runCatching { page.submit() }.exceptionOrNull() is IllegalStateException)
             assertEquals(0, ebay.presses)
         }
@@ -691,6 +785,95 @@ class WebBidPageTest {
             val page = page().readyToSubmit()
             page.submit()
             assertEquals(BidReply.Rejected("Enter £15.00 or more", 180), page.awaitReply(4_000))
+        }
+
+    @Test
+    fun `an unknown notice that stays is not taken as eBay refusing the bid`() =
+        runTest {
+            // A success wording Kestrel was never shown, or a progress line on a slow confirmbid.
+            for (notice in listOf("Bid placed", "Placing your bid…")) {
+                val driver = FakePageDriver()
+                val ebay = SimulatedEbayPage(driver)
+                ebay.replyNotices = { listOf(notice) }
+                val page = WebBidPage(driver, PageScript("var VERSION = '1';"), parsers, TestClock(testScheduler))
+                page.readyToSubmit()
+                page.submit()
+                val reply = page.awaitReply(4_000)
+                assertTrue("$notice: $reply", reply is BidReply.Unconfirmed)
+                assertEquals("eBay's own words are kept", notice, (reply as BidReply.Unconfirmed).text)
+            }
+        }
+
+    @Test
+    fun `a check eBay shows after the press before any confirmbid is the user's, not a lost reply`() =
+        runTest {
+            ebay.replyNotices = { emptyList() }
+            ebay.confirmFinishedPerf = null
+            ebay.interstitialAfterPress = "verification" to "Verify your phone number to bid"
+            val page = page().readyToSubmit()
+            page.submit()
+            val reply = page.awaitReply(4_000)
+            assertTrue(reply.toString(), reply is BidReply.NeedsUser)
+            reply as BidReply.NeedsUser
+            assertEquals("Verify your phone number to bid", reply.text)
+            assertEquals(NeedsUserReason.VERIFICATION, reply.reason)
+        }
+
+    @Test
+    fun `a modal Kestrel cannot read after the press, such as a progress overlay, is not taken for a check`() =
+        runTest {
+            ebay.replyNotices = { emptyList() }
+            ebay.confirmFinishedPerf = null
+            ebay.interstitialAfterPress = "unknown" to ""
+            val page = page().readyToSubmit()
+            page.submit()
+
+            val reply = page.awaitReply(4_000)
+
+            assertTrue(reply.toString(), reply is BidReply.Unconfirmed)
+        }
+
+    @Test
+    fun `an item page address with a title slug or more path is still the item's`() =
+        runTest {
+            for (address in listOf(
+                "https://www.ebay.co.uk/itm/Britain-after-Rome/127820098965",
+                "https://www.ebay.co.uk/itm/127820098965?hash=item1dc2&var=0",
+                "https://www.ebay.co.uk/itm/127820098965/",
+            )) {
+                val driver = FakePageDriver()
+                val ebay = SimulatedEbayPage(driver)
+                ebay.url = address
+                val page = WebBidPage(driver, PageScript("var VERSION = '1';"), parsers, TestClock(testScheduler))
+                page.openItem(ukItem)
+                assertTrue(address, page.openBidLayer() is LayerState.Ready)
+            }
+        }
+
+    @Test
+    fun `a captcha page after the press is the user's`() =
+        runTest {
+            ebay.replyNotices = { emptyList() }
+            ebay.confirmFinishedPerf = null
+            ebay.urlAfterPress = "https://www.ebay.co.uk/splashui/captcha?ap=1&appName=orch"
+            val page = page().readyToSubmit()
+            page.submit()
+            assertEquals(NeedsUserReason.CAPTCHA, (page.awaitReply(4_000) as BidReply.NeedsUser).reason)
+        }
+
+    @Test
+    fun `a press whose answer came after the engine stopped waiting still has eBay's reply read`() =
+        runTest {
+            ebay.touchReachesPage = false
+            // eBay's click handler holds the page: the press went out, its answer comes back after 5 s.
+            driver.answerDelayFor = { if (it == "submit") 5_000L else 0L }
+            val page = page().readyToSubmit()
+            assertNull("the engine gives submit 3 s", withTimeoutOrNull(3_000) { page.submit() })
+            assertEquals(1, ebay.presses)
+
+            val reply = page.awaitReply(4_000)
+
+            assertTrue(reply.toString(), reply is BidReply.Leading)
         }
 
     @Test

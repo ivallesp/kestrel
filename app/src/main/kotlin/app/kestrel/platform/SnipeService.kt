@@ -12,11 +12,13 @@ import androidx.core.content.ContextCompat
 import app.kestrel.AppContainer
 import app.kestrel.R
 import app.kestrel.model.Snipe
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 /**
  * The specialUse foreground service that runs checks, dry runs and bid windows. Jobs run on the main thread because
@@ -48,7 +50,19 @@ class SnipeService : Service() {
                 aftermath = container.jobAftermath,
                 nowUtcMillis = { container.clock.nowUtcMillis() },
                 onJobsChanged = ::onJobsChanged,
+                flushCookies = container.flushCookies,
+                keepWindowAlarmed = container.keepWindowAlarmed,
             )
+        // A start after Android ended the process mid-window says why in that snipe's timeline (best effort).
+        container.applicationScope.launch {
+            try {
+                container.lastExitNote.noteIfNew()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Log.w(TAG, "Could not note why the last process ended", error)
+            }
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

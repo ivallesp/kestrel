@@ -105,10 +105,14 @@ internal class NotificationTexts(
         current: Money?,
         minimumNext: Money?,
         problem: String?,
+        canRaise: Boolean = true,
     ): String {
         val advice =
-            minimumNext?.let { "Raise it to at least ${formatMoney(it)} to keep bidding." }
-                ?: "Raise it to keep bidding."
+            when {
+                !canRaise -> TOO_LATE_TO_RAISE
+                minimumNext != null -> "Raise it to at least ${formatMoney(minimumNext)} to keep bidding."
+                else -> "Raise it to keep bidding."
+            }
         return listOfNotNull(problem, "${priceOverMaxText(snipe, current)}. $advice", snipe.title).joinToString("\n")
     }
 
@@ -296,6 +300,8 @@ internal class NotificationTexts(
         const val TITLE_LIMIT = 28
         private const val ELLIPSIS = "…"
         private const val SEPARATOR = " · "
+        private const val TOO_LATE_TO_RAISE =
+            "Kestrel bids in a few seconds, too late to raise it here. Bid on eBay yourself to go higher."
         private const val PREPARING_TITLE = "Getting ready to bid"
         private const val BIDDING_CHIP = "Bidding"
         private const val ENDED_EARLY_TEXT = "The listing ended before Kestrel could bid."

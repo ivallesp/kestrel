@@ -13,7 +13,8 @@
   - the result notice in span.inline-notice__main > div > span > span (RS1).
   The inline script at the end imitates eBay's client code just enough to drive these pieces. data-rect attributes
   give the test layout stub its boxes (jsdom does no layout).
-  window.__fixtureScenario picks eBay's behaviour: leading, outbid, verification, oops, terms, alertOnSubmit.
+  window.__fixtureScenario picks eBay's behaviour: leading, outbid, verification, oops, terms, alertOnSubmit,
+  verifyAfterPress (the press runs trisk, then eBay asks to verify the phone instead of sending confirmbid).
 -->
 <html lang="en-GB">
 <head>
@@ -178,6 +179,13 @@
       submit.addEventListener('click', function () {
         window.__fixtureCounts.submitClicks += 1;
         if (scenario() === 'alertOnSubmit') alert('Please acknowledge the terms of this sale.');
+        if (scenario() === 'verifyAfterPress') {
+          post('/bfl/placebid?action=trisk&_trksid=p4429486.m1', { itemId: '100000000001', srt: 'synthetic-srt' }, true)
+            .then(function () {
+              document.getElementById('verify-dialog').hidden = false;
+            });
+          return;
+        }
         placeBid(input.value);
       });
       Array.prototype.forEach.call(layer.querySelectorAll('.place-bid-actions__powerbids-wrapper button'), function (button) {

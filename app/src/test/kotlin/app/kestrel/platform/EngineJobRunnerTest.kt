@@ -124,6 +124,8 @@ class EngineJobRunnerTest {
 
         override suspend fun typeMax(amount: Money): TypedAmount = unexpected()
 
+        override suspend fun checkTyped(): TypedAmount = unexpected()
+
         override suspend fun closeLayer() = unexpected()
 
         private fun unexpected(): Nothing = throw AssertionError("unexpected page call")

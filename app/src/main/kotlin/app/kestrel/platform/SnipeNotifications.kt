@@ -9,9 +9,11 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.drawable.Icon
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import app.kestrel.R
+import app.kestrel.data.SnipeRules
 import app.kestrel.engine.EngineClock
 import app.kestrel.engine.NeedsUserReason
 import app.kestrel.engine.SnipeNotifier
@@ -190,7 +192,6 @@ class SnipeNotifications internal constructor(
                 .setContentText(text)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
-                .setRequestPromotedOngoing(true)
                 .setCategory(Notification.CATEGORY_PROGRESS)
                 .setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
                 .setVisibility(Notification.VISIBILITY_PRIVATE)
@@ -199,6 +200,7 @@ class SnipeNotifications internal constructor(
                 .setDeleteIntent(broadcast(dismissed, state.snipeId, NotificationIds.Slot.WINDOW_DISMISSED))
                 .addAction(cancelAction(state.snipeId))
                 .setStyle(progressStyle(state))
+        requestPromotion(builder)
         state.endTimeUtcMillis?.let { end ->
             // A Live Update left behind by a killed process must not count down forever.
             val untilGone = end + WINDOW_NOTIFICATION_LINGER_MILLIS - clock.nowUtcMillis()
@@ -252,24 +254,26 @@ class SnipeNotifications internal constructor(
         showPriceAlert(snipe, current, minimumNext, problem = null)
     }
 
-    /** The price alert; [problem] explains why a typed max was refused (re-posting also clears the reply field). */
+    /**
+     * The price alert; [problem] explains why a typed max was refused (re-posting also clears the reply field). The
+     * Raise max reply is offered only while the store would still take a new max (SnipeRules.maxOrLeadRefusal).
+     */
     internal fun showPriceAlert(
         snipe: Snipe,
         current: Money?,
         minimumNext: Money?,
         problem: String?,
     ) {
-        val detail = texts.priceOverMaxDetail(snipe, current, minimumNext, problem)
-        val notification =
+        val canRaise = SnipeRules.maxOrLeadRefusal(snipe, clock.nowUtcMillis()) == null
+        val detail = texts.priceOverMaxDetail(snipe, current, minimumNext, problem, canRaise)
+        val builder =
             alert(snipe.id, R.drawable.ic_notification_trending_up)
                 .setContentTitle(texts.priceOverMaxTitle())
                 .setContentText(problem ?: texts.priceOverMaxText(snipe, current))
                 .setStyle(Notification.BigTextStyle().bigText(detail))
                 .setCategory(Notification.CATEGORY_STATUS)
-                .addAction(raiseMaxAction(snipe, current, minimumNext))
-                .addAction(openAction(snipe.id))
-                .build()
-        post(NotificationIds.priceAlert(snipe.id), notification)
+        if (canRaise) builder.addAction(raiseMaxAction(snipe, current, minimumNext))
+        post(NotificationIds.priceAlert(snipe.id), builder.addAction(openAction(snipe.id)).build())
     }
 
     internal fun showRaiseMaxDone(
@@ -621,5 +625,17 @@ internal enum class WindowProgress(
                 WindowPhase.RESOLVING -> 95
             }
         }
+    }
+}
+
+/**
+ * Asks for a Live Update. setRequestPromotedOngoing arrived in Android 16 QPR2 (API 36.1); the extra it sets is read on
+ * every version that supports Live Updates, so 36.0 gets the extra alone.
+ */
+private fun requestPromotion(builder: Notification.Builder) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN) {
+        builder.setRequestPromotedOngoing(true)
+    } else {
+        builder.extras.putBoolean(Notification.EXTRA_REQUEST_PROMOTED_ONGOING, true)
     }
 }

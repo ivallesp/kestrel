@@ -35,6 +35,23 @@ class ListingCheckTest {
     }
 
     @Test
+    fun aBrowserCheckIsWaitedOutInPlaceAndTheListingStillUpdated() =
+        runTest {
+            val harness = CheckHarness(this)
+            harness.page.pageKinds += PageKind.CHALLENGE
+            harness.auction.price = gbp("24.50")
+            // The check clears after a few seconds and the item page appears.
+            var reads = 0
+            harness.page.readListingResult = { if (++reads < 3) null else harness.auction.listing() }
+
+            val outcome = harness.run()
+
+            assertTrue(outcome.toString(), outcome is CheckOutcome.Updated)
+            assertEquals(gbp("24.50"), harness.snipe().lastPrice)
+            assertEquals("no reload, which would start the check again", 1, harness.page.openItemAtUtc.size)
+        }
+
+    @Test
     fun checkUpdatesTheSnipeAndRecordsThePrice() =
         runTest {
             val harness = CheckHarness(this)
@@ -243,6 +260,29 @@ class ListingCheckTest {
             val outcome = harness.run()
 
             assertTrue(outcome is CheckOutcome.Ended)
+            assertEquals(SnipeStatus.WON, harness.snipe().status)
+        }
+
+    @Test
+    fun aWindowThisProcessDoesNotRunIsResolvedAtTheFirstCheckAfterTheEnd() =
+        runTest {
+            val harness = CheckHarness(this)
+            // The process died after the bid; the end was three minutes ago and no window runs in this process.
+            harness.auction.endUtc = BASE_UTC - 180_000
+            harness.auction.finalPage = FinalPage(price = gbp("30.00"), userIsHighBidder = true)
+            harness.store.edit(1) { it.copy(status = SnipeStatus.LEADING, endTimeUtcMillis = BASE_UTC - 180_000) }
+            val check =
+                ListingCheck(
+                    harness.store,
+                    harness.notifier,
+                    VirtualClock(testScheduler),
+                    TEST_MINIMUM_RULE,
+                    windowRunning = { false },
+                )
+
+            val outcome = check.check(1, harness.page)
+
+            assertTrue(outcome.toString(), outcome is CheckOutcome.Ended)
             assertEquals(SnipeStatus.WON, harness.snipe().status)
         }
 

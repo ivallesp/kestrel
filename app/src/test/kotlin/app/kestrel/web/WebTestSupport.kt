@@ -10,6 +10,7 @@ import app.kestrel.model.Money
 import app.kestrel.model.PageKind
 import app.kestrel.model.ParsedLink
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -173,8 +174,12 @@ internal class FakePageDriver : PageDriver {
         loads += url
         helperInstalled = false
         navigationCount += 1
+        if (loadDelayMillis > 0) delay(loadDelayMillis)
         return loadResult(url).also { currentUrl = it.finalUrl }
     }
+
+    /** How long a load takes on virtual time, for a slow network. */
+    var loadDelayMillis = 0L
 
     override suspend fun evaluate(
         script: String,
@@ -193,8 +198,13 @@ internal class FakePageDriver : PageDriver {
         val call = PageCall(match.groupValues[1], arguments)
         calls += call
         val handler = handlers[call.function] ?: return """{"ok":false,"error":"no fake for ${call.function}"}"""
-        return handler(arguments)
+        val answer = handler(arguments)
+        // The page acted at once, but its answer takes this long to come back (eBay's handler is slow).
+        answerDelayFor(call.function).takeIf { it > 0 }?.let { delay(it) }
+        return answer
     }
+
+    var answerDelayFor: (function: String) -> Long = { 0L }
 
     override suspend fun tap(
         xCssPx: Double,
@@ -286,6 +296,38 @@ internal class SimulatedEbayPage(
     var autoRefreshStatus = 200
     var autoRefreshPollsBeforeDone = 1
 
+    /** The page's clock, for behaviour that takes time (the rigs pass the test's virtual clock). */
+    var clock: () -> Long = { 0L }
+
+    /** eBay's self-clearing browser check stands in front of the item until this time on [clock]. */
+    var challengeUntilMillis: Long? = null
+    private val inChallenge get() = challengeUntilMillis?.let { clock() < it } == true
+    private val shownUrl get() = if (inChallenge) "https://www.ebay.co.uk/splashui/challenge?ap=1&appName=orch" else url
+    private val shownTitle get() = if (inChallenge) "Pardon Our Interruption..." else title
+
+    /** eBay's own check of the typed amount: its bid button only enables this long after typing. */
+    var submitEnableDelayMillis = 0L
+    private var typedAtMillis = 0L
+
+    /** A check eBay shows right after the amount is typed (kind, text). */
+    var interstitialAfterTyping: Pair<String, String>? = null
+
+    /** eBay answers the press with a check instead of a reply (kind, text), or by moving to another page. */
+    var interstitialAfterPress: Pair<String, String>? = null
+    var urlAfterPress: String? = null
+
+    /** eBay rewrites the field this long after typing (a debounced formatter, or the layer redrawing itself). */
+    var fieldChangeAfterTypingMillis: Long? = null
+    var fieldChange: (String) -> String = { it }
+    private var fieldChanged = false
+
+    private fun applyLateFieldChange() {
+        val after = fieldChangeAfterTypingMillis ?: return
+        if (fieldChanged || fieldValue.isEmpty() || clock() - typedAtMillis < after) return
+        fieldChanged = true
+        fieldValue = fieldChange(fieldValue)
+    }
+
     var probes = 0
     var layerOpen = false
     var interstitialShown = false
@@ -320,7 +362,9 @@ internal class SimulatedEbayPage(
 
     init {
         driver.loadResult =
-            { requested -> LoadResult(requested, url, title, emptyList(), LoadOutcome.Loaded(null, "complete")) }
+            { requested ->
+                LoadResult(requested, shownUrl, shownTitle, emptyList(), LoadOutcome.Loaded(null, "complete"))
+            }
         driver.onTap = { tapped() }
         driver.on("probe") { probe() }
         driver.on("modelText") {
@@ -424,8 +468,8 @@ internal class SimulatedEbayPage(
         return json(
             mapOf(
                 "ok" to true,
-                "url" to url,
-                "title" to title,
+                "url" to shownUrl,
+                "title" to shownTitle,
                 "readyState" to "complete",
                 "signedIn" to signedIn,
                 "layerOpen" to layerOpen,
@@ -445,7 +489,11 @@ internal class SimulatedEbayPage(
         fieldValue.isNotEmpty() &&
             (AmountText.readField(fieldValue, EbaySite.UK, "GBP")?.minor ?: 0) >= minimumMinor
 
+    private val submitEnabled get() =
+        valid && submitEnabledWhenValid && clock() - typedAtMillis >= submitEnableDelayMillis
+
     private fun layerState(): String {
+        applyLateFieldChange()
         if (interstitialShown) {
             val (kind, text) = interstitial!!
             return json(
@@ -486,7 +534,7 @@ internal class SimulatedEbayPage(
                     mapOf(
                         "found" to (submitLabel != null),
                         "label" to submitLabel,
-                        "enabled" to (valid && submitEnabledWhenValid),
+                        "enabled" to submitEnabled,
                         "rejected" to listOf(mapOf("label" to "Review bid")),
                     ),
                 "minimumAmountText" to minimumAmountText,
@@ -496,8 +544,16 @@ internal class SimulatedEbayPage(
         )
     }
 
+    /** The bid button leads to a page of its own on eBay's site (a check page) instead of the layer. */
+    var pageOnBidButton: String? = null
+
     private fun showLayer() {
         bidButtonPresses += 1
+        pageOnBidButton?.let {
+            url = it
+            title = "Confirm your identity | eBay"
+            return
+        }
         if (interstitial != null) interstitialShown = true else layerOpen = true
         dialogOnLayerOpen?.let { driver.pageOpensDialog(it) }
     }
@@ -516,12 +572,18 @@ internal class SimulatedEbayPage(
 
     private fun typeMax(text: String): String {
         fieldValue = fieldRewrite(text)
+        typedAtMillis = clock()
+        fieldChanged = false
+        interstitialAfterTyping?.let {
+            interstitial = it
+            interstitialShown = true
+        }
         return json(
             mapOf(
                 "ok" to true,
                 "value" to fieldValue,
                 "minimumAmountText" to minimumAmountText,
-                "submitEnabled" to (valid && submitEnabledWhenValid),
+                "submitEnabled" to submitEnabled,
                 "documentToken" to documentToken,
             ),
         )
@@ -532,6 +594,7 @@ internal class SimulatedEbayPage(
         expectValue: String?,
     ): String {
         if (which == "submit") {
+            applyLateFieldChange()
             if (pressMethod != null) return json(mapOf("ok" to false, "reason" to "alreadySubmitted"))
             if (fieldValue != expectValue) return json(mapOf("ok" to false, "reason" to "amountChanged"))
             guardTarget = "submit"
@@ -602,6 +665,7 @@ internal class SimulatedEbayPage(
         expectValue: String?,
         expectedDocument: String?,
     ): String {
+        applyLateFieldChange()
         val refusal =
             when {
                 submitRefusalOverride != null -> submitRefusalOverride
@@ -662,14 +726,16 @@ internal class SimulatedEbayPage(
             } else {
                 emptyList()
             }
+        val check = interstitialAfterPress?.takeIf { answered }
         return json(
             mapOf(
                 "ok" to true,
-                "url" to url,
+                "url" to (urlAfterPress?.takeIf { answered } ?: url),
                 "title" to title,
                 "layerOpen" to layerOpen,
                 "newNotices" to if (answered) replyNotices(replyPolls) else emptyList<String>(),
                 "inlineError" to if (answered) inlineErrorAfterPress else null,
+                "interstitial" to check?.let { (kind, text) -> mapOf("kind" to kind, "text" to text) },
                 "records" to records,
                 "blocked" to blocked,
                 "blockedSincePress" to blocked,

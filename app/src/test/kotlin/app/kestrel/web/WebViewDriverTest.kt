@@ -188,6 +188,20 @@ class WebViewDriverTest {
         }
 
     @Test
+    fun `a usable document ends the load without waiting for slow subresources`() =
+        runTest {
+            val driver = driver()
+            val loading = async(UnconfinedTestDispatcher(testScheduler)) { driver.load(item, 30_000) }
+            client.onPageStarted(webView, item, null)
+            // An advert or a tracker holds onPageFinished back; the item page itself is parsed and readable.
+            advanceTimeBy(1_001)
+            assertEquals("document.readyState", shadowOf(webView).lastEvaluatedJavascript)
+            answerScript("\"interactive\"")
+            assertTrue("ended long before the 30 s limit", loading.isCompleted)
+            assertEquals(LoadOutcome.Loaded(null, "interactive"), loading.await().outcome)
+        }
+
+    @Test
     fun `evaluate decodes the JSON string evaluateJavascript returns`() =
         runTest {
             val driver = driver()

@@ -7,8 +7,8 @@ Research behind every decision: `docs/research/` (bid flow, Android platform, eB
 ## 1. Ground rules (product and safety)
 
 1. The user's maximum is a hard ceiling. Kestrel never bids above it, never raises it by itself, never buys, never pays.
-2. One bid per snipe: the full maximum, once, a few seconds before the end. eBay proxy bidding does the rest.
-   A retry is allowed only with the identical amount (it cannot raise what the user pays).
+2. One bid per snipe: the full maximum, one press, a few seconds before the end. eBay proxy bidding does the rest.
+   A press whose reply was lost is never repeated; the ended page decides what happened.
 3. Kestrel drives eBay's normal web pages in a normal WebView, at a person's pace. It never replays eBay's internal
    requests from outside the page, never changes its user agent, and never calls eBay from OkHttp.
 4. If eBay shows a captcha, a "verify it's you" step, phone verification, an age check or any page Kestrel does not
@@ -93,7 +93,8 @@ hand to user), RATE_WALL (title "Error Page | eBay", back off at least 8 s with 
    the input probe shows native input reaches the page; otherwise DOM events.
 7. Outcome within about 4 s: confirmbid response and/or the layer notice. "Your current bid puts you in the lead." =
    LEADING; "Another bidder is winning" = OUTBID_IMMEDIATELY (someone's max is higher); other notice text = REJECTED with
-   eBay's text; nothing = UNCONFIRMED (one retry with the same amount if at least 2 s remain, else follow the page).
+   eBay's text; nothing = UNCONFIRMED (follow the page and let the ended page decide: the page allows one press, so
+   Kestrel never presses again, not even with the same amount).
 8. Follow to the true end through Extended Bidding (AUTO_REFRESH, end time may move), then resolve the result.
 
 Selectors and texts live in `assets/js/kestrel.js` as ordered fallback chains, and every run writes a `LayerReport`
@@ -103,7 +104,8 @@ Selectors and texts live in `assets/js/kestrel.js` as ordered fallback chains, a
 
 ```
 T-10 min   dry run (short FGS): load page, check session, open layer, type max, read minimum, close. Never submit.
-T-120 s    exact alarm -> AlarmReceiver -> startForegroundService(SnipeService). Backup alarm at T-75 s.
+T-120 s    exact alarm -> AlarmReceiver -> startForegroundService(SnipeService). Backup alarm at T-75 s; while the
+           window runs and has not bid, the backup moves 15 s ahead every 10 s, so a killed window opens again.
            startForeground first (Live Update: "Bids at 18:21:34"), partial wake lock (timeout), SNTP sync.
 T-90 s     load item page, classify, parse listing, check status/price/session/extended bidding.
 T-45 s     open bid layer, type max, verify, install response observer.

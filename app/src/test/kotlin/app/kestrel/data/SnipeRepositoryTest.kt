@@ -213,13 +213,67 @@ class SnipeRepositoryTest {
         }
 
     @Test
-    fun maxCannotChangeOnceTheWindowIsOpenOrTheSnipeFinished() =
+    fun maxAndLeadCanChangeWhileTheWindowIsOpenUntilTheEditsLock() =
         runTest {
             val snipe = addArmed()
-            for (status in listOf(SnipeStatus.BIDDING, SnipeStatus.BID_SENT, SnipeStatus.WON, SnipeStatus.CANCELLED)) {
+            forceStatus(snipe.id, SnipeStatus.BIDDING)
+            val end = snipe.endTimeUtcMillis
+            // Lead 6 s: the bid goes at end - 6 s, and edits lock 3 s before that.
+            now = end - 70_000
+            val raised = repository.updateMax(snipe.id, gbp("60.00"))
+            assertEquals(gbp("60.00"), (raised as EditResult.Done).snipe.maxBid)
+            assertEquals("the window keeps its status", SnipeStatus.BIDDING, raised.snipe.status)
+            now = end - 9_001
+            assertTrue(repository.updateMax(snipe.id, gbp("61.00")) is EditResult.Done)
+            now = end - 9_000
+            assertTrue(repository.updateMax(snipe.id, gbp("62.00")) is EditResult.NotAllowed)
+            assertTrue(repository.setLead(snipe.id, 5) is EditResult.NotAllowed)
+            assertEquals(gbp("61.00"), repository.snipe(snipe.id)?.maxBid)
+            // The group still cannot change once the window is open: the window decided on it at its start.
+            now = end - 70_000
+            val group = repository.createGroup("Cameras")
+            assertTrue(repository.setGroup(snipe.id, group.id) is EditResult.NotAllowed)
+        }
+
+    @Test
+    fun aLeadChangeInTheWindowMustBeBeforeBothTheOldAndTheNewLock() =
+        runTest {
+            val snipe = addArmed()
+            forceStatus(snipe.id, SnipeStatus.BIDDING)
+            now = snipe.endTimeUtcMillis - 20_000
+            // 30 s would bid 30 s before the end, which has passed.
+            assertTrue(repository.setLead(snipe.id, 30) is EditResult.NotAllowed)
+            // 15 s locks 18 s before the end, still ahead; the old 6 s lead locks later still.
+            assertEquals(15, (repository.setLead(snipe.id, 15) as EditResult.Done).snipe.leadSeconds)
+        }
+
+    @Test
+    fun maxCannotChangeOnceTheBidIsOutOrTheSnipeFinished() =
+        runTest {
+            val snipe = addArmed()
+            val statuses =
+                listOf(
+                    SnipeStatus.BID_SENT,
+                    SnipeStatus.LEADING,
+                    SnipeStatus.EXTENDED,
+                    SnipeStatus.WON,
+                    SnipeStatus.CANCELLED,
+                )
+            for (status in statuses) {
                 forceStatus(snipe.id, status)
                 assertTrue("$status", repository.updateMax(snipe.id, gbp("90.00")) is EditResult.NotAllowed)
+                assertTrue("$status", repository.setLead(snipe.id, 9) is EditResult.NotAllowed)
             }
+        }
+
+    @Test
+    fun aWindowThatEndedWithAnOpenResultTakesNoEdits() =
+        runTest {
+            val snipe = addArmed()
+            val open = SnipeResult(SnipeOutcome.UNKNOWN, null, null, null, null, null, "Check eBay.")
+            repository.update(snipe.copy(status = SnipeStatus.BIDDING, result = open))
+
+            assertTrue(repository.updateMax(snipe.id, gbp("90.00")) is EditResult.NotAllowed)
         }
 
     @Test
@@ -310,6 +364,44 @@ class SnipeRepositoryTest {
             assertEquals(snipe, restored)
             assertEquals(1, armedCopy.read().size)
             assertEquals(EditResult.NotFound, repository.undoDelete(snipe.id))
+        }
+
+    @Test
+    fun aBidWhoseResultNeverCameIsSettledByTheUserOnceTheAuctionEnded() =
+        runTest {
+            val snipe = addArmed()
+            forceStatus(snipe.id, SnipeStatus.BID_SENT)
+            assertTrue("not before the end", repository.settle(snipe.id, won = true) is EditResult.NotAllowed)
+
+            now = snipe.endTimeUtcMillis + 2 * HOUR
+            val settled = repository.settle(snipe.id, won = false)
+
+            val lost = (settled as EditResult.Done).snipe
+            assertEquals(SnipeStatus.LOST, lost.status)
+            assertEquals(SnipeOutcome.LOST, lost.result?.outcome)
+            assertEquals("You marked it lost after checking eBay.", lastMessage(snipe.id))
+            assertTrue("once only", repository.settle(snipe.id, won = true) is EditResult.NotAllowed)
+        }
+
+    @Test
+    fun aSnipeThatNeverBidHasNothingToSettle() =
+        runTest {
+            val snipe = addArmed()
+            now = snipe.endTimeUtcMillis + 2 * HOUR
+
+            assertTrue(repository.settle(snipe.id, won = true) is EditResult.NotAllowed)
+        }
+
+    @Test
+    fun aSnipeLeftInABidStatusCanBeDeletedLongAfterItsEnd() =
+        runTest {
+            val snipe = addArmed()
+            forceStatus(snipe.id, SnipeStatus.BID_SENT)
+            assertTrue(repository.delete(snipe.id) is EditResult.NotAllowed)
+
+            now = snipe.endTimeUtcMillis + 2 * HOUR
+
+            assertTrue(repository.delete(snipe.id) is EditResult.Done)
         }
 
     @Test
@@ -417,6 +509,32 @@ class SnipeRepositoryTest {
 
             repository.update(stale.copy(status = SnipeStatus.LEADING))
             assertEquals(SnipeStatus.LEADING, repository.snipe(snipe.id)?.status)
+        }
+
+    @Test
+    fun aWindowHandsTheSnipeBackWhenTheEndMovedFarAway() =
+        runTest {
+            val snipe = addArmed()
+            forceStatus(snipe.id, SnipeStatus.BIDDING)
+            // eBay moved the end an hour out: no window holds a snipe that far from its end.
+            val farEnd = now + 60 * MINUTE
+            repository.update(repository.snipe(snipe.id)!!.copy(endTimeUtcMillis = farEnd))
+
+            repository.update(repository.snipe(snipe.id)!!.copy(status = SnipeStatus.ARMED))
+
+            assertEquals(SnipeStatus.ARMED, repository.snipe(snipe.id)?.status)
+        }
+
+    @Test
+    fun aStaleArmedCopyCannotResetAWindowThatHoldsTheSnipe() =
+        runTest {
+            val snipe = addArmed(testListing(endTimeUtcMillis = now + 2 * MINUTE))
+            val stale = repository.snipe(snipe.id)!!
+            forceStatus(snipe.id, SnipeStatus.BIDDING)
+
+            repository.update(stale.copy(status = SnipeStatus.ARMED))
+
+            assertEquals(SnipeStatus.BIDDING, repository.snipe(snipe.id)?.status)
         }
 
     @Test
@@ -602,6 +720,37 @@ class SnipeRepositoryTest {
 
             assertEquals(listOf(armed.id), armedCopy.read().map { it.id })
             assertNotNull(armedCopy.read().single().title)
+        }
+
+    @Test
+    fun anEngineWriteLeavesTheArmedCopyToLaterWork() =
+        runTest {
+            val later = mutableListOf<suspend () -> Unit>()
+            val deferring =
+                SnipeRepository(
+                    database,
+                    armedCopy,
+                    nowUtcMillis = { now },
+                    formatMoney = ::testFormatMoney,
+                    refreshArmedCopyLater = { later += it },
+                )
+            val armed =
+                (
+                    deferring.addFromListing(
+                        testListing(),
+                        gbp("48.00"),
+                        leadSeconds = 6,
+                    ) as AddResult.Added
+                ).snipe
+            assertEquals(listOf(armed.id), armedCopy.read().map { it.id })
+
+            // The pre-tap BID_SENT write: the file write and its fsync must not run inside it.
+            deferring.update(armed.copy(status = SnipeStatus.BID_SENT))
+
+            assertEquals(listOf(armed.id), armedCopy.read().map { it.id })
+            assertEquals(1, later.size)
+            later.single().invoke()
+            assertTrue(armedCopy.read().isEmpty())
         }
 
     private suspend fun forceStatus(

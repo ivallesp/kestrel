@@ -252,12 +252,32 @@
     return null;
   }
 
+  var containerSelector = null;
+
+  // The bid layer's and dialogs' own containers (TABLE.layerContainer and TABLE.dialogs).
+  function isDialogContainer(element) {
+    if (containerSelector === null) {
+      containerSelector = TABLE.layerContainer.concat(TABLE.dialogs).map(function (entry) {
+        return entry[0];
+      }).join(', ');
+    }
+    try {
+      return typeof element.matches === 'function' && element.matches(containerSelector);
+    } catch (error) {
+      return false;
+    }
+  }
+
   function isHiddenElement(element) {
     if (element.hidden) return true;
     if (element.classList && element.classList.contains('clipped')) return true;
     var style = window.getComputedStyle(element);
-    return style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse' ||
-      style.opacity === '0';
+    if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse') return true;
+    // A dialog's fade-in runs on animation frames, which a headless page with the screen off may never get: the
+    // dialog then stays at opacity 0 though everything in it is there and works. eBay closes its dialogs with the
+    // hidden attribute, so only a container's own fade is ignored; anything else at opacity 0 (a button, an overlay
+    // that is not a dialog) stays hidden.
+    return style.opacity === '0' && !isDialogContainer(element);
   }
 
   function isRendered(element) {
@@ -1374,14 +1394,28 @@
       error: result.error, elapsedMillis: result.elapsedMillis };
   }
 
+  function isGenericLayer(selector) {
+    for (var i = 0; i < TABLE.layerContainer.length; i++) {
+      if (TABLE.layerContainer[i][0] === selector) return TABLE.layerContainer[i][2] === 'generic';
+    }
+    return false;
+  }
+
   function openBidLayer() {
-    if (findLayer()) return { ok: true, alreadyOpen: true };
+    // Only an amount field, or a container known to be the bid layer, means the layer is already open: any other
+    // dialog (a notice about extended bidding, say) is not the layer.
+    var open = findLayer();
+    if (open && (open.input || !isGenericLayer(open.selector))) return { ok: true, alreadyOpen: true };
     var bidButton = findBidButton();
     if (!bidButton) return { ok: false, reason: 'bidButtonNotFound' };
     if (bidButton.signInHref) return { ok: false, reason: 'signInRequired', signInHref: bidButton.signInHref };
     if (!bidButton.recognised) return { ok: false, reason: 'bidButtonNotRecognised', label: bidButton.label };
     if (bidButton.loading) return { ok: false, reason: 'pageNotReady' };
     if (bidButton.disabled) return { ok: false, reason: 'bidButtonDisabled' };
+    // A person could not press through a modal, or a dialog over the button: neither does Kestrel.
+    if (open && (isModal(open.element.closest(DIALOG_SELECTOR) || open.element) || blockingCover(bidButton.element))) {
+      return { ok: false, reason: 'dialogInTheWay', text: truncate(textOf(open.element, 300), 300) || null };
+    }
     if (state.guard && state.guard.which === 'bidButton') {
       if (state.guard.reached) return { ok: false, reason: 'nativeTapReached' };
       state.guard.mode = 'swallow';
@@ -1447,10 +1481,33 @@
       result.ready = !!submit.element && !result.interstitial;
     } else if (!interstitial) {
       var text = textOf(layer.element, 300);
-      if (TABLE.texts.layerError[0].test(text)) result.layerError = truncate(text, 300);
-      else result.pendingDialogText = truncate(text, 300) || null;
+      if (TABLE.texts.layerError[0].test(text)) {
+        result.layerError = truncate(text, 300);
+      } else {
+        // A step eBay loads into a frame (an identity or phone check) has no text or field Kestrel can see.
+        var frames = framesIn(layer.element.closest(DIALOG_SELECTOR) || layer.element);
+        var framed = frames.length > 0 ? 'eBay shows a page from ' + frames.map(frameHost).join(', ') + ' in its dialog' : '';
+        result.pendingDialogText = truncate(text, 300) || framed || null;
+      }
     }
     return result;
+  }
+
+  var DIALOG_SELECTOR = TABLE.dialogs.map(function (entry) {
+    return entry[0];
+  }).join(', ');
+
+  function framesIn(root) {
+    return queryAll(root, 'iframe, frame').filter(isRendered);
+  }
+
+  // Only the host: a frame's address can carry tokens.
+  function frameHost(frame) {
+    try {
+      return new URL(frame.getAttribute('src') || '', location.href).host || 'an unnamed source';
+    } catch (error) {
+      return 'an unnamed source';
+    }
   }
 
   function nativeValueSetter(input) {
@@ -1727,6 +1784,8 @@
       newNotices: difference(notices, baselineNotices),
       addedLines: baseline ? difference(lines, baseline.layerLines).slice(0, 30) : [],
       inlineError: layer ? inlineErrorText(layer) : null,
+      // eBay may answer the press with a check (phone verification, sign-in) instead of placing the bid.
+      interstitial: detectInterstitial(layer),
       records: state.observer.records.slice(),
       blocked: state.observer.blocked.slice(),
       // Only a request stopped after the press answers the press; one stopped while waiting does not.
@@ -1785,6 +1844,9 @@
       matched: {
         bidButton: bidButton ? bidButton.selector : null,
         bidButtonLabel: bidButton ? bidButton.label : null,
+        // Why a bid layer never opened can be a bid button eBay's scripts never made usable.
+        bidButtonState: bidButton ? { disabled: bidButton.disabled, loading: bidButton.loading,
+          visible: bidButton.visible, recognised: bidButton.recognised } : null,
         layerContainer: layer ? layer.selector : null,
         amountInput: layer && layer.input ? layer.input.selector : null,
         submitButton: submit ? submit.selector : null,
@@ -1797,6 +1859,18 @@
       dialogs: renderedDialogs().slice(0, 5).map(function (dialog) {
         return { role: dialog.getAttribute('role'), label: dialog.getAttribute('aria-label'),
           text: truncate(textOf(dialog, REPORT_TEXT_LIMIT), REPORT_TEXT_LIMIT) };
+      }),
+      // Dialog containers shown but still transparent: a fade-in that never ran.
+      containerOpacity: queryAll(document, '*').filter(function (node) {
+        if (node.hidden || !isDialogContainer(node)) return false;
+        var style = window.getComputedStyle(node);
+        return style.display !== 'none' && style.opacity === '0';
+      }).slice(0, 5).map(function (node) {
+        return { classes: truncate(node.getAttribute('class') || '', 120), opacity: '0' };
+      }),
+      frames: framesIn(document).slice(0, 10).map(function (frame) {
+        var holder = layer ? (layer.element.closest(DIALOG_SELECTOR) || layer.element) : null;
+        return { host: frameHost(frame), inLayer: !!(holder && holder.contains(frame)) };
       }),
       notices: (layer ? noticeTexts(layer.element) : noticeTexts(pageNoticeRoot())).slice(0, 10).map(function (text) {
         return truncate(text, REPORT_TEXT_LIMIT);

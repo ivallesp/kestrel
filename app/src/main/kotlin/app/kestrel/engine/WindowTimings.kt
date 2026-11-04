@@ -5,8 +5,12 @@ object BidTiming {
     const val MINIMUM_LEAD_SECONDS = 1
     const val MAXIMUM_LEAD_SECONDS = 90
 
-    /** Changes to the max (or a cancel) after this point no longer reach the bid. */
-    const val EDIT_LOCK_BEFORE_FIRE_MILLIS = 2_000L
+    /**
+     * The user may change the max and the lead until this long before the bid, also while the window is open; later
+     * edits are refused (DESIGN: "editable until 3 s before the bid"). The window reads the instruction a last time
+     * [WindowTimings.LAST_READ_BEFORE_FIRE] before the bid, a second later, so an edit stored in time reaches the bid.
+     */
+    const val EDIT_LOCK_BEFORE_FIRE_MILLIS = 3_000L
 
     fun leadMillis(leadSeconds: Int): Long = leadSeconds.coerceIn(MINIMUM_LEAD_SECONDS, MAXIMUM_LEAD_SECONDS) * 1_000L
 
@@ -19,6 +23,13 @@ object BidTiming {
         endUtcMillis: Long,
         leadSeconds: Int,
     ): Long = fireAtUtcMillis(endUtcMillis, leadSeconds) - EDIT_LOCK_BEFORE_FIRE_MILLIS
+
+    /** True while an edit of the max or the lead still reaches a bid fired [leadSeconds] before [endUtcMillis]. */
+    fun editsOpen(
+        endUtcMillis: Long,
+        leadSeconds: Int,
+        nowUtcMillis: Long,
+    ): Boolean = nowUtcMillis < editsLockAtUtcMillis(endUtcMillis, leadSeconds)
 }
 
 /** The window's schedule and the time limits of every call into the page. All values in milliseconds. */
@@ -31,6 +42,12 @@ internal object WindowTimings {
 
     /** The page must be ready this long before the latest dispatch to still open the layer, type and fire. */
     const val PAGE_READY_BEFORE_DISPATCH = 5_000L
+
+    /**
+     * The window's last read of the user's instruction (with the group rule and the price check) is this long before
+     * the bid: a second after [BidTiming.EDIT_LOCK_BEFORE_FIRE_MILLIS], so an edit stored just before the lock is seen.
+     */
+    const val LAST_READ_BEFORE_FIRE = 2_000L
 
     /** The bid layer must be open this long before the latest dispatch, to leave time to type the max. */
     const val LAYER_READY_BEFORE_DISPATCH = 1_500L
@@ -55,8 +72,6 @@ internal object WindowTimings {
     // Firing and the reply.
     const val REPLY_TIMEOUT = 4_000L
     const val REPLY_CALL_SLACK = 1_000L
-    const val RETRY_MINIMUM_REMAINING = 2_000L
-    const val RETRY_ACTIVE_CHECK_TIMEOUT = 1_000L
 
     // Following the auction with AUTO_REFRESH.
     const val MINIMUM_REFRESH_INTERVAL = 2_000L
@@ -85,7 +100,10 @@ internal object WindowTimings {
     const val CREATE_PAGE_TIMEOUT = 15_000L
     const val OPEN_ITEM_TIMEOUT = 25_000L
     const val READ_LISTING_TIMEOUT = 5_000L
-    const val OPEN_LAYER_TIMEOUT = 15_000L
+
+    // Longer than the page's own waits for eBay's scripts and the layer (web PageTiming), so its reason and report
+    // arrive instead of a bare timeout. A layer that opens in a few seconds is not slowed by it.
+    const val OPEN_LAYER_TIMEOUT = 26_000L
     const val TYPE_TIMEOUT = 8_000L
     const val TYPE_MINIMUM_BUDGET = 300L
     const val ARM_OBSERVER_TIMEOUT = 3_000L

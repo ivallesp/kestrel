@@ -1,5 +1,6 @@
 package app.kestrel.web
 
+import app.kestrel.engine.BidNotSent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -160,10 +161,12 @@ class PageLoadException(
     message: String,
 ) : WebPageException(message)
 
-/** submit() pressed nothing: the bid was not sent. */
+/** submit() pressed nothing: the bid was not sent. [needsUser] when eBay showed something only the user can answer. */
 class SubmitNotDispatchedException(
     message: String,
-) : WebPageException(message)
+    override val needsUser: Boolean = false,
+) : WebPageException(message),
+    BidNotSent
 
 /** A tap was stopped because the page navigated; [fingerWentDown] says whether a touch had already started. */
 class TapAbortedException(

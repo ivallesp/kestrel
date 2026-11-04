@@ -27,6 +27,9 @@ class SnipeEngineTest {
         val clock = TrueTime(time)
         val auction = FakeAuction(scope.testScheduler)
         val page = ScriptedBidPage(scope.testScheduler, auction)
+
+        /** Pages handed out after the first one, in order; the first page again when none is left. */
+        val laterPages = ArrayDeque<ScriptedBidPage>()
         var pagesCreated = 0
         val engine =
             SnipeEngine(
@@ -35,7 +38,7 @@ class SnipeEngineTest {
                 clock,
                 BidPageFactory {
                     pagesCreated++
-                    page
+                    if (pagesCreated == 1) page else laterPages.removeFirstOrNull() ?: page
                 },
                 TEST_MINIMUM_RULE,
             )
@@ -167,6 +170,25 @@ class SnipeEngineTest {
         }
 
     @Test
+    fun theRaiseHintCountsDownToTheLockTheUserGetsThreeSecondsBeforeTheBid() =
+        runTest {
+            val harness = WindowHarness(this)
+            harness.forbidSubmit()
+            launch {
+                delay(50_000)
+                harness.auction.price = gbp("50.00")
+                harness.auction.bidCount = 6
+            }
+
+            harness.run()
+
+            val alert = harness.store.eventsOf(TimelineKind.PRICE_OVER_MAX).first()
+            // Lead 6 s: the user's edits lock 3 s before the bid, at end - 9 s.
+            val untilLock = durationText(END_UTC - 9_000L - alert.trueUtcMillis)
+            assertTrue(alert.message, alert.message.endsWith("Raise the max within $untilLock to still bid."))
+        }
+
+    @Test
     fun cancelDuringTheWindowPlacesNoBid() =
         runTest {
             val harness = WindowHarness(this)
@@ -249,26 +271,28 @@ class SnipeEngineTest {
         }
 
     @Test
-    fun unconfirmedReplyGetsOneRetryWithTheSameAmount() =
+    fun unconfirmedReplyIsFollowedWithoutTouchingThePageAgain() =
         runTest {
             val harness = WindowHarness(this)
             harness.store.edit(1) { it.copy(leadSeconds = 8) }
             harness.page.replies += BidReply.Unconfirmed(null)
-            harness.page.replies += BidReply.Leading("Your current bid puts you in the lead.", 700)
             harness.winAt("30.00")
 
             val result = harness.run()
 
-            assertEquals(2, harness.page.submitsAtUtc.size)
-            assertEquals(listOf(gbp("48.00"), gbp("48.00")), harness.page.typed)
-            assertTrue(harness.page.submitsAtUtc[1] <= END_UTC - 1_000L)
-            assertEquals(2, harness.page.observerArms)
+            // The page allows one press: no second submit, no second typing, and the receipt keeps the real tap.
+            assertEquals(1, harness.page.submitCalls)
+            assertEquals(listOf(gbp("48.00")), harness.page.typed)
+            assertEquals(1, harness.page.observerArms)
+            assertEquals(1, harness.store.eventsOf(TimelineKind.BID_SENT).size)
+            assertEquals(8_000L, result.bidLeadMillis)
+            assertEquals(END_UTC - 8_000L, result.bidSentAtUtcMillis)
+            // The reply was lost, but eBay's own page names the user as the winner.
             assertEquals(SnipeOutcome.WON, result.outcome)
-            assertEquals(2, harness.store.eventsOf(TimelineKind.BID_SENT).size)
         }
 
     @Test
-    fun noRetryWhenTooLittleTimeIsLeft() =
+    fun lostReplyWithAShortLeadIsReadFromTheEndedPage() =
         runTest {
             val harness = WindowHarness(this)
             harness.store.edit(1) { it.copy(leadSeconds = 3) }
@@ -279,7 +303,6 @@ class SnipeEngineTest {
             assertEquals(1, harness.page.submitsAtUtc.size)
             // The reply was lost, but eBay's own page names the user as the winner.
             assertEquals(SnipeOutcome.WON, result.outcome)
-            assertTrue(harness.store.eventsOf(TimelineKind.PROBLEM).any { it.message.contains("too little time") })
         }
 
     @Test
@@ -577,6 +600,177 @@ class SnipeEngineTest {
         }
 
     @Test
+    fun aMaxBelowEbaysMinimumEndsAsPricePassedTheMaxWithoutPressing() =
+        runTest {
+            val harness = WindowHarness(this)
+            harness.forbidSubmit()
+            harness.page.typedMinimum = { gbp("60.00") }
+            harness.page.typedInlineError = { "Enter £60.00 or more" }
+            harness.page.typedProblem = { TypingProblem.BELOW_MINIMUM }
+
+            val result = harness.run()
+
+            assertEquals(SnipeOutcome.PRICE_PASSED_MAX, result.outcome)
+            assertEquals(
+                gbp("60.00"),
+                harness.notifier.priceAlerts
+                    .last()
+                    .second,
+            )
+            assertTrue(harness.notifier.userAlerts.isEmpty())
+        }
+
+    @Test
+    fun aBidButtonThatNeverEnablesFailsEarlyWithTheReason() =
+        runTest {
+            val harness = WindowHarness(this)
+            harness.forbidSubmit()
+            harness.page.typedInlineError = { "Kestrel: eBay's bid button stayed disabled after typing the amount" }
+            harness.page.typedProblem = { TypingProblem.BUTTON_DISABLED }
+
+            val result = harness.run()
+
+            assertEquals(SnipeOutcome.FAILED, result.outcome)
+            assertTrue(result.reason!!, result.reason!!.contains("stayed disabled"))
+            // Looked again without typing before typing anew, and gave up long before the fire time.
+            assertEquals(2, harness.page.typed.size)
+            assertTrue(harness.page.checks >= 4)
+            assertTrue(harness.time.trueUtc() < END_UTC - 20_000)
+        }
+
+    @Test
+    fun aPressThePageProvablyNeverMadeIsNotRecordedAsABid() =
+        runTest {
+            val harness = WindowHarness(this)
+            harness.page.submitError = NotPressedException("The typed maximum was not verified on this page")
+
+            val result = harness.run()
+
+            assertEquals(SnipeOutcome.FAILED, result.outcome)
+            assertEquals(SnipeStatus.FAILED, harness.snipe().status)
+            assertEquals(null, result.bidSentAtUtcMillis)
+            assertEquals(null, result.bidLeadMillis)
+            assertTrue(harness.store.eventsOf(TimelineKind.BID_SENT).isEmpty())
+            assertFalse(WindowPhase.BID_SENT in harness.notifier.phases)
+            assertTrue(result.reason!!, result.reason!!.contains("the typed maximum was not verified on this page"))
+            assertEquals(
+                NeedsUserReason.BID_FAILED,
+                harness.notifier.userAlerts
+                    .single()
+                    .first,
+            )
+            // The layer was not used for a bid, so it is closed like a person would close it.
+            assertEquals(1, harness.page.layerCloses)
+        }
+
+    @Test
+    fun aCheckThatStopsThePressIsHandedToTheUser() =
+        runTest {
+            val harness = WindowHarness(this)
+            harness.page.submitError =
+                NotPressedException("eBay is asking for something before the bid (verification or terms)", true)
+
+            val result = harness.run()
+
+            assertEquals(SnipeOutcome.FAILED, result.outcome)
+            assertEquals(null, result.bidSentAtUtcMillis)
+            assertEquals(
+                NeedsUserReason.VERIFICATION,
+                harness.notifier.userAlerts
+                    .single()
+                    .first,
+            )
+        }
+
+    /** The pre-tap BID_SENT write takes longer than its 150 ms limit once, so it never lands. */
+    private fun WindowHarness.slowFirstBidSentWrite() {
+        var slow = true
+        store.updateDelayMillis = { written ->
+            if (slow && written.status == SnipeStatus.BID_SENT) {
+                slow = false
+                200L
+            } else {
+                0L
+            }
+        }
+    }
+
+    @Test
+    fun aBidWhosePreTapWriteMissedIsStoredAsSentAfterTheTap() =
+        runTest {
+            val harness = WindowHarness(this)
+            harness.slowFirstBidSentWrite()
+            harness.page.replies += BidReply.Unconfirmed(null)
+            // The ended page says nothing about the user's standing, so the result stays open.
+            harness.auction.finalPage = FinalPage(price = gbp("30.00"), bidCount = 5)
+            harness.auction.signedIn = null
+
+            val result = harness.run()
+
+            assertEquals(1, harness.page.submitsAtUtc.size)
+            assertEquals(SnipeOutcome.UNKNOWN, result.outcome)
+            // Stored as BIDDING the platform would read "no bid": a false alert, a group sibling let through.
+            assertTrue("${harness.snipe().status}", harness.snipe().status in BID_SENT_STATUSES)
+        }
+
+    @Test
+    fun aWindowStoppedAfterATapWhoseWriteMissedStillRecordsTheBid() =
+        runTest {
+            val harness = WindowHarness(this)
+            harness.slowFirstBidSentWrite()
+            // eBay's reply never comes, and the window is stopped while it waits for it.
+            harness.page.replies += BidReply.Unconfirmed(null)
+            val window = launch { harness.run() }
+            delay(115_000)
+            window.cancel()
+            window.join()
+
+            assertEquals(1, harness.page.submitsAtUtc.size)
+            assertTrue("${harness.snipe().status}", harness.snipe().status in BID_SENT_STATUSES)
+            assertEquals(SnipeOutcome.UNKNOWN, harness.snipe().result?.outcome)
+        }
+
+    @Test
+    fun theBiddingLiveUpdateIsPostedBeforeThePreciseWaitNotBetweenItAndTheTap() =
+        runTest {
+            val harness = WindowHarness(this)
+            harness.notifier.clock = { harness.time.trueUtc() }
+            harness.page.replies += BidReply.Leading("Your current bid puts you in the lead.", 400)
+            harness.winAt("30.00")
+
+            harness.run()
+
+            val biddingShownAt =
+                harness.notifier.phaseTimes
+                    .first { it.first == WindowPhase.BIDDING }
+                    .second
+            assertTrue("shown at ${biddingShownAt - END_UTC}", biddingShownAt < END_UTC - 6_000L)
+        }
+
+    @Test
+    fun aTapThatTheStoreWriteMadeTooLateIsNotSent() =
+        runTest {
+            val harness = WindowHarness(this)
+            harness.forbidSubmit()
+            // Storage stalls: the pre-tap BID_SENT write blocks the main thread for 5.5 s, past the latest dispatch.
+            var stalled = false
+            harness.store.updateDelayMillis = { written ->
+                if (!stalled && written.status == SnipeStatus.BID_SENT) {
+                    stalled = true
+                    harness.time.elapsedShiftMillis = 5_500
+                }
+                0L
+            }
+
+            val result = harness.run()
+
+            assertEquals(SnipeOutcome.FAILED, result.outcome)
+            assertTrue(result.reason!!, result.reason!!.contains("too late"))
+            assertEquals(null, result.bidSentAtUtcMillis)
+            assertTrue(harness.store.eventsOf(TimelineKind.BID_SENT).isEmpty())
+        }
+
+    @Test
     fun bidSentIsStoredBeforeTheTap() =
         runTest {
             val harness = WindowHarness(this)
@@ -591,26 +785,25 @@ class SnipeEngineTest {
         }
 
     @Test
-    fun refusedRetryAfterALostReplyKeepsTheResultOpen() =
+    fun lostReplyKeepsTheResultOpenWhenTheEndedPageSaysNothing() =
         runTest {
             val harness = WindowHarness(this)
             harness.store.edit(1) { it.copy(leadSeconds = 8) }
             harness.page.replies += BidReply.Unconfirmed(null)
-            harness.page.replies += BidReply.Rejected("You have already placed this bid.", 500)
             // The ended page says nothing about the user's standing.
             harness.auction.finalPage = FinalPage(price = gbp("30.00"), bidCount = 5)
             harness.auction.signedIn = null
 
             val result = harness.run()
 
-            // The first tap may have counted, so this is neither a failure nor a loss, and the group stays blocked.
-            assertEquals(2, harness.page.submitsAtUtc.size)
+            // The tap may have counted, so this is neither a failure nor a loss, and the group stays blocked.
+            assertEquals(1, harness.page.submitCalls)
             assertEquals(SnipeOutcome.UNKNOWN, result.outcome)
             assertTrue(harness.snipe().status in BID_SENT_STATUSES)
         }
 
     @Test
-    fun noRetryOnceThePriceHasPassedTheMax() =
+    fun lostReplyWithThePriceAboveTheMaxIsLost() =
         runTest {
             val harness = WindowHarness(this)
             harness.store.edit(1) { it.copy(leadSeconds = 8) }
@@ -764,6 +957,108 @@ class SnipeEngineTest {
             assertEquals(2, harness.page.layerOpens)
             assertEquals(listOf(gbp("48.00"), gbp("48.00")), harness.page.typed)
             assertEquals(SnipeOutcome.WON, result.outcome)
+        }
+
+    @Test
+    fun strayEndedRepliesWithAShortLeadReopenTheLayerAtOnceAndBidOnTime() =
+        runTest {
+            val harness = WindowHarness(this)
+            harness.store.edit(1) { it.copy(leadSeconds = 3) }
+            // A slow phone: the layer takes 3 s to open and typing 1.3 s.
+            harness.page.layerOpenMillis = 3_000
+            harness.page.typingMillis = 1_300
+            harness.page.replies += BidReply.Leading("Your current bid puts you in the lead.", 400)
+            harness.winAt("30.00")
+            launch {
+                delay(90_000)
+                harness.auction.strayEndedReplies = 2
+            }
+
+            val result = harness.run()
+
+            assertEquals(1, harness.page.submitsAtUtc.size)
+            val lateBy = harness.page.submitsAtUtc.single() - (END_UTC - 3_000L)
+            assertTrue("late by $lateBy ms", lateBy in 0L..50L)
+            assertEquals(SnipeOutcome.WON, result.outcome)
+        }
+
+    @Test
+    fun strayEndedRepliesWhoseConfirmingReloadFailsStillBid() =
+        runTest {
+            val harness = WindowHarness(this)
+            harness.page.replies += BidReply.Leading("Your current bid puts you in the lead.", 400)
+            harness.winAt("30.00")
+            launch {
+                delay(85_000)
+                harness.auction.strayEndedReplies = 2
+                // The reload that should confirm it meets eBay's slow-down page.
+                harness.page.pageKinds += PageKind.RATE_WALL
+            }
+
+            val result = harness.run()
+
+            assertEquals(1, harness.page.submitsAtUtc.size)
+            assertEquals(SnipeOutcome.WON, result.outcome)
+        }
+
+    @Test
+    fun aRendererThatDiesWhileTheItemLoadsIsReplacedAndTheBidStillGoesOut() =
+        runTest {
+            val harness = WindowHarness(this)
+            val fresh = ScriptedBidPage(testScheduler, harness.auction)
+            fresh.replies += BidReply.Leading("Your current bid puts you in the lead.", 400)
+            harness.laterPages += fresh
+            harness.page.dieOnNextOpenItem = true
+            harness.winAt("30.00")
+
+            val result = harness.run()
+
+            assertEquals(2, harness.pagesCreated)
+            assertTrue(harness.page.closed)
+            assertEquals(1, fresh.submitsAtUtc.size)
+            assertEquals(SnipeOutcome.WON, result.outcome)
+        }
+
+    @Test
+    fun aRendererThatDiesAfterTheItemLoadedIsReplacedBeforeTheLayerOpens() =
+        runTest {
+            val harness = WindowHarness(this)
+            val fresh = ScriptedBidPage(testScheduler, harness.auction)
+            fresh.replies += BidReply.Leading("Your current bid puts you in the lead.", 400)
+            harness.laterPages += fresh
+            harness.winAt("30.00")
+            launch {
+                // The page loaded at T-90 s; Android ends its renderer at T-50 s.
+                delay(70_000)
+                harness.page.dead = true
+            }
+
+            val result = harness.run()
+
+            assertEquals(2, harness.pagesCreated)
+            assertEquals(1, fresh.openItemAtUtc.count { it < END_UTC })
+            assertEquals(listOf(gbp("48.00")), fresh.typed)
+            assertEquals(1, fresh.submitsAtUtc.size)
+            assertEquals(SnipeOutcome.WON, result.outcome)
+        }
+
+    @Test
+    fun aRendererThatDiesTooCloseToTheBidIsNotReplacedAndNothingIsSent() =
+        runTest {
+            val harness = WindowHarness(this)
+            harness.laterPages +=
+                ScriptedBidPage(testScheduler, harness.auction).also { it.submitError = AssertionError() }
+            launch {
+                // Six seconds before the bid: too little time to load a new page, open the layer and type.
+                delay(108_000)
+                harness.page.dead = true
+            }
+
+            val result = harness.run()
+
+            assertEquals(SnipeOutcome.FAILED, result.outcome)
+            assertEquals(null, result.bidSentAtUtcMillis)
+            assertTrue(harness.store.eventsOf(TimelineKind.BID_SENT).isEmpty())
         }
 
     @Test

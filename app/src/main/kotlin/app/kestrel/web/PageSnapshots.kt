@@ -114,6 +114,8 @@ internal data class OpenSnapshot(
     val alreadyOpen: Boolean = false,
     val selector: String? = null,
     val label: String? = null,
+    /** The text of a dialog in front of the bid button, when that is why nothing was pressed. */
+    val text: String? = null,
 )
 
 @Serializable
@@ -217,6 +219,7 @@ internal data class ReplySnapshot(
     val newNotices: List<String> = emptyList(),
     val addedLines: List<String> = emptyList(),
     val inlineError: String? = null,
+    val interstitial: InterstitialSnapshot? = null,
     val records: List<RequestRecord> = emptyList(),
     val blocked: List<BlockedRequest> = emptyList(),
     val blockedSincePress: List<BlockedRequest> = emptyList(),

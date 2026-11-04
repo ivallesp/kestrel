@@ -74,12 +74,18 @@ class ListingCheck internal constructor(
     private val notifier: SnipeNotifier,
     private val clock: EngineClock,
     private val minimumBidRule: MinimumBidRule,
+    /**
+     * Whether this process runs the snipe's window now. Windows only run in this process, so a snipe in a bidding
+     * status that none runs was left by a process that died; without this, a grace after the end is waited out.
+     */
+    private val windowRunning: ((snipeId: Long) -> Boolean)? = null,
 ) {
     constructor(
         store: SnipeStore,
         notifier: SnipeNotifier,
         clock: EngineClock,
-    ) : this(store, notifier, clock, MinimumBidRule.Ebay)
+        windowRunning: ((snipeId: Long) -> Boolean)? = null,
+    ) : this(store, notifier, clock, MinimumBidRule.Ebay, windowRunning)
 
     /**
      * Every attempt that tried to load eBay, failed or not, sets lastCheckedAtUtcMillis, so scheduling the next check
@@ -88,7 +94,8 @@ class ListingCheck internal constructor(
     suspend fun check(
         snipeId: Long,
         preview: BidLayerPreview,
-    ): CheckOutcome = ListingCheckProcedure(store, notifier, clock, minimumBidRule).check(snipeId, preview)
+    ): CheckOutcome =
+        ListingCheckProcedure(store, notifier, clock, minimumBidRule, windowRunning).check(snipeId, preview)
 }
 
 sealed interface CheckOutcome {

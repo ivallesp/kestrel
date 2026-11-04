@@ -59,6 +59,11 @@ internal class AuctionWatch(
         layerMinimumLevel = level
     }
 
+    /** The "ended" replies were not confirmed: the auction is taken as running until a reply or a page says otherwise. */
+    fun disregardEndedSignal() {
+        endedSeen = false
+    }
+
     /** A reload showed the auction still running with a later end than the replies did. */
     fun noteLaterEnd(newEndUtcMillis: Long) {
         if (newEndUtcMillis > endUtcMillis) {

@@ -126,6 +126,34 @@ class SnipeSchedulerTest {
     }
 
     @Test
+    fun aRunningWindowMovesItsBackupAlarmFifteenSecondsAhead() {
+        // Past the T-75 s backup: if the process dies now, only this alarm opens the window again.
+        val end = clock.now + 50_000
+        val bidding = testSnipe(id = 5, status = SnipeStatus.BIDDING, endTimeUtcMillis = end)
+
+        scheduler.keepWindowBackupAhead(bidding)
+
+        val backup = alarmFor(SnipeAction.WINDOW_BACKUP, bidding.id)
+        assertNotNull(backup)
+        assertEquals(elapsedAt(clock.now + 15_000), backup!!.triggerAtMs)
+        assertEquals(ShadowAlarmManager.WINDOW_EXACT, backup.windowLengthMs)
+    }
+
+    @Test
+    fun theLastDeferrableCheckBeforeTheHourGetsAnExactBackstopAtTheHour() {
+        // 90 min before the end: WorkManager takes the next check, which Doze may hold until just before the dry run.
+        val end = clock.now + 90 * MINUTE
+        val snipe = testSnipe(id = 4, endTimeUtcMillis = end, lastCheckedAtUtcMillis = clock.now - 50 * MINUTE)
+
+        scheduler.schedule(snipe)
+
+        assertEquals(WorkInfo.State.ENQUEUED, checkWork(snipe.id).single().state)
+        val backstop = alarmFor(SnipeAction.CHECK, snipe.id)
+        assertNotNull(backstop)
+        assertEquals(elapsedAt(end - HOUR), backstop!!.triggerAtMs)
+    }
+
+    @Test
     fun aFarCheckGoesToWorkManagerWithANetworkConstraint() {
         val end = clock.now + 72 * HOUR
         val snipe = testSnipe(id = 3, endTimeUtcMillis = end, lastCheckedAtUtcMillis = clock.now - HOUR)
