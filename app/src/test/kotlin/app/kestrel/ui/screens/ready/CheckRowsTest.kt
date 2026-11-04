@@ -1,5 +1,6 @@
 package app.kestrel.ui.screens.ready
 
+import android.app.NotificationManager
 import app.kestrel.platform.NotificationChannels
 import app.kestrel.platform.ReadinessItem
 import app.kestrel.platform.ReadinessKey
@@ -23,6 +24,18 @@ class CheckRowsTest {
     ): Map<ReadinessKey, CheckRow> {
         val nextBid = CheckRows.nextBid(snipes, now)
         return CheckRows.build(phone.items(), ReadyFixtures.facts(phone), nextBid, now).associateBy { it.key }
+    }
+
+    @Test
+    fun aLiveChannelTurnedDownSaysSoInItsRow() {
+        val phone = FakePhone(promotedNotifications = true, liveImportance = NotificationManager.IMPORTANCE_MIN)
+
+        val live = rows(phone).getValue(ReadinessKey.LIVE_UPDATES)
+
+        assertEquals(CheckStanding.Optional, live.standing)
+        assertEquals("Off · optional", live.stateWords)
+        assertEquals("The “Final countdown” channel is turned down too far.", live.detail)
+        assertEquals(CheckAction.SystemPage(ReadinessKey.LIVE_UPDATES, "Turn on"), live.action)
     }
 
     @Test

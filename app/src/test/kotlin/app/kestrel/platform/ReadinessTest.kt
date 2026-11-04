@@ -225,6 +225,17 @@ class ReadinessTest {
     }
 
     @Test
+    fun aLiveChannelTurnedDownFixOpensThatChannel() {
+        probes.liveImportance = NotificationManager.IMPORTANCE_MIN
+
+        val fix = ReadinessFixes(context, probes).intent(ReadinessKey.LIVE_UPDATES)!!
+
+        assertEquals(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS, fix.action)
+        assertEquals(context.packageName, fix.getStringExtra(Settings.EXTRA_APP_PACKAGE))
+        assertEquals(NotificationChannels.LIVE, fix.getStringExtra(Settings.EXTRA_CHANNEL_ID))
+    }
+
+    @Test
     fun theAndroidProbesReadThePhonesState() =
         runTest {
             val database = KestrelDatabase.inMemory(context)

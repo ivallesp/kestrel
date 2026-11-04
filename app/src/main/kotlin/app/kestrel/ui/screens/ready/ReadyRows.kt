@@ -4,6 +4,7 @@ import androidx.annotation.DrawableRes
 import androidx.compose.runtime.Immutable
 import app.kestrel.model.EbaySite
 import app.kestrel.model.Snipe
+import app.kestrel.platform.LIVE_UPDATES_NOT_PROMOTED
 import app.kestrel.platform.ReadinessItem
 import app.kestrel.platform.ReadinessKey
 import app.kestrel.ui.components.Symbols
@@ -265,7 +266,13 @@ object CheckRows {
                 icon = icons.getValue(item.key),
                 standing = CheckStanding.Optional,
                 stateWords = "Off · optional",
-                detail = "Shows the countdown in the status bar and on the lock screen.",
+                // Another cause than promotion (the countdown channel turned down) is fixed elsewhere: say which.
+                detail =
+                    if (item.detail == LIVE_UPDATES_NOT_PROMOTED) {
+                        "Shows the countdown in the status bar and on the lock screen."
+                    } else {
+                        platform(item)
+                    },
                 action = CheckAction.SystemPage(item.key, "Turn on"),
             )
         }

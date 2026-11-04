@@ -164,6 +164,9 @@ internal class AndroidReadinessProbes(
     }
 }
 
+/** Why Live Updates fail when the channel is fine: Android does not let the countdown show in the status bar. */
+internal const val LIVE_UPDATES_NOT_PROMOTED = "The final countdown can't show in the status bar."
+
 /** Turns probe readings into the checklist, in plain words. A probe that throws gives a "Couldn't check" row. */
 internal class ReadinessEvaluator(
     private val probes: ReadinessProbes,
@@ -259,7 +262,7 @@ internal class ReadinessEvaluator(
         return if (probes.canPostPromotedNotifications()) {
             true to "Allowed in the status bar"
         } else {
-            false to "The final countdown can't show in the status bar."
+            false to LIVE_UPDATES_NOT_PROMOTED
         }
     }
 
@@ -350,9 +353,7 @@ internal class ReadinessFixes(
             }
 
             ReadinessKey.LIVE_UPDATES -> {
-                Intent(
-                    Settings.ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS,
-                ).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                liveUpdatesSettings()
             }
 
             ReadinessKey.CLOCK -> {
@@ -377,6 +378,27 @@ internal class ReadinessFixes(
                 .putExtra(Settings.EXTRA_CHANNEL_ID, blocked)
         } else {
             Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+        }
+    }
+
+    /**
+     * A countdown channel turned down to Minimise (or off) is fixed on that channel's page; the Live Updates page can
+     * only allow promotion, which is not what is wrong then.
+     */
+    private fun liveUpdatesSettings(): Intent {
+        val importance =
+            try {
+                probes.liveChannelImportance()
+            } catch (error: RuntimeException) {
+                null
+            }
+        return if (importance != null && importance <= NotificationManager.IMPORTANCE_MIN) {
+            Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                .putExtra(Settings.EXTRA_CHANNEL_ID, NotificationChannels.LIVE)
+        } else {
+            Intent(Settings.ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
         }
     }
 

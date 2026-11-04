@@ -34,6 +34,7 @@ internal data class FakePhone(
     val online: Boolean = true,
     val dryRunPassed: Boolean? = true,
     val clockOffsetMillis: Long = 40,
+    val liveImportance: Int = NotificationManager.IMPORTANCE_DEFAULT,
 ) {
     fun probes(): ReadinessProbes = Probes(this)
 
@@ -47,7 +48,7 @@ internal data class FakePhone(
 
         override fun blockedChannels(): List<String> = phone.blockedChannels
 
-        override fun liveChannelImportance(): Int = NotificationManager.IMPORTANCE_DEFAULT
+        override fun liveChannelImportance(): Int = phone.liveImportance
 
         override fun canScheduleExactAlarms(): Boolean = phone.exactAlarms
 
