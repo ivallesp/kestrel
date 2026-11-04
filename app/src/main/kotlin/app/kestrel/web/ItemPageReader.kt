@@ -6,7 +6,9 @@ import app.kestrel.model.PageKind
 
 /** How long the page operations wait. One place, so the snipe timeline (ARCHITECTURE section 5) stays readable. */
 internal data class PageTiming(
-    val loadTimeoutMillis: Long = 30_000,
+    // Under the engine's 25 s for openItem, with room for the reads after it: the page's own answer always arrives.
+    // A usable document ends the load earlier still.
+    val loadTimeoutMillis: Long = 20_000,
     val scriptTimeoutMillis: Long = PageDriver.DEFAULT_SCRIPT_TIMEOUT_MILLIS,
     // eBay's self-clearing browser check redirects on its own; Kestrel waits in place, never re-navigates.
     val challengeWaitMillis: Long = 20_000,
@@ -54,8 +56,14 @@ internal class ItemPageReader(
     private val utcClock: () -> Long,
     private val timing: PageTiming,
 ) {
-    /** The page a load ended on. A self-clearing challenge is waited out in place. */
-    suspend fun settle(load: LoadResult): PageView {
+    /**
+     * The page a load ended on. A self-clearing challenge is waited out in place when [waitOutChallenge]; the bid page
+     * leaves that to the engine, which waits within its own deadline instead of being cut off inside this wait.
+     */
+    suspend fun settle(
+        load: LoadResult,
+        waitOutChallenge: Boolean = true,
+    ): PageView {
         val outcome = load.outcome
         if (outcome is LoadOutcome.Blocked) {
             val thirdParty = outcome.decision == NavigationDecision.THIRD_PARTY_SIGN_IN
@@ -71,7 +79,7 @@ internal class ItemPageReader(
             throw PageLoadException("The page did not load within ${timing.loadTimeoutMillis / 1000} s")
         }
         val first = current(load)
-        if (first.kind != PageKind.CHALLENGE) return first
+        if (first.kind != PageKind.CHALLENGE || !waitOutChallenge) return first
         return driver.waitUntil(timing.challengeWaitMillis, timing.challengePollMillis) {
             current(null).takeIf { it.kind != PageKind.CHALLENGE }
         } ?: current(null)

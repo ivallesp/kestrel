@@ -10,6 +10,7 @@ import app.kestrel.model.Money
 import app.kestrel.model.PageKind
 import app.kestrel.model.ParsedLink
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -173,8 +174,12 @@ internal class FakePageDriver : PageDriver {
         loads += url
         helperInstalled = false
         navigationCount += 1
+        if (loadDelayMillis > 0) delay(loadDelayMillis)
         return loadResult(url).also { currentUrl = it.finalUrl }
     }
+
+    /** How long a load takes on virtual time, for a slow network. */
+    var loadDelayMillis = 0L
 
     override suspend fun evaluate(
         script: String,
@@ -289,6 +294,12 @@ internal class SimulatedEbayPage(
     /** The page's clock, for behaviour that takes time (the rigs pass the test's virtual clock). */
     var clock: () -> Long = { 0L }
 
+    /** eBay's self-clearing browser check stands in front of the item until this time on [clock]. */
+    var challengeUntilMillis: Long? = null
+    private val inChallenge get() = challengeUntilMillis?.let { clock() < it } == true
+    private val shownUrl get() = if (inChallenge) "https://www.ebay.co.uk/splashui/challenge?ap=1&appName=orch" else url
+    private val shownTitle get() = if (inChallenge) "Pardon Our Interruption..." else title
+
     /** eBay's own check of the typed amount: its bid button only enables this long after typing. */
     var submitEnableDelayMillis = 0L
     private var typedAtMillis = 0L
@@ -346,7 +357,9 @@ internal class SimulatedEbayPage(
 
     init {
         driver.loadResult =
-            { requested -> LoadResult(requested, url, title, emptyList(), LoadOutcome.Loaded(null, "complete")) }
+            { requested ->
+                LoadResult(requested, shownUrl, shownTitle, emptyList(), LoadOutcome.Loaded(null, "complete"))
+            }
         driver.onTap = { tapped() }
         driver.on("probe") { probe() }
         driver.on("modelText") {
@@ -450,8 +463,8 @@ internal class SimulatedEbayPage(
         return json(
             mapOf(
                 "ok" to true,
-                "url" to url,
-                "title" to title,
+                "url" to shownUrl,
+                "title" to shownTitle,
                 "readyState" to "complete",
                 "signedIn" to signedIn,
                 "layerOpen" to layerOpen,

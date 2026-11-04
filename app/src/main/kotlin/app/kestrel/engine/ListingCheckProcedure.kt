@@ -55,7 +55,11 @@ internal class ListingCheckProcedure(
             }
 
             PageKind.CHALLENGE -> {
-                failed(snipe, "$CHALLENGE_TEXT. $TRY_LATER")
+                // eBay's check clears itself; a reload would start it again, so it is waited out in place.
+                val listing =
+                    preview.waitOutChallenge(clock, WindowTimings.CHALLENGE_WAIT)
+                        ?: return failed(snipe, "$CHALLENGE_TEXT. $TRY_LATER")
+                onListing(snipe, listing, snipe.ref.url, windowRunning)
             }
 
             PageKind.SIGN_IN, PageKind.THIRD_PARTY_SIGN_IN, PageKind.CAPTCHA, PageKind.OTHER, PageKind.NOT_FOUND -> {

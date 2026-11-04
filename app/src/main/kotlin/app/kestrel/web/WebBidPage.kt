@@ -110,7 +110,8 @@ class WebBidPage internal constructor(
         autoRefreshUrl = null
         verifiedTyping = null
         lastTyping = null
-        val view = reader.settle(driver.load(ref.url, timing.loadTimeoutMillis))
+        // A browser check comes back as it is: the engine waits it out in place, within its own deadline.
+        val view = reader.settle(driver.load(ref.url, timing.loadTimeoutMillis), waitOutChallenge = false)
         note("opened ${ref.url}: ${view.kind} at ${view.url}")
         val listing =
             if (view.kind != PageKind.NORMAL) {
@@ -1040,7 +1041,7 @@ class LayerPreviewPage internal constructor(
 
     override suspend fun closeLayer() = page.closeLayer()
 
-    suspend fun report(): String = page.report()
+    override suspend fun report(): String = page.report()
 
     override fun close() = page.close()
 }

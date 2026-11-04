@@ -1787,6 +1787,9 @@
       matched: {
         bidButton: bidButton ? bidButton.selector : null,
         bidButtonLabel: bidButton ? bidButton.label : null,
+        // Why a bid layer never opened can be a bid button eBay's scripts never made usable.
+        bidButtonState: bidButton ? { disabled: bidButton.disabled, loading: bidButton.loading,
+          visible: bidButton.visible, recognised: bidButton.recognised } : null,
         layerContainer: layer ? layer.selector : null,
         amountInput: layer && layer.input ? layer.input.selector : null,
         submitButton: submit ? submit.selector : null,

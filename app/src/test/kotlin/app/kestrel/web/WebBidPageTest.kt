@@ -57,7 +57,7 @@ class WebBidPageTest {
         }
 
     @Test
-    fun `a self-clearing challenge is waited out in place, never reloaded`() =
+    fun `a self-clearing challenge is returned at once and read in place once it clears, never reloaded`() =
         runTest {
             ebay.url = "https://www.ebay.co.uk/splashui/challenge?ap=1&appName=orch&ru=x"
             ebay.title = "Pardon Our Interruption..."
@@ -68,10 +68,15 @@ class WebBidPageTest {
                 }
                 json(mapOf("ok" to true, "url" to ebay.url, "title" to ebay.title, "readyState" to "complete"))
             }
-            val state = page().openItem(ukItem)
-            assertEquals(PageKind.NORMAL, state.kind)
+            val page = page()
+            // The engine waits the check out within its own deadline; the page does not wait inside openItem.
+            val state = page.openItem(ukItem)
+            assertEquals(PageKind.CHALLENGE, state.kind)
+            assertNull(state.listing)
+            var listing = page.readListing()
+            repeat(5) { if (listing == null) listing = page.readListing() }
+            assertNotNull(listing)
             assertEquals(1, driver.loads.size)
-            assertNotNull(state.listing)
         }
 
     @Test

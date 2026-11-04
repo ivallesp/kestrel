@@ -151,6 +151,9 @@ interface BidLayerPreview {
     suspend fun typeMax(amount: Money): TypedAmount
 
     suspend fun closeLayer()
+
+    /** A diagnostic dump (URL, title, visible texts, matched selectors) for the timeline. */
+    suspend fun report(): String
 }
 
 /** The full bid page used by a live snipe window. Implemented in `web/` over a headless WebView. */
@@ -174,9 +177,6 @@ interface BidPage : BidLayerPreview {
     suspend fun submit(): SubmitDispatch
 
     suspend fun awaitReply(timeoutMillis: Long): BidReply
-
-    /** A diagnostic dump (URL, title, visible texts, matched selectors) for the timeline. */
-    suspend fun report(): String
 
     fun close()
 }

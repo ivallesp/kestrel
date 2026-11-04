@@ -1185,7 +1185,14 @@ internal class SnipeWindow(
             if (call is Call.Threw) replacePage()
             return null
         }
-        if (state.kind != PageKind.NORMAL) {
+        // eBay's browser check clears itself; a reload would start it again, so it is waited out in place.
+        val cleared =
+            if (state.kind == PageKind.CHALLENGE) {
+                currentPage.waitOutChallenge(clock, minOf(WindowTimings.CHALLENGE_WAIT, timeoutMillis))
+            } else {
+                null
+            }
+        if (state.kind != PageKind.NORMAL && cleared == null) {
             journal.event(
                 snipeId,
                 TimelineKind.PROBLEM,
@@ -1194,9 +1201,12 @@ internal class SnipeWindow(
             return null
         }
         val listing =
-            state.listing ?: callWithin(WindowTimings.READ_LISTING_TIMEOUT) { currentPage.readListing() }.valueOrNull()
+            cleared
+                ?: state.listing
+                ?: callWithin(WindowTimings.READ_LISTING_TIMEOUT) { currentPage.readListing() }.valueOrNull()
                 ?: return null
-        val otherItem = listing.otherItemThan(snipe.ref, state.url)
+        // The check's own address says nothing about the item, so only the listing itself is compared.
+        val otherItem = listing.otherItemThan(snipe.ref, if (cleared != null) snipe.ref.url else state.url)
         if (otherItem != null) {
             journal.event(
                 snipeId,

@@ -432,6 +432,8 @@ test('report collects what matched, the observer records and recent errors', asy
   assert.equal(report.matched.amountInput, 'input[id*="@placebid-section-@offer-section-@price"]');
   assert.equal(report.matched.submitButton, 'div.place-bid-actions__submit > button.btn--primary');
   assert.equal(report.matched.submitLabel, 'Bid');
+  // The bid button's state, so a button that never hydrated is diagnosable from the report alone.
+  assert.deepEqual(report.matched.bidButtonState, { disabled: false, loading: false, visible: true, recognised: true });
   assert.equal(report.press.phase, 'pressed');
   assert.equal(report.observer.records.length, 2);
   assert.equal(report.signedIn, true);

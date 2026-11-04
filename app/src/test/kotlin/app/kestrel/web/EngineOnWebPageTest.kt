@@ -1,5 +1,6 @@
 package app.kestrel.web
 
+import app.kestrel.engine.BASE_UTC
 import app.kestrel.engine.BidPageFactory
 import app.kestrel.engine.END_UTC
 import app.kestrel.engine.FakeNotifier
@@ -193,6 +194,23 @@ class EngineOnWebPageTest {
 
             assertTrue(rig.notifier.userAlerts.isEmpty())
             assertTrue(rig.store.eventsOf(TimelineKind.EBAY_REPLY).any { it.message.contains("puts you in the lead") })
+        }
+
+    @Test
+    fun aSlowBrowserCheckIsWaitedOutInPlaceWithoutReloadingAndTheBidGoesOut() =
+        runTest {
+            val rig = Rig(this)
+            // Weak mobile data: each load takes 8 s, and eBay's check clears 27 s after the window's load starts,
+            // later than the engine's 25 s limit on loading the item.
+            rig.driver.loadDelayMillis = 8_000
+            rig.ebay.challengeUntilMillis = BASE_UTC + 30_000 + 27_000
+
+            val result = rig.run()
+
+            // A reload would restart the check, so the only load before the bid is the first one.
+            assertEquals(1, rig.driver.loads.size - 1)
+            assertEquals(1, rig.ebay.presses)
+            assertEquals(6_000L, result.bidLeadMillis)
         }
 
     @Test

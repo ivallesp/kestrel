@@ -93,10 +93,25 @@ class WebViewDriver internal constructor(
             val tracker = LoadTracker(url)
             currentLoad = tracker
             webView.loadUrl(url)
-            val end = withTimeoutOrNull(timeoutMillis) { tracker.end.await() }
+            val end = withTimeoutOrNull(timeoutMillis) { endOrUsableDocument(tracker) }
             if (currentLoad === tracker) currentLoad = null
             resultOf(tracker, end)
         }
+
+    /**
+     * The load's end, or its document as soon as that can be read. onPageFinished waits for every image, frame and
+     * tracker, and one slow request on mobile data can hold it back long after the item page itself is usable.
+     * readyState is only asked once this load's document has started, so the previous document never answers.
+     */
+    private suspend fun endOrUsableDocument(tracker: LoadTracker): LoadEnd {
+        while (true) {
+            withTimeoutOrNull(USABLE_POLL_MILLIS) { tracker.end.await() }?.let { return it }
+            if (!tracker.started) continue
+            val readyState = readyStateOrNull()
+            if (tracker.end.isCompleted) return tracker.end.await()
+            if (readyState == "interactive" || readyState == "complete") return LoadEnd.Usable(readyState)
+        }
+    }
 
     private suspend fun resultOf(
         tracker: LoadTracker,
@@ -148,6 +163,16 @@ class WebViewDriver internal constructor(
 
             LoadEnd.RendererGone -> {
                 LoadResult(url, url, "", tracker.redirects, LoadOutcome.RendererGone)
+            }
+
+            is LoadEnd.Usable -> {
+                LoadResult(
+                    url,
+                    webView.url ?: url,
+                    webView.title.orEmpty(),
+                    tracker.redirects,
+                    LoadOutcome.Loaded(tracker.httpStatus, end.readyState),
+                )
             }
         }
     }
@@ -442,6 +467,7 @@ class WebViewDriver internal constructor(
     }
 
     private companion object {
+        const val USABLE_POLL_MILLIS = 500L
         const val PARSE_WAIT_MILLIS = 3_000L
         const val PARSE_POLL_MILLIS = 100L
         const val READY_STATE_TIMEOUT_MILLIS = 2_000L

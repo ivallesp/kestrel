@@ -22,6 +22,11 @@ internal sealed interface LoadEnd {
     ) : LoadEnd
 
     data object RendererGone : LoadEnd
+
+    /** This load's document can be read ([readyState] interactive or complete) while subresources still load. */
+    data class Usable(
+        val readyState: String,
+    ) : LoadEnd
 }
 
 /**
@@ -38,6 +43,11 @@ internal class LoadTracker(
     private var httpErrorStatus: Int? = null
 
     val redirects: List<String> get() = redirectUrls.toList()
+
+    /** A document of this load has started (WebView reports it when the navigation commits). */
+    val started: Boolean get() = startedUrl != null
+
+    val httpStatus: Int? get() = httpErrorStatus
 
     fun pageStarted(url: String) {
         startedUrl = url
