@@ -33,11 +33,20 @@ enum class EbaySite(
     companion object {
         /** Matches `ebay.co.uk`, `www.ebay.co.uk`, `m.ebay.co.uk` and similar host variants. */
         fun fromHost(host: String): EbaySite? {
-            val bare = host.lowercase().removePrefix("www.").removePrefix("m.").removePrefix("cgi.")
+            val bare =
+                host
+                    .lowercase()
+                    .removePrefix("www.")
+                    .removePrefix("m.")
+                    .removePrefix("cgi.")
             return entries.firstOrNull { it.host.removePrefix("www.") == bare }
         }
 
-        fun fromMarketplaceId(marketplaceId: String): EbaySite? = entries.firstOrNull { it.marketplaceId == marketplaceId }
+        fun fromMarketplaceId(marketplaceId: String): EbaySite? =
+            entries.firstOrNull {
+                it.marketplaceId ==
+                    marketplaceId
+            }
     }
 }
 
