@@ -25,8 +25,6 @@ import app.kestrel.engine.WindowTimings.RESOLVE_ATTEMPTS
 import app.kestrel.engine.WindowTimings.RESOLVE_RETRY
 import app.kestrel.engine.WindowTimings.RESOLVE_WAIT_MAXIMUM
 import app.kestrel.engine.WindowTimings.RESOLVE_WAIT_MINIMUM
-import app.kestrel.engine.WindowTimings.RETRY_ACTIVE_CHECK_TIMEOUT
-import app.kestrel.engine.WindowTimings.RETRY_MINIMUM_REMAINING
 import app.kestrel.engine.WindowTimings.STORE_TIMEOUT
 import app.kestrel.engine.WindowTimings.TOO_LATE_BEFORE_END
 import app.kestrel.engine.WindowTimings.TYPE_MINIMUM_BUDGET
@@ -47,9 +45,8 @@ import kotlinx.coroutines.withContext
 
 /**
  * One snipe's final window, from T-120 s to the resolved result (ARCHITECTURE section 5): clock check, item page at
- * T-90 s, bid layer and max at T-45 s, edits lock at fire time - 2 s, one bid at end - lead, a retry with the identical
- * amount only when eBay's reply could not be read, then follow the auction through Extended Bidding and read the
- * result. Every wait goes through [clock] and coroutine delay, every call into the page has a time limit, and every way
+ * T-90 s, bid layer and max at T-45 s, edits lock at fire time - 2 s, one press at end - lead (an unreadable reply is
+ * followed on the page, never pressed again), then follow the auction through Extended Bidding and read the result. Every wait goes through [clock] and coroutine delay, every call into the page has a time limit, and every way
  * out ends in a stored status, a timeline line and a notification.
  */
 internal class SnipeWindow(
@@ -872,8 +869,8 @@ internal class SnipeWindow(
             page ?: return finish(SnipeOutcome.FAILED, "Kestrel's browser page is gone, so it could not bid.")
         val endAtFire = watch.endUtcMillis
         progress(WindowPhase.BIDDING)
+        // One press per page and per window: an unreadable reply is followed on the page, never pressed again.
         submitAndAwaitReply(currentPage, endAtFire)
-        retryIfUnconfirmed(currentPage, endAtFire)
         return null
     }
 
@@ -899,58 +896,6 @@ internal class SnipeWindow(
 
             else -> {}
         }
-    }
-
-    // The only second bid Kestrel ever sends: the identical amount, when eBay's reply was lost and time allows.
-    private suspend fun retryIfUnconfirmed(
-        currentPage: BidPage,
-        endAtFire: Long,
-    ) {
-        if (bid.standing != BidStanding.UNCONFIRMED || bid.submits > 1) return
-        val amount = typedAmount ?: return
-        if (watch.endUtcMillis - clock.nowUtcMillis() < RETRY_MINIMUM_REMAINING) {
-            noRetry("too little time was left to try again")
-            return
-        }
-        if (!auctionStillRunning(currentPage)) {
-            noRetry("the page no longer shows the auction running")
-            return
-        }
-        // The live update may already show another bidder above the max: then a retry cannot win and is not sent.
-        val minimum = watch.minimumNextBid()
-        val priceAboveMax = prices.isOverMax(minimum, watch.level?.price, watch.level?.bidCount, amount) != false
-        if (bid.standing != BidStanding.UNCONFIRMED || priceAboveMax) {
-            noRetry("the price has passed your max since")
-            return
-        }
-        val budget = minOf(TYPE_TIMEOUT, watch.endUtcMillis - TOO_LATE_BEFORE_END - clock.nowUtcMillis())
-        val typed = callWithin(budget) { currentPage.typeMax(amount) }.valueOrNull()
-        if (typed == null || AmountField.minorUnits(typed.fieldValue) != amount.minor) {
-            noRetry("the bid field could not be confirmed again")
-            return
-        }
-        if (typed.minimum?.isAbove(amount) == true) {
-            noRetry("eBay now needs more than your max")
-            return
-        }
-        callWithin(ARM_OBSERVER_TIMEOUT) { currentPage.armReplyObserver() }
-        if (clock.nowUtcMillis() > watch.endUtcMillis - TOO_LATE_BEFORE_END) return
-        submitAndAwaitReply(currentPage, endAtFire)
-    }
-
-    private suspend fun noRetry(why: String) {
-        journal.event(snipeId, TimelineKind.PROBLEM, "No reply from eBay, and $why. No retry.")
-    }
-
-    private suspend fun auctionStillRunning(currentPage: BidPage): Boolean {
-        val budget =
-            minOf(
-                RETRY_ACTIVE_CHECK_TIMEOUT,
-                watch.endUtcMillis - clock.nowUtcMillis() - RETRY_MINIMUM_REMAINING / 2,
-            )
-        val state = poller.poll(currentPage, budget) ?: return false
-        recordUpdate(watch.apply(state))
-        return !state.ended && watch.endUtcMillis > clock.nowUtcMillis()
     }
 
     /** Follows the auction to its true end, which Extended Bidding can move again and again. */

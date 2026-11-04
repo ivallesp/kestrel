@@ -403,6 +403,7 @@ class ScriptedBidPage(
     val openItemAtUtc = mutableListOf<Long>()
     val typed = mutableListOf<Money>()
     val submitsAtUtc = mutableListOf<Long>()
+    var submitCalls = 0
     var layerOpens = 0
     var layerCloses = 0
     var observerArms = 0
@@ -478,6 +479,8 @@ class ScriptedBidPage(
     }
 
     override suspend fun submit(): SubmitDispatch {
+        // The web layer's rule: one press per page, a second call throws before touching the page.
+        check(submitCalls++ == 0) { "submit() was already called on this page: one press per page" }
         submitError?.let { throw it }
         submitsAtUtc += auction.nowUtc()
         onSubmit(submitsAtUtc.size)

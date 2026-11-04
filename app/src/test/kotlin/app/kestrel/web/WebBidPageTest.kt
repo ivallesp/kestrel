@@ -446,11 +446,27 @@ class WebBidPageTest {
         }
 
     @Test
+    fun `after the press nothing types again or re-arms the hold over the bid's own requests`() =
+        runTest {
+            val page = page().readyToSubmit()
+            page.submit()
+            val armsAtPress = ebay.observerArms.toList()
+            val typed = page.typeMax(max)
+            page.armReplyObserver()
+            assertEquals("Kestrel: this page's one press was already used", typed.inlineError)
+            assertEquals(armsAtPress, ebay.observerArms)
+            assertFalse("eBay's confirmbid after the press must not be held", ebay.hold)
+            assertEquals(1, driver.callsOf("typeMax").size)
+        }
+
+    @Test
     fun `a refused first submit still uses up the page's one press`() =
         runTest {
             val page = page()
             assertTrue(runCatching { page.submit() }.exceptionOrNull() is SubmitNotDispatchedException)
-            page.readyToSubmit()
+            page.openItem(ukItem)
+            assertTrue(page.openBidLayer() is LayerState.Ready)
+            assertEquals("Kestrel: this page's one press was already used", page.typeMax(max).inlineError)
             assertTrue(runCatching { page.submit() }.exceptionOrNull() is IllegalStateException)
             assertEquals(0, ebay.presses)
         }

@@ -17,8 +17,8 @@ internal class BidRecord {
 }
 
 /**
- * The only code in Kestrel that presses eBay's submit button. Each [submit] presses it once; the window calls it at
- * most twice per snipe, the second time only to retry the identical amount after an unreadable reply.
+ * The only code in Kestrel that presses eBay's submit button. [submit] presses it once, and the window calls it once:
+ * the page allows one press, so an unreadable reply is followed on the page and the result read later, never retried.
  */
 internal class BidSender(
     private val clock: TrueTime,
@@ -46,11 +46,10 @@ internal class BidSender(
         val sentAt = dispatch?.let { clock.utcAtElapsedRealtime(it.dispatchedAtElapsedMillis) } ?: clock.nowUtcMillis()
         record.sentAtUtcMillis = sentAt
         record.leadMillis = endUtcMillis - sentAt
-        val retryNote = if (record.submits > 1) " This was the one retry, with the same amount." else ""
         journal.event(
             snipeId,
             TimelineKind.BID_SENT,
-            "Bid of ${amount.displayText()} sent ${secondsText(endUtcMillis - sentAt)} before the end.$retryNote",
+            "Bid of ${amount.displayText()} sent ${secondsText(endUtcMillis - sentAt)} before the end.",
             mapOf(
                 "attempt" to record.submits,
                 "amount" to amount,
@@ -94,9 +93,7 @@ internal class BidSender(
                 }
 
                 is BidReply.Rejected -> {
-                    // A refused retry says nothing about the first tap, whose reply was lost: it may have counted.
-                    val retryAfterLostReply = record.submits > 1 && record.standing == BidStanding.UNCONFIRMED
-                    if (!retryAfterLostReply) record.standing = BidStanding.REJECTED
+                    record.standing = BidStanding.REJECTED
                     record.replyText = reply.text
                     "eBay refused the bid: \"${reply.text}\""
                 }

@@ -249,26 +249,28 @@ class SnipeEngineTest {
         }
 
     @Test
-    fun unconfirmedReplyGetsOneRetryWithTheSameAmount() =
+    fun unconfirmedReplyIsFollowedWithoutTouchingThePageAgain() =
         runTest {
             val harness = WindowHarness(this)
             harness.store.edit(1) { it.copy(leadSeconds = 8) }
             harness.page.replies += BidReply.Unconfirmed(null)
-            harness.page.replies += BidReply.Leading("Your current bid puts you in the lead.", 700)
             harness.winAt("30.00")
 
             val result = harness.run()
 
-            assertEquals(2, harness.page.submitsAtUtc.size)
-            assertEquals(listOf(gbp("48.00"), gbp("48.00")), harness.page.typed)
-            assertTrue(harness.page.submitsAtUtc[1] <= END_UTC - 1_000L)
-            assertEquals(2, harness.page.observerArms)
+            // The page allows one press: no second submit, no second typing, and the receipt keeps the real tap.
+            assertEquals(1, harness.page.submitCalls)
+            assertEquals(listOf(gbp("48.00")), harness.page.typed)
+            assertEquals(1, harness.page.observerArms)
+            assertEquals(1, harness.store.eventsOf(TimelineKind.BID_SENT).size)
+            assertEquals(8_000L, result.bidLeadMillis)
+            assertEquals(END_UTC - 8_000L, result.bidSentAtUtcMillis)
+            // The reply was lost, but eBay's own page names the user as the winner.
             assertEquals(SnipeOutcome.WON, result.outcome)
-            assertEquals(2, harness.store.eventsOf(TimelineKind.BID_SENT).size)
         }
 
     @Test
-    fun noRetryWhenTooLittleTimeIsLeft() =
+    fun lostReplyWithAShortLeadIsReadFromTheEndedPage() =
         runTest {
             val harness = WindowHarness(this)
             harness.store.edit(1) { it.copy(leadSeconds = 3) }
@@ -279,7 +281,6 @@ class SnipeEngineTest {
             assertEquals(1, harness.page.submitsAtUtc.size)
             // The reply was lost, but eBay's own page names the user as the winner.
             assertEquals(SnipeOutcome.WON, result.outcome)
-            assertTrue(harness.store.eventsOf(TimelineKind.PROBLEM).any { it.message.contains("too little time") })
         }
 
     @Test
@@ -591,26 +592,25 @@ class SnipeEngineTest {
         }
 
     @Test
-    fun refusedRetryAfterALostReplyKeepsTheResultOpen() =
+    fun lostReplyKeepsTheResultOpenWhenTheEndedPageSaysNothing() =
         runTest {
             val harness = WindowHarness(this)
             harness.store.edit(1) { it.copy(leadSeconds = 8) }
             harness.page.replies += BidReply.Unconfirmed(null)
-            harness.page.replies += BidReply.Rejected("You have already placed this bid.", 500)
             // The ended page says nothing about the user's standing.
             harness.auction.finalPage = FinalPage(price = gbp("30.00"), bidCount = 5)
             harness.auction.signedIn = null
 
             val result = harness.run()
 
-            // The first tap may have counted, so this is neither a failure nor a loss, and the group stays blocked.
-            assertEquals(2, harness.page.submitsAtUtc.size)
+            // The tap may have counted, so this is neither a failure nor a loss, and the group stays blocked.
+            assertEquals(1, harness.page.submitCalls)
             assertEquals(SnipeOutcome.UNKNOWN, result.outcome)
             assertTrue(harness.snipe().status in BID_SENT_STATUSES)
         }
 
     @Test
-    fun noRetryOnceThePriceHasPassedTheMax() =
+    fun lostReplyWithThePriceAboveTheMaxIsLost() =
         runTest {
             val harness = WindowHarness(this)
             harness.store.edit(1) { it.copy(leadSeconds = 8) }

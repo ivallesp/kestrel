@@ -55,8 +55,6 @@ internal object WindowTimings {
     // Firing and the reply.
     const val REPLY_TIMEOUT = 4_000L
     const val REPLY_CALL_SLACK = 1_000L
-    const val RETRY_MINIMUM_REMAINING = 2_000L
-    const val RETRY_ACTIVE_CHECK_TIMEOUT = 1_000L
 
     // Following the auction with AUTO_REFRESH.
     const val MINIMUM_REFRESH_INTERVAL = 2_000L

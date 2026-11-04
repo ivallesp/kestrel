@@ -93,7 +93,8 @@ hand to user), RATE_WALL (title "Error Page | eBay", back off at least 8 s with 
    the input probe shows native input reaches the page; otherwise DOM events.
 7. Outcome within about 4 s: confirmbid response and/or the layer notice. "Your current bid puts you in the lead." =
    LEADING; "Another bidder is winning" = OUTBID_IMMEDIATELY (someone's max is higher); other notice text = REJECTED with
-   eBay's text; nothing = UNCONFIRMED (one retry with the same amount if at least 2 s remain, else follow the page).
+   eBay's text; nothing = UNCONFIRMED (follow the page and let the ended page decide: the page allows one press, so
+   Kestrel never presses again, not even with the same amount).
 8. Follow to the true end through Extended Bidding (AUTO_REFRESH, end time may move), then resolve the result.
 
 Selectors and texts live in `assets/js/kestrel.js` as ordered fallback chains, and every run writes a `LayerReport`

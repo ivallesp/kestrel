@@ -57,7 +57,8 @@ internal data class NativeTouchCheck(
  * eBay's item page and bid layer in one headless WebView, driven through kestrel.js the way a person would use it.
  *
  * Safety rules enforced here, in addition to kestrel.js's own:
- * - [submit] can be called once per page; a second call throws before touching the page.
+ * - [submit] can be called once per page; a second call throws before touching the page. After it, nothing types into
+ *   the layer or holds bid requests again.
  * - [submit] presses only after [typeMax] verified, on this document, that eBay's field shows exactly the maximum.
  * - The bid request is armed with the typed maximum as its ceiling (kestrel.js blocks anything above it).
  * - A native tap is used only after a probe tap on this WebView arrived as a trusted event at the right point.
@@ -133,6 +134,8 @@ class WebBidPage internal constructor(
     }
 
     override suspend fun typeMax(amount: Money): TypedAmount {
+        // After the press the layer is eBay's: typing again could change what its own requests still send.
+        if (submitAttempted.get()) return notTyped("this page's one press was already used")
         verifiedTyping = null
         val site = ref?.site ?: return notTyped("open the item before typing the maximum")
         if (amount.minor <= 0) return notTyped("the maximum must be above zero")
@@ -171,7 +174,8 @@ class WebBidPage internal constructor(
     }
 
     override suspend fun armReplyObserver() {
-        if (driver.failure != null) return
+        // Arming holds bid requests; after the press that hold would block the bid's own confirmbid.
+        if (driver.failure != null || submitAttempted.get()) return
         quietly { armObserver(hold = true) }
         quietly { ensureNativeTouchChecked() }
     }
@@ -715,8 +719,12 @@ class WebBidPage internal constructor(
     private fun dialogSince(count: Int): String? =
         if (driver.javaScriptDialogCount > count) driver.javaScriptDialogs.lastOrNull() ?: "a dialog" else null
 
-    /** Blocks bid requests on this document until submit() releases them. A page that stopped is thrown. */
+    /**
+     * Blocks bid requests on this document until submit() releases them. A page that stopped is thrown. After the
+     * press nothing is held again: the bid's own requests (trisk, then confirmbid) may still be on their way.
+     */
     private suspend fun holdBidRequests(where: String) {
+        if (submitAttempted.get()) return
         try {
             armObserver(hold = true)
         } catch (unavailable: PageUnavailableException) {
