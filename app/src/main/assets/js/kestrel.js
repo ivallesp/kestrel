@@ -119,6 +119,7 @@
       bidButtonLoadingClass: ['loading', 'server-rendered call to action, 2026-01 and 2026-04'],
       greetingUnrecognisedClass: ['gh-identity__srvr--unrec', 'header greeting script, ebay.co.uk 2026-04-27'],
       signInUrl: [/\/\/signin\.ebay\.|eBayISAPI\.dll\?SignIn/i, 'sign-in redirects and signed-out bid button, 2026-04-27'],
+      bidPagePath: [/^\/bfl\/placebid\//, 'bid layer address /bfl/placebid/<item>, signed-in capture 2026-04-30'],
       // A press on the submit button is only allowed when its label says bid and nothing else.
       submitLabel: [/\bbid\b|\bbieten\b|\bgebot\b/i, 'labels Bid, Submit bid, Place bid, Increase bid, Increase max bid (2025-09 to 2026-10); German inferred'],
       // Amounts mean a power-bid button; the words mean another action (buy, offer, review step, retract).
@@ -429,6 +430,12 @@
         if (input) return { element: node, selector: TABLE.layerContainer[i][0], input: input };
         if (!fallback) fallback = { element: node, selector: TABLE.layerContainer[i][0], input: null };
       }
+    }
+    // A separate bid page instead of an in-page layer: the whole page is the layer. Only on that address, so the item
+    // page's own "Submit bid" button is never taken for a layer's submit.
+    if (!fallback && TABLE.texts.bidPagePath[0].test(location.pathname) && document.body) {
+      var pageInput = findInput(document.body);
+      return { element: document.body, selector: 'body (bid page)', input: pageInput };
     }
     return fallback;
   }
@@ -1193,7 +1200,7 @@
       inlineError: null,
       interstitial: interstitial,
       pendingDialogText: null,
-      error: null,
+      layerError: null,
       signInRequired: isSignInPage() || !!(interstitial && interstitial.kind === 'signIn'),
     };
     if (!layer) {
@@ -1226,7 +1233,7 @@
       result.ready = !!submit.element && !interstitial;
     } else if (!interstitial) {
       var text = textOf(layer.element, 300);
-      if (TABLE.texts.layerError[0].test(text)) result.error = truncate(text, 300);
+      if (TABLE.texts.layerError[0].test(text)) result.layerError = truncate(text, 300);
       else result.pendingDialogText = truncate(text, 300) || null;
     }
     return result;
@@ -1372,14 +1379,29 @@
     return { ok: true };
   }
 
+  // A point whose topmost element is in this document and is not a frame. The guard swallows the probe tap only in
+  // this document: a tap over an iframe (an advert, for example) would reach the frame.
+  function pickProbePoint(viewport) {
+    var fractions = [[0.5, 0.5], [0.5, 0.3], [0.5, 0.7], [0.25, 0.5], [0.75, 0.5], [0.5, 0.15], [0.5, 0.85]];
+    for (var i = 0; i < fractions.length; i++) {
+      var x = Math.round(viewport.width * fractions[i][0]);
+      var y = Math.round(viewport.height * fractions[i][1]);
+      var clientX = viewport.offsetLeft + x / viewport.scale;
+      var clientY = viewport.offsetTop + y / viewport.scale;
+      var topmost = typeof document.elementFromPoint === 'function' ? document.elementFromPoint(clientX, clientY) : null;
+      if (topmost && topmost.closest('iframe, frame, object, embed')) continue;
+      return { x: x, y: y, clientX: clientX, clientY: clientY };
+    }
+    return null;
+  }
+
   function armTouchProbe() {
     var viewport = viewportInfo();
-    var x = Math.round(viewport.width / 2);
-    var y = Math.round(viewport.height / 2);
+    var point = pickProbePoint(viewport);
+    if (!point) return { ok: false, error: 'no spot without a frame to probe' };
     armGuard('swallow', null, 'probe');
-    state.probe = { x: x, y: y, expectClientX: viewport.offsetLeft + x / viewport.scale,
-      expectClientY: viewport.offsetTop + y / viewport.scale, armedAt: now() };
-    return { ok: true, x: x, y: y, devicePixelRatio: devicePixelRatio() };
+    state.probe = { x: point.x, y: point.y, expectClientX: point.clientX, expectClientY: point.clientY, armedAt: now() };
+    return { ok: true, x: point.x, y: point.y, devicePixelRatio: devicePixelRatio() };
   }
 
   function touchProbeResult(finish) {

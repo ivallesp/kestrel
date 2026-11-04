@@ -51,7 +51,7 @@ test('openBidLayer clicks the bid button once and layerState reads the layer', a
   assert.equal(layer.lowestPowerBidAmountText, '£5.57');
   assert.equal(layer.interstitial, null, 'the user agreement small print is not an interstitial');
   assert.equal(layer.inlineError, null);
-  assert.equal(layer.error, null);
+  assert.equal(layer.layerError, null);
   assert.equal(layer.signInRequired, false);
   assert.equal(call(page.window, 'openBidLayer').alreadyOpen, true, 'opening twice does not click again');
   assert.equal(page.window.__fixtureCounts.bidButtonClicks, 1);
@@ -189,7 +189,7 @@ test('eBay\'s "Oops" layer failure is reported as an error', async () => {
   const page = await openLayer({ scenario: 'oops' });
   const layer = call(page.window, 'layerState');
   assert.equal(layer.ready, false);
-  assert.match(layer.error, /Oops\. Looks like we're having trouble connecting/);
+  assert.match(layer.layerError, /Oops\. Looks like we're having trouble connecting/);
 });
 
 test('a phone-verification notice inside a working layer blocks the bid', async () => {
@@ -372,6 +372,23 @@ test('the touch probe swallows its tap and checks where it landed', async () => 
   assert.equal(result.matched, true);
   assert.equal(reachedPage, false, 'the probe tap never reaches the page');
   assert.equal(call(page.window, 'tapResult').armed, false, 'finishing the probe disarms it');
+});
+
+test('the touch probe never taps over a frame, which its guard could not swallow', async () => {
+  const page = await openSyntheticLayer();
+  const document = page.window.document;
+  const advert = document.createElement('iframe');
+  advert.setAttribute('data-rect', '0 300 1024 300');
+  document.body.appendChild(advert);
+  const probe = call(page.window, 'armTouchProbe');
+  assert.equal(probe.ok, true);
+  assert.notEqual(document.elementFromPoint(probe.x, probe.y), advert);
+  assert.ok(probe.y < 300 || probe.y >= 600, 'picked a point outside the frame: ' + probe.y);
+  call(page.window, 'touchProbeResult', true);
+  advert.setAttribute('data-rect', '0 0 2048 4096');
+  const covered = call(page.window, 'armTouchProbe');
+  assert.equal(covered.ok, false);
+  assert.equal(call(page.window, 'tapResult').armed, false, 'nothing armed when there is no safe spot');
 });
 
 test('the touch probe reports a tap that landed in the wrong place', async () => {
