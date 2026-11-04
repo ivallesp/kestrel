@@ -122,6 +122,16 @@ sealed interface BidReply {
     data class Unconfirmed(
         override val latencyMillis: Long?,
     ) : BidReply
+
+    /**
+     * eBay answered the press with something only the user can deal with (phone verification, sign-in, a captcha)
+     * before its confirmbid went out. The bid may still be pending, so it counts as sent; the user is told at once.
+     */
+    data class NeedsUser(
+        val text: String,
+        val reason: NeedsUserReason,
+        override val latencyMillis: Long?,
+    ) : BidReply
 }
 
 /**

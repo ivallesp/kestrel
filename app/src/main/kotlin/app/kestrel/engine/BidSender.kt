@@ -131,6 +131,13 @@ internal class BidSender(
                     record.standing = BidStanding.UNCONFIRMED
                     "eBay's reply could not be read within ${timeout / 1_000} s."
                 }
+
+                is BidReply.NeedsUser -> {
+                    // Whether the bid counts is up to what the user does now, so its standing stays open.
+                    record.standing = BidStanding.UNCONFIRMED
+                    record.replyText = reply.text
+                    "eBay asked for something after the press instead of answering: \"${reply.text}\""
+                }
             }
         journal.event(
             snipeId,

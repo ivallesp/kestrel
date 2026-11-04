@@ -145,6 +145,57 @@ class EngineOnWebPageTest {
         }
 
     @Test
+    fun aCheckEbayShowsAfterThePressGoesToTheUserAtOnce() =
+        runTest {
+            val rig = Rig(this)
+            // eBay answers the press with phone verification instead of placing the bid: no confirmbid, no notice.
+            rig.ebay.replyNotices = { emptyList() }
+            rig.ebay.confirmFinishedPerf = null
+            rig.ebay.interstitialAfterPress = "verification" to "Verify your phone number to bid"
+
+            rig.run()
+
+            assertEquals(1, rig.ebay.presses)
+            val alert = rig.notifier.userAlerts.first()
+            assertEquals(NeedsUserReason.VERIFICATION, alert.first)
+            assertTrue("${alert.second}", alert.second!!.contains("Verify your phone number to bid"))
+            // Told within seconds of the press, while the user can still act.
+            val handOff = rig.store.eventsOf(TimelineKind.NEEDS_USER).first()
+            assertTrue(handOff.trueUtcMillis < END_UTC - 1_000)
+        }
+
+    @Test
+    fun aSignInPageAfterThePressGoesToTheUser() =
+        runTest {
+            val rig = Rig(this)
+            rig.ebay.replyNotices = { emptyList() }
+            rig.ebay.confirmFinishedPerf = null
+            rig.ebay.urlAfterPress = "https://signin.ebay.co.uk/ws/eBayISAPI.dll?SignIn&ru=x"
+
+            rig.run()
+
+            assertEquals(
+                NeedsUserReason.SIGN_IN,
+                rig.notifier.userAlerts
+                    .first()
+                    .first,
+            )
+        }
+
+    @Test
+    fun aPaymentPromptAfterEbayTookTheBidDoesNotHideItsAnswer() =
+        runTest {
+            val rig = Rig(this)
+            // confirmbid went out and eBay says the bid leads, then shows its Autopay prompt.
+            rig.ebay.interstitialAfterPress = "payment" to "Choose a payment method for Autopay"
+
+            rig.run()
+
+            assertTrue(rig.notifier.userAlerts.isEmpty())
+            assertTrue(rig.store.eventsOf(TimelineKind.EBAY_REPLY).any { it.message.contains("puts you in the lead") })
+        }
+
+    @Test
     fun aPressThePageRefusedIsNeitherABidNorALoss() =
         runTest {
             val rig = Rig(this)

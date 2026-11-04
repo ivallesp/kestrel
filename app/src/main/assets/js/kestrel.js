@@ -1727,6 +1727,8 @@
       newNotices: difference(notices, baselineNotices),
       addedLines: baseline ? difference(lines, baseline.layerLines).slice(0, 30) : [],
       inlineError: layer ? inlineErrorText(layer) : null,
+      // eBay may answer the press with a check (phone verification, sign-in) instead of placing the bid.
+      interstitial: detectInterstitial(layer),
       records: state.observer.records.slice(),
       blocked: state.observer.blocked.slice(),
       // Only a request stopped after the press answers the press; one stopped while waiting does not.

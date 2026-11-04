@@ -296,6 +296,10 @@ internal class SimulatedEbayPage(
     /** A check eBay shows right after the amount is typed (kind, text). */
     var interstitialAfterTyping: Pair<String, String>? = null
 
+    /** eBay answers the press with a check instead of a reply (kind, text), or by moving to another page. */
+    var interstitialAfterPress: Pair<String, String>? = null
+    var urlAfterPress: String? = null
+
     /** eBay rewrites the field this long after typing (a debounced formatter, or the layer redrawing itself). */
     var fieldChangeAfterTypingMillis: Long? = null
     var fieldChange: (String) -> String = { it }
@@ -696,14 +700,16 @@ internal class SimulatedEbayPage(
             } else {
                 emptyList()
             }
+        val check = interstitialAfterPress?.takeIf { answered }
         return json(
             mapOf(
                 "ok" to true,
-                "url" to url,
+                "url" to (urlAfterPress?.takeIf { answered } ?: url),
                 "title" to title,
                 "layerOpen" to layerOpen,
                 "newNotices" to if (answered) replyNotices(replyPolls) else emptyList<String>(),
                 "inlineError" to if (answered) inlineErrorAfterPress else null,
+                "interstitial" to check?.let { (kind, text) -> mapOf("kind" to kind, "text" to text) },
                 "records" to records,
                 "blocked" to blocked,
                 "blockedSincePress" to blocked,

@@ -4,6 +4,7 @@ import app.kestrel.engine.BidPage
 import app.kestrel.engine.BidReply
 import app.kestrel.engine.InputMethod
 import app.kestrel.engine.LayerState
+import app.kestrel.engine.NeedsUserReason
 import app.kestrel.engine.TypingProblem
 import app.kestrel.model.Money
 import app.kestrel.model.PageKind
@@ -741,6 +742,32 @@ class WebBidPageTest {
             val page = page().readyToSubmit()
             page.submit()
             assertEquals(BidReply.Rejected("Enter £15.00 or more", 180), page.awaitReply(4_000))
+        }
+
+    @Test
+    fun `a check eBay shows after the press before any confirmbid is the user's, not a lost reply`() =
+        runTest {
+            ebay.replyNotices = { emptyList() }
+            ebay.confirmFinishedPerf = null
+            ebay.interstitialAfterPress = "verification" to "Verify your phone number to bid"
+            val page = page().readyToSubmit()
+            page.submit()
+            val reply = page.awaitReply(4_000)
+            assertTrue(reply.toString(), reply is BidReply.NeedsUser)
+            reply as BidReply.NeedsUser
+            assertEquals("Verify your phone number to bid", reply.text)
+            assertEquals(NeedsUserReason.VERIFICATION, reply.reason)
+        }
+
+    @Test
+    fun `a captcha page after the press is the user's`() =
+        runTest {
+            ebay.replyNotices = { emptyList() }
+            ebay.confirmFinishedPerf = null
+            ebay.urlAfterPress = "https://www.ebay.co.uk/splashui/captcha?ap=1&appName=orch"
+            val page = page().readyToSubmit()
+            page.submit()
+            assertEquals(NeedsUserReason.CAPTCHA, (page.awaitReply(4_000) as BidReply.NeedsUser).reason)
         }
 
     @Test

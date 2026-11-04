@@ -217,6 +217,7 @@ internal data class ReplySnapshot(
     val newNotices: List<String> = emptyList(),
     val addedLines: List<String> = emptyList(),
     val inlineError: String? = null,
+    val interstitial: InterstitialSnapshot? = null,
     val records: List<RequestRecord> = emptyList(),
     val blocked: List<BlockedRequest> = emptyList(),
     val blockedSincePress: List<BlockedRequest> = emptyList(),

@@ -6,6 +6,7 @@ import app.kestrel.engine.BidReply
 import app.kestrel.engine.EngineClock
 import app.kestrel.engine.InputMethod
 import app.kestrel.engine.LayerState
+import app.kestrel.engine.NeedsUserReason
 import app.kestrel.engine.PageState
 import app.kestrel.engine.SubmitDispatch
 import app.kestrel.engine.TypedAmount
@@ -96,6 +97,7 @@ class WebBidPage internal constructor(
     private var lastTyping: TypingAttempt? = null
     private var nativeTouch: NativeTouchCheck? = null
     private var dispatch: SubmitDispatch? = null
+    private var dialogsAtPress = 0
     private var lastAutoRefreshStartElapsed: Long? = null
     private var layerDialogBaseline = 0
 
@@ -220,6 +222,7 @@ class WebBidPage internal constructor(
         }
         val sent = press(typing)
         dispatch = sent
+        dialogsAtPress = driver.javaScriptDialogCount
         note("submit: ${sent.method} on '${sent.buttonLabel}' at ${sent.dispatchedAtElapsedMillis}")
         return sent
     }
@@ -246,6 +249,9 @@ class WebBidPage internal constructor(
                         )
                     }
                     ReplyClassifier.decisive(state.newNotices, state.addedLines, latency)?.let { return@waitUntil it }
+                    needsUserAfterPress(state)?.let { (text, reason) ->
+                        return@waitUntil BidReply.NeedsUser(text, reason, latency)
+                    }
                     // An error on the amount field after the press is eBay's answer too (the press required none).
                     val other = ReplyClassifier.otherNotice(state.newNotices) ?: state.inlineError
                     val now = clock.elapsedRealtimeMillis()
@@ -866,6 +872,35 @@ class WebBidPage internal constructor(
             note("replyState: ${problem.message}")
             null
         }
+
+    /**
+     * What eBay showed instead of an answer that only the user can deal with: a check in the page, a sign-in or
+     * captcha page, or a JavaScript dialog since the press. Only while no confirmbid left the page after the press: a
+     * prompt eBay shows once it has the bid (Autopay, say) is not a reason to stop reading its answer.
+     */
+    private fun needsUserAfterPress(state: ReplySnapshot): Pair<String, NeedsUserReason>? {
+        val pressAt = state.pressPerfTime
+        val confirmSent =
+            state.records.any {
+                it.action == CONFIRM_BID && (pressAt == null || (it.startedPerf ?: it.finishedPerf ?: 0.0) >= pressAt)
+            }
+        if (confirmSent) return null
+        val kind = parsers.classify(state.url, state.title)
+        val pageReason =
+            when (kind) {
+                PageKind.SIGN_IN, PageKind.THIRD_PARTY_SIGN_IN -> NeedsUserReason.SIGN_IN
+                PageKind.CAPTCHA -> NeedsUserReason.CAPTCHA
+                PageKind.OTHER -> NeedsUserReason.UNKNOWN_PAGE
+                else -> null
+            }
+        if (pageReason != null) return state.title.ifBlank { state.url } to pageReason
+        state.interstitial?.let {
+            val reason = if (it.kind == "signIn") NeedsUserReason.SIGN_IN else NeedsUserReason.VERIFICATION
+            return it.text.ifBlank { it.kind } to reason
+        }
+        dialogSince(dialogsAtPress)?.let { return it to NeedsUserReason.VERIFICATION }
+        return null
+    }
 
     /** From the press to eBay's answer to confirmbid, both on the page's clock; null until the answer arrived. */
     private fun confirmLatency(state: ReplySnapshot): Long? {

@@ -968,7 +968,7 @@ internal class SnipeWindow(
         if (notSent != null) return finishNotSent(notSent)
         storeBidSentIfMissed()
         progress(WindowPhase.BID_SENT)
-        when (sender.awaitReply(currentPage)) {
+        when (val reply = sender.awaitReply(currentPage)) {
             is BidReply.Leading -> {
                 setStatus(SnipeStatus.LEADING)
                 progress(WindowPhase.LEADING)
@@ -979,9 +979,34 @@ internal class SnipeWindow(
                 progress(WindowPhase.OUTBID)
             }
 
+            is BidReply.NeedsUser -> {
+                handOffAfterPress(currentPage, reply)
+            }
+
             else -> {}
         }
         return null
+    }
+
+    /**
+     * eBay put a check between the press and the bid. Nothing answers it (ARCHITECTURE rule 4); the user hears about
+     * it at once, while there may be time to complete it, and the window follows the auction as for any sent bid.
+     */
+    private suspend fun handOffAfterPress(
+        currentPage: BidPage,
+        reply: BidReply.NeedsUser,
+    ) {
+        val text =
+            "eBay asked for something after Kestrel pressed bid (\"${reply.text}\"). " +
+                "Open the listing to complete it; the bid may not count until you do."
+        val pageReport = callWithin(REPORT_TIMEOUT) { currentPage.report() }.valueOrNull()
+        journal.event(
+            snipeId,
+            TimelineKind.NEEDS_USER,
+            text,
+            mapOf("reason" to reply.reason.name, "pageReport" to pageReport),
+        )
+        journal.notify { needsUser(snipe, reply.reason, text) }
     }
 
     /**
