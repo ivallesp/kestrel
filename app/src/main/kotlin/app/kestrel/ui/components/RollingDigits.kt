@@ -57,7 +57,9 @@ fun RollingDigits(
             key(positionFromEnd) {
                 AnimatedContent(
                     targetState = character,
-                    modifier = Modifier.clipToBounds(),
+                    // Cells share a baseline: a cell holding a digit gets a shorter line box than one holding a
+                    // letter, so top-aligned cells would set the units of "13 m 07 s" low.
+                    modifier = Modifier.alignByBaseline().clipToBounds(),
                     transitionSpec = {
                         if (reduceMotion) {
                             ContentTransform(EnterTransition.None, ExitTransition.None, sizeTransform = null)
