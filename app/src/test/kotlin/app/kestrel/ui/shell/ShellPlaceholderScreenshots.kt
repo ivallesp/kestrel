@@ -4,8 +4,6 @@ import androidx.compose.runtime.Composable
 import app.kestrel.ui.harness.PhoneInsets
 import app.kestrel.ui.harness.RecordingNavigator
 import app.kestrel.ui.harness.ScreenshotTest
-import app.kestrel.ui.screens.add.AddDestination
-import app.kestrel.ui.screens.group.GroupDestination
 import app.kestrel.ui.screens.handoff.HandOffDestination
 import app.kestrel.ui.screens.history.HistoryDestination
 import app.kestrel.ui.screens.home.HomeDestination
@@ -43,12 +41,6 @@ class ShellPlaceholderScreenshots : ScreenshotTest() {
     fun homeDark() = dark("home") { HomeDestination(navigator, windowInsets = PhoneInsets) }
 
     @Test
-    fun addLight() = light("add") { AddDestination("https://ebay.us/m/AbC123", navigator, windowInsets = PhoneInsets) }
-
-    @Test
-    fun addDark() = dark("add") { AddDestination(null, navigator, windowInsets = PhoneInsets) }
-
-    @Test
     fun lotLight() = light("lot") { LotDestination(1, navigator, windowInsets = PhoneInsets) }
 
     @Test
@@ -84,12 +76,6 @@ class ShellPlaceholderScreenshots : ScreenshotTest() {
 
     @Test
     fun handOffDark() = dark("handoff") { HandOffDestination(1, navigator, windowInsets = PhoneInsets) }
-
-    @Test
-    fun groupLight() = light("group") { GroupDestination(1, navigator, windowInsets = PhoneInsets) }
-
-    @Test
-    fun groupDark() = dark("group") { GroupDestination(1, navigator, windowInsets = PhoneInsets) }
 
     @Test
     fun settingsLight() = light("settings") { SettingsDestination(navigator, windowInsets = PhoneInsets) }

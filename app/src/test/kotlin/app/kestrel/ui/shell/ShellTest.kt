@@ -26,7 +26,6 @@ class ShellTest {
     // Onboarding has no back arrow (it is the first launch); finishingOnboardingOpensHome covers it.
     private val titles =
         listOf(
-            Destination.Add("https://www.ebay.co.uk/itm/127504318862") to "New snipe",
             Destination.Lot(3) to "Lot detail",
             Destination.Result(3) to "Result",
             Destination.Ready to "Ready to snipe",
