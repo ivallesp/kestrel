@@ -36,6 +36,8 @@ import app.kestrel.platform.LockedBootNotice
 import app.kestrel.platform.MonitorSchedulePolicy
 import app.kestrel.platform.NotificationActionHandler
 import app.kestrel.platform.NotificationTexts
+import app.kestrel.platform.PreviewHandle
+import app.kestrel.platform.PreviewPages
 import app.kestrel.platform.RaiseMaxRules
 import app.kestrel.platform.Readiness
 import app.kestrel.platform.ReadinessProbes
@@ -51,6 +53,7 @@ import app.kestrel.platform.SnipeScheduler
 import app.kestrel.platform.SystemEventHandler
 import app.kestrel.platform.WakeLocks
 import app.kestrel.web.EbaySession
+import app.kestrel.web.ListingFetcher
 import app.kestrel.web.WebBidPageFactory
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -90,7 +93,18 @@ open class AppContainer(
 
     // Engine and pages.
 
-    val bidPages: BidPageFactory by lazy { WebBidPageFactory(context) }
+    val bidPages: WebBidPageFactory by lazy { WebBidPageFactory(context, trueTime) }
+
+    /** Submit-free pages for dry runs and checks. */
+    internal val previewPages: PreviewPages by lazy {
+        PreviewPages {
+            val page = bidPages.createPreview()
+            PreviewHandle(page) { page.close() }
+        }
+    }
+
+    /** Loads listings for the add-snipe preview. */
+    val listingFetcher: ListingFetcher by lazy { ListingFetcher(context, trueTime) }
     val snipeEngine: SnipeEngine by lazy { SnipeEngine(repository, notifications, trueTime, bidPages) }
     val dryRun: DryRun by lazy { DryRun(repository, notifications, clock) }
     val listingCheck: ListingCheck by lazy { ListingCheck(repository, notifications, clock) }
@@ -149,6 +163,7 @@ open class AppContainer(
             dryRun = { dryRun },
             listingCheck = { listingCheck },
             pages = { bidPages },
+            previews = { previewPages },
         )
     }
 
