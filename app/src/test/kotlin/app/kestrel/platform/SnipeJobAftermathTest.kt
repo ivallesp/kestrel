@@ -1,5 +1,6 @@
 package app.kestrel.platform
 
+import app.kestrel.data.MINUTE
 import app.kestrel.data.TEST_NOW
 import app.kestrel.data.testSnipe
 import app.kestrel.engine.NeedsUserReason
@@ -40,9 +41,10 @@ class SnipeJobAftermathTest {
             for (status in listOf(SnipeStatus.ARMED, SnipeStatus.BIDDING)) {
                 rescheduled.clear()
                 notifier.needsUser.clear()
-                val store = FakeStore(testSnipe(id = 1, status = status))
+                // The window ran in its usual place, two minutes before the end, and left without a bid.
+                val store = FakeStore(testSnipe(id = 1, status = status, endTimeUtcMillis = TEST_NOW + 30_000))
 
-                aftermath(store).jobFinished(1, JobKind.WINDOW, startedAtUtcMillis = TEST_NOW - 120_000)
+                aftermath(store).jobFinished(1, JobKind.WINDOW, startedAtUtcMillis = TEST_NOW - 90_000)
 
                 assertEquals("$status", SnipeStatus.NEEDS_YOU, store.snipes.getValue(1).status)
                 assertEquals(listOf(NeedsUserReason.BID_FAILED to SnipeJobAftermath.WINDOW_STOPPED), notifier.needsUser)
@@ -51,6 +53,26 @@ class SnipeJobAftermathTest {
                     store.events.takeLast(1),
                 )
                 assertEquals(SnipeStatus.NEEDS_YOU, rescheduled.single().first.status)
+                assertEquals(null, rescheduled.single().second)
+            }
+        }
+
+    @Test
+    fun aWindowThatHandedTheSnipeBackForALaterEndIsRescheduledWithoutAnAlert() =
+        runTest {
+            // The end moved an hour out (or the window started far too early): a new window opens before the new end.
+            for (status in listOf(SnipeStatus.ARMED, SnipeStatus.BIDDING)) {
+                rescheduled.clear()
+                notifier.needsUser.clear()
+                val handedBack = testSnipe(id = 1, status = status, endTimeUtcMillis = TEST_NOW + 60 * MINUTE)
+                val store = FakeStore(handedBack)
+
+                aftermath(store).jobFinished(1, JobKind.WINDOW, startedAtUtcMillis = TEST_NOW - 30_000)
+
+                assertTrue("$status", notifier.needsUser.isEmpty())
+                // A hand-back whose ARMED write did not land is armed again now that no window holds it.
+                assertEquals("$status", SnipeStatus.ARMED, store.snipes.getValue(1).status)
+                assertEquals("$status", SnipeStatus.ARMED, rescheduled.single().first.status)
                 assertEquals(null, rescheduled.single().second)
             }
         }

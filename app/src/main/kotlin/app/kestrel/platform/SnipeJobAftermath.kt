@@ -1,5 +1,6 @@
 package app.kestrel.platform
 
+import app.kestrel.data.SnipeRules
 import app.kestrel.engine.NeedsUserReason
 import app.kestrel.engine.SnipeNotifier
 import app.kestrel.engine.SnipeStore
@@ -39,9 +40,24 @@ internal class SnipeJobAftermath(
             cancelSchedule(snipeId)
             return
         }
-        val windowStalled = kind == JobKind.WINDOW && snipe.status in windowNeverProgressed
-        val settled = if (windowStalled) stoppedWithoutBid(snipe) else snipe
-        reschedule(settled, if (kind == JobKind.WINDOW) null else startedAtUtcMillis)
+        val window = kind == JobKind.WINDOW
+        // A window that closed because the end moved far away (or that started far too early) handed the snipe back
+        // on purpose; a new window opens before the new end, so there is nothing to tell the user.
+        val handedBack = window && snipe.status in windowNeverProgressed && SnipeRules.handedBack(snipe, nowUtcMillis())
+        val windowStalled = window && snipe.status in windowNeverProgressed && !handedBack
+        val settled =
+            when {
+                windowStalled -> stoppedWithoutBid(snipe)
+                handedBack && snipe.status == SnipeStatus.BIDDING -> armedAgain(snipe)
+                else -> snipe
+            }
+        reschedule(settled, if (window) null else startedAtUtcMillis)
+    }
+
+    // The window's own hand-back write did not land: the snipe goes back to armed now that no window holds it.
+    private suspend fun armedAgain(snipe: Snipe): Snipe {
+        store.update(snipe.copy(status = SnipeStatus.ARMED, updatedAtUtcMillis = nowUtcMillis()))
+        return store.snipe(snipe.id) ?: snipe
     }
 
     private suspend fun stoppedWithoutBid(snipe: Snipe): Snipe {

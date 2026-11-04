@@ -1,6 +1,7 @@
 package app.kestrel.data
 
 import app.kestrel.engine.BidTiming
+import app.kestrel.engine.WindowTimings
 import app.kestrel.model.Money
 import app.kestrel.model.Snipe
 import app.kestrel.model.SnipeStatus
@@ -91,23 +92,51 @@ internal object SnipeRules {
      * - a finished snipe never becomes active again;
      * - once eBay has the bid, the snipe only moves on to a later bid state or a result, never back to a state
      *   where its max could be edited or a second window could open;
-     * - once the window opened, the snipe never returns to "not started".
+     * - once the window opened, the snipe never returns to "not started", unless the window handed it back because
+     *   the end moved far away ([handedBack]).
      */
     fun acceptsEngineStatus(
         stored: Snipe,
         incoming: Snipe,
+        nowUtcMillis: Long,
     ): Boolean {
         if (incoming.status == stored.status) return true
         if (stored.maxBid == null && incoming.status.needsMax) return false
         if (stored.maxBid != null && incoming.status == SnipeStatus.WATCHING) return false
         return when {
-            stored.status == SnipeStatus.CANCELLED -> provesBidWasSent(incoming)
-            stored.status.isFinal -> incoming.status.isFinal
-            stored.status in bidInFlight -> incoming.status in bidInFlight || incoming.status.isFinal
-            stored.status.family == StatusFamily.BIDDING -> incoming.status !in notStarted
-            else -> true
+            stored.status == SnipeStatus.CANCELLED -> {
+                provesBidWasSent(incoming)
+            }
+
+            stored.status.isFinal -> {
+                incoming.status.isFinal
+            }
+
+            stored.status in bidInFlight -> {
+                incoming.status in bidInFlight || incoming.status.isFinal
+            }
+
+            stored.status.family == StatusFamily.BIDDING -> {
+                incoming.status !in notStarted ||
+                    (handedBack(stored, nowUtcMillis) && handedBack(incoming, nowUtcMillis))
+            }
+
+            else -> {
+                true
+            }
         }
     }
+
+    /**
+     * True when no bid window can be holding [snipe]: it has no result and its end is further away than a window
+     * ever holds the phone ([WindowTimings.MAXIMUM_HOLD_BEFORE_END]; a window hands the snipe back when the end moves
+     * past that). A bidding status on such a snipe is a deliberate hand-back to the scheduler, not a stall, and a
+     * resumable status may replace it without letting a stale copy reset a window that will bid.
+     */
+    fun handedBack(
+        snipe: Snipe,
+        nowUtcMillis: Long,
+    ): Boolean = snipe.result == null && snipe.endTimeUtcMillis - nowUtcMillis > WindowTimings.MAXIMUM_HOLD_BEFORE_END
 
     /** Statuses that only make sense with a bidding instruction; sign-in and "needs you" can happen while watching. */
     private val SnipeStatus.needsMax: Boolean get() = this in statusesNeedingMax

@@ -474,6 +474,32 @@ class SnipeRepositoryTest {
         }
 
     @Test
+    fun aWindowHandsTheSnipeBackWhenTheEndMovedFarAway() =
+        runTest {
+            val snipe = addArmed()
+            forceStatus(snipe.id, SnipeStatus.BIDDING)
+            // eBay moved the end an hour out: no window holds a snipe that far from its end.
+            val farEnd = now + 60 * MINUTE
+            repository.update(repository.snipe(snipe.id)!!.copy(endTimeUtcMillis = farEnd))
+
+            repository.update(repository.snipe(snipe.id)!!.copy(status = SnipeStatus.ARMED))
+
+            assertEquals(SnipeStatus.ARMED, repository.snipe(snipe.id)?.status)
+        }
+
+    @Test
+    fun aStaleArmedCopyCannotResetAWindowThatHoldsTheSnipe() =
+        runTest {
+            val snipe = addArmed(testListing(endTimeUtcMillis = now + 2 * MINUTE))
+            val stale = repository.snipe(snipe.id)!!
+            forceStatus(snipe.id, SnipeStatus.BIDDING)
+
+            repository.update(stale.copy(status = SnipeStatus.ARMED))
+
+            assertEquals(SnipeStatus.BIDDING, repository.snipe(snipe.id)?.status)
+        }
+
+    @Test
     fun eventsAndPricesForUnknownSnipesAreIgnored() =
         runTest {
             repository.addEvent(404, TimelineKind.PROBLEM, "nobody")

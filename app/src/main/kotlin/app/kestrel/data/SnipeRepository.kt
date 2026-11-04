@@ -242,7 +242,7 @@ class SnipeRepository(
         database.withTransaction {
             val storedRow = snipes.findIncludingDeleted(snipe.id) ?: return@withTransaction
             val stored = storedRow.toSnipe()
-            val statusAccepted = SnipeRules.acceptsEngineStatus(stored, snipe)
+            val statusAccepted = SnipeRules.acceptsEngineStatus(stored, snipe, nowUtcMillis())
             if (!statusAccepted) {
                 Log.w(TAG, "Kept status ${stored.status} of snipe ${snipe.id}; an engine write wanted ${snipe.status}")
             }
