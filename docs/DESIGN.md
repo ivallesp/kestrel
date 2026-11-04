@@ -1210,7 +1210,7 @@ From font scale 1.3 the dashed plate (decoration) is left out, so "Paste eBay li
 4. 12 dp, then the outlined "Add a snipe to this group", which opens a picker of armed snipes.
 
 **Rules:**
-- **Bid times within 2 min of each other:** the rule card turns Attention: "MiniDisc and Walkman bid 2 min apart. Kestrel may not know the first result in time, so you could win both." (the words that tell the titles apart, the gap in whole minutes).
+- **Bid times within 2 min of each other:** the rule card turns Attention: "MiniDisc and Walkman bid 2 min apart. Kestrel may not know the first result in time, so it may skip the later one." (the words that tell the titles apart, the gap in whole minutes). Kestrel never risks a second win (ARCHITECTURE section 8): while the first result is unknown it skips the later bid.
 - **After a win:**
   - the card turns Won: "Won 1 of 2 · Sony MiniDisc Walkman MZ-N707 for £31.00";
   - the other row reads "Cancelled · you won another in Portable audio" with a tonal "Undo cancel" while it runs (S4 "Cancelled by group").

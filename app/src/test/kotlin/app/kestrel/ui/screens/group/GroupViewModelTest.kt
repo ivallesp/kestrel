@@ -117,9 +117,11 @@ class GroupViewModelTest {
     fun bidsTooCloseTogetherTurnTheCardIntoAWarning() {
         val rule = (GroupFixtures.closeEndings.content as GroupContent.Members).rule
         assertEquals(RuleTone.Attention, rule.tone)
+        // The engine never risks a second win: it skips the later bid while the first is undecided
+        // (GroupPolicy.atFire), so the risk is winning neither, not both.
         assertEquals(
             "MiniDisc and Walkman bid 2\u202Fmin apart. " +
-                "Kestrel may not know the first result in time, so you could win both.",
+                "Kestrel may not know the first result in time, so it may skip the later one.",
             rule.body,
         )
     }

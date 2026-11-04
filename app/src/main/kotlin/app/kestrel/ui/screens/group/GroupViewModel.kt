@@ -249,9 +249,10 @@ object GroupPlanner {
             return RuleCard(
                 tone = RuleTone.Attention,
                 headline = headline,
+                // GroupPolicy.atFire skips the later bid while the first is undecided: never two wins.
                 body =
                     "$earlier and $later bid ${apart(gapMillis)} apart. Kestrel may not know the first result in " +
-                        "time, so you could win both.",
+                        "time, so it may skip the later one.",
             )
         }
         val body =
