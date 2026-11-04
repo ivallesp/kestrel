@@ -79,6 +79,7 @@ fun ResultDestination(
                     onShare = { shareReceipt(context, current.state.shareText) },
                     onOpenOnEbay = { navigator.open(Destination.HandOff(id)) },
                     onDelete = viewModel::delete,
+                    onSettle = viewModel::settle,
                     onAction = { action ->
                         if (action == LotAction.UNDO_CANCEL) {
                             viewModel.undoCancel()

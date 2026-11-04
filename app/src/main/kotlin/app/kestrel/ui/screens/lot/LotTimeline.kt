@@ -519,7 +519,8 @@ object LotTimeline {
 
             // The engine's own words say it will check again; the receipt says it as the result card does.
             "UNKNOWN" -> {
-                Row(at, "Result not known", ResultStateBuilder.UNKNOWN_NEXT.removeSuffix("."), tenths = true)
+                val next = if (evidence.resultGivenUp) "Kestrel stopped checking" else ResultStateBuilder.UNKNOWN_NEXT
+                Row(at, "Result not known", next.removeSuffix("."), tenths = true)
             }
 
             else -> {

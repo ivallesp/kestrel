@@ -149,6 +149,7 @@ fun LotDestination(
                         onOpenOnEbay = { navigator.open(Destination.HandOff(id)) },
                         onDelete = viewModel::delete,
                         onAction = onAction,
+                        onSettle = viewModel::settle,
                     )
                 }
             }

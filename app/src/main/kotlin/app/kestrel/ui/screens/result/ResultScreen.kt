@@ -99,6 +99,7 @@ fun ResultScreen(
     onOpenOnEbay: () -> Unit = {},
     onDelete: () -> Unit = {},
     onAction: (LotAction) -> Unit = {},
+    onSettle: (won: Boolean) -> Unit = {},
 ) {
     val won = state.variant == ResultVariant.Won
     // "You won" one step above every other result (rule MF7).
@@ -112,7 +113,7 @@ fun ResultScreen(
                     .verticalScroll(rememberScrollState())
                     .windowInsetsPadding(windowInsets.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
             ) {
-                ResultTopBar(state.canDelete, onClose, onShare, onOpenOnEbay, onDelete)
+                ResultTopBar(state.canDelete, state.canSettle, onClose, onShare, onOpenOnEbay, onDelete, onSettle)
                 Column(
                     Modifier
                         .windowInsetsPadding(windowInsets.only(WindowInsetsSides.Bottom))
@@ -166,10 +167,12 @@ private const val SHORT_PLATE_FOCUS_LIFT = 0.35f
 @Composable
 private fun ResultTopBar(
     canDelete: Boolean,
+    canSettle: Boolean,
     onClose: () -> Unit,
     onShare: () -> Unit,
     onOpenOnEbay: () -> Unit,
     onDelete: () -> Unit,
+    onSettle: (won: Boolean) -> Unit,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     Row(
@@ -195,6 +198,25 @@ private fun ResultTopBar(
                         onOpenOnEbay()
                     },
                 )
+                if (canSettle) {
+                    // A result Kestrel could not read: the user looked on eBay and says how it ended.
+                    DropdownMenuItem(
+                        text = { Text("Mark as won") },
+                        leadingIcon = { SymbolIcon(Symbols.Trophy) },
+                        onClick = {
+                            expanded = false
+                            onSettle(true)
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Mark as lost") },
+                        leadingIcon = { SymbolIcon(Symbols.Flag) },
+                        onClick = {
+                            expanded = false
+                            onSettle(false)
+                        },
+                    )
+                }
                 if (canDelete) {
                     // The destructive item comes last, after a divider; its snackbar offers Undo (DESIGN Q22).
                     HorizontalDivider()

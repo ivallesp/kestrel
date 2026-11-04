@@ -4,6 +4,7 @@ import app.kestrel.model.Money
 import app.kestrel.model.Snipe
 import app.kestrel.model.TimelineEvent
 import app.kestrel.model.TimelineKind
+import app.kestrel.platform.SnipeJobAftermath
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -110,6 +111,10 @@ class LotEvidence(
     val dryRunDone: Boolean = snipe.dryRunAtUtcMillis?.let { it <= nowMillis } == true
 
     val resultOutcome: String? = result?.detailText("outcome")
+
+    /** Kestrel stopped reading the result, three days after the end (SnipeJobAftermath): only the user can say now. */
+    val resultGivenUp: Boolean =
+        history.any { it.kind == TimelineKind.PROBLEM && it.message == SnipeJobAftermath.RESULT_UNREAD }
 
     private fun List<TimelineEvent>.firstExtensionPreviousEnd(): Long? =
         firstOrNull { it.kind == TimelineKind.EXTENDED }?.detailLong("previousEndUtcMillis")

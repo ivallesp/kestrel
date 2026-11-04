@@ -70,6 +70,12 @@ interface LotData {
      */
     suspend fun undoCancel(id: Long): EditResult
 
+    /** The user says how a bid Kestrel could not read ended, after checking eBay (SnipeActions.settle). */
+    suspend fun settle(
+        id: Long,
+        won: Boolean,
+    ): EditResult
+
     /** Settings "Suggest odd pence": whether the set-max sheet offers £90.37 for a round £90.00. */
     suspend fun suggestOddPence(): Boolean = true
 
@@ -144,6 +150,11 @@ class ContainerLotData(
             .suggestOddPence
 
     override suspend fun undoCancel(id: Long): EditResult = actions.uncancel(id)
+
+    override suspend fun settle(
+        id: Long,
+        won: Boolean,
+    ): EditResult = actions.settle(id, won)
 
     override suspend fun sealStamped(id: Long): Boolean =
         withContext(Dispatchers.IO) { sealPreferences().getStringSet(STAMPED, emptySet()).orEmpty().contains("$id") }

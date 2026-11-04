@@ -1,5 +1,6 @@
 package app.kestrel.ui.screens.result
 
+import app.kestrel.data.SnipeRules
 import app.kestrel.model.Money
 import app.kestrel.model.Snipe
 import app.kestrel.model.StatusFamily
@@ -55,7 +56,6 @@ object ResultStateBuilder {
         val headline = headline(status, variant, now, zone)
         val statusLine = statusLine(status, evidence, now, zone)
         val quote = quote(variant, evidence)
-        val windowOpen = snipe.status.family == StatusFamily.BIDDING && !snipe.status.isFinal
         val paid = (status as? LotStatus.Won)?.let { paid(it, snipe) }
         val sold = (status as? LotStatus.Lost)?.let { sold(it, evidence) }
         return ResultUiState(
@@ -69,7 +69,10 @@ object ResultStateBuilder {
             headline = headline,
             receipt = LotTimeline.receipt(evidence, now, zone),
             shareText = shareText(snipe, variant, headline, statusLine, paid, quote, status),
-            canDelete = !windowOpen,
+            // As the data layer allows: no window can hold the snipe long after the end.
+            canDelete = SnipeRules.deleteRefusal(snipe, now.toEpochMilli()) == null,
+            // A bid whose result Kestrel could not read, long after the end: the user says how it ended.
+            canSettle = SnipeRules.settleRefusal(snipe, now.toEpochMilli()) == null,
             stampSeal = inputs.stampSeal && variant == ResultVariant.Won,
             paid = paid,
             sold = sold,
@@ -312,12 +315,17 @@ object ResultStateBuilder {
         val amount = evidence.sentAmount?.formatted()
         val lead = evidence.leadMillis?.let { " ${secondsWithTenths(it)} before the end" } ?: ""
         val sent = if (amount != null) "Kestrel sent your $amount bid$lead, but" else "Kestrel"
-        return OutcomeCardText(
-            StatusTone.Ended,
-            "$sent couldn’t read the result on eBay’s listing page yet. $UNKNOWN_NEXT",
-            LotAction.OPEN_ON_EBAY,
-        )
+        val text =
+            if (evidence.resultGivenUp) {
+                "$sent couldn’t read the result on eBay’s listing page and has stopped checking. $GIVEN_UP_NEXT"
+            } else {
+                "$sent couldn’t read the result on eBay’s listing page yet. $UNKNOWN_NEXT"
+            }
+        return OutcomeCardText(StatusTone.Ended, text, LotAction.OPEN_ON_EBAY)
     }
+
+    /** Once Kestrel stopped reading the result: the menu's "Mark as won" and "Mark as lost". */
+    const val GIVEN_UP_NEXT = "Look on eBay, then mark it won or lost from the menu."
 
     /** What happens after a result Kestrel couldn't read, on the card and in the receipt. */
     const val UNKNOWN_NEXT = "It keeps checking the page, and you can look on eBay too."

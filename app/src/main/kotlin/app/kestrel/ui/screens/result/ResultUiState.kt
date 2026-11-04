@@ -49,6 +49,8 @@ data class ResultUiState(
     val receipt: List<TimelineEntry>,
     val shareText: String,
     val canDelete: Boolean,
+    /** "Mark as won" and "Mark as lost": a sent bid whose result Kestrel could not read (SnipeRules.settleRefusal). */
+    val canSettle: Boolean = false,
     val stampSeal: Boolean = false,
     val paid: PaidCardText? = null,
     val sold: SoldCardText? = null,

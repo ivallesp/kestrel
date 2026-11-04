@@ -280,6 +280,25 @@ class LotViewModelTest {
         }
 
     @Test
+    fun markingAnUnreadResultStoresWhatTheUserSawOnEbay() =
+        runTest(dispatcher) {
+            val data = FakeLotData(LotFixtures.canonResultUnknown, testScheduler::currentTime)
+            val viewModel = viewModelFor(data)
+            viewModel.settle(won = true)
+            runCurrent()
+            assertEquals(listOf(true), data.settles)
+
+            data.settleResult =
+                { EditResult.NotAllowed("The auction has not ended yet, or Kestrel is still reading the result.") }
+            viewModel.settle(won = false)
+            runCurrent()
+            assertEquals(
+                "The auction has not ended yet, or Kestrel is still reading the result.",
+                (data.effects.last() as LotEffect.Show).message.text,
+            )
+        }
+
+    @Test
     fun deletingLeavesAnUndoForTheNextScreen() =
         runTest(dispatcher) {
             val data = FakeLotData(LotFixtures.canonArmedToday, testScheduler::currentTime)
@@ -379,6 +398,18 @@ private class FakeLotData(
     }
 
     var undoCancels = 0
+    val settles = mutableListOf<Boolean>()
+    var settleResult: (Boolean) -> EditResult = { won ->
+        EditResult.Done(snipe.value!!.copy(status = if (won) SnipeStatus.WON else SnipeStatus.LOST))
+    }
+
+    override suspend fun settle(
+        id: Long,
+        won: Boolean,
+    ): EditResult {
+        settles += won
+        return settleResult(won)
+    }
 
     override suspend fun undoCancel(id: Long): EditResult {
         undoCancels++

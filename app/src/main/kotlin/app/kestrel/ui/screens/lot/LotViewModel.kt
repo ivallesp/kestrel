@@ -435,6 +435,16 @@ class LotViewModel(
         }
     }
 
+    /** "Mark as won" or "Mark as lost" on a bid whose result Kestrel could not read; the user checked eBay. */
+    fun settle(won: Boolean) {
+        viewModelScope.launch {
+            val result = data.settle(snipeId, won)
+            if (result is EditResult.NotAllowed) {
+                effectChannel.send(LotEffect.Show(ShellMessage(result.reason.withCurlyQuotes())))
+            }
+        }
+    }
+
     /** Deletes the snipe and goes back, leaving "Deleted Canon AE-1" with Undo for the next screen. */
     fun delete() {
         val snipe = latest ?: return

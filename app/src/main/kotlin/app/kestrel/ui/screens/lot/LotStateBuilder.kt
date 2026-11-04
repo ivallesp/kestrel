@@ -3,6 +3,7 @@ package app.kestrel.ui.screens.lot
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.text.AnnotatedString
 import app.kestrel.data.PricePoint
+import app.kestrel.data.SnipeRules
 import app.kestrel.ebay.BidIncrements
 import app.kestrel.model.Money
 import app.kestrel.model.Snipe
@@ -109,7 +110,7 @@ object LotPageBuilder {
         val ended = now.toEpochMilli() >= evidence.snipe.endTimeUtcMillis
         return when (status) {
             is LotStatus.BidNotSent, is LotStatus.BidFailed -> ended
-            is LotStatus.ReadingResult -> evidence.resultOutcome == "UNKNOWN"
+            is LotStatus.ReadingResult -> evidence.resultOutcome == "UNKNOWN" || evidence.resultGivenUp
             else -> status.kind.isFinal
         }
     }
@@ -182,7 +183,7 @@ object LotStateBuilder {
                         figures.copy(startLabel = lastRead(readAt, snipe.lastBidCount ?: 0, now, zone))
                     } ?: figures
                 },
-            menu = menu(snipe, status, evidence),
+            menu = menu(snipe, status, evidence, now),
             offline = offline(inputs.connectivity, status, zone),
             scale = scale(status, evidence, now, end, bidAt),
             card = card(status, evidence, now, bidAt, zone),
@@ -390,6 +391,7 @@ object LotStateBuilder {
         snipe: Snipe,
         status: LotStatus,
         evidence: LotEvidence,
+        now: Instant,
     ): LotMenuState {
         val bidSent =
             evidence.sentAtMillis != null ||
@@ -405,9 +407,8 @@ object LotStateBuilder {
                 status is LotStatus.ReadingResult -> null
                 else -> MenuEntry("Stop sniping", enabled = true)
             }
-        // The data layer refuses to delete while the bid window is open.
-        val windowOpen = snipe.status.family == StatusFamily.BIDDING && !snipe.status.isFinal
-        return LotMenuState(stop, canDelete = !windowOpen)
+        // The data layer refuses to delete while a bid window may still run the snipe.
+        return LotMenuState(stop, canDelete = SnipeRules.deleteRefusal(snipe, now.toEpochMilli()) == null)
     }
 
     // The banner says the phone is offline once. When a bid is due within the hour its card says what that does to
