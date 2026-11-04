@@ -789,23 +789,49 @@
   }
 
   // The DOM event sequence of a tap at the element's centre. These events are untrusted; Kotlin prefers a
-  // native MotionEvent when the touch probe shows native taps reach the page.
-  function domPress(element) {
+  // native MotionEvent when the touch probe shows native taps reach the page. When [stillValid] is given it is
+  // checked before every event: eBay's handlers may re-render the button mid-press (into a power bid, say), and the
+  // sequence stops before the click. Returns true when the whole sequence, click included, was dispatched.
+  function domPress(element, stillValid) {
     var box = element.getBoundingClientRect();
     var x = box.left + box.width / 2;
     var y = box.top + box.height / 2;
     var base = { bubbles: true, cancelable: true, composed: true, view: window, clientX: x, clientY: y,
       screenX: x, screenY: y, button: 0 };
-    dispatchPointer(element, 'pointerdown', base, 1);
-    dispatchMouse(element, 'mousedown', base, 1);
-    try {
-      element.focus({ preventScroll: true });
-    } catch (error) {
-      recordError('focus', error);
+    var steps = [
+      function () {
+        dispatchPointer(element, 'pointerdown', base, 1);
+      },
+      function () {
+        dispatchMouse(element, 'mousedown', base, 1);
+        try {
+          element.focus({ preventScroll: true });
+        } catch (error) {
+          recordError('focus', error);
+        }
+      },
+      function () {
+        dispatchPointer(element, 'pointerup', base, 0);
+      },
+      function () {
+        dispatchMouse(element, 'mouseup', base, 0);
+      },
+      function () {
+        dispatchMouse(element, 'click', base, 0);
+      },
+    ];
+    for (var i = 0; i < steps.length; i++) {
+      if (stillValid && !stillValid()) return false;
+      steps[i]();
     }
-    dispatchPointer(element, 'pointerup', base, 0);
-    dispatchMouse(element, 'mouseup', base, 0);
-    dispatchMouse(element, 'click', base, 0);
+    return true;
+  }
+
+  // The armed button still says bid and nothing else, outside the power bids, in this document.
+  function pressableStill(element) {
+    return function () {
+      return element.isConnected && !isInsidePowerBids(element) && judgeSubmitLabel(labelOf(element)).recognised;
+    };
   }
 
   function eventPoint(event) {
@@ -905,6 +931,10 @@
 
   // Everything that must hold right before the submit is pressed. Returns null when it may be pressed.
   function submitProblem(layer, submit, options) {
+    // The amount was typed and checked in one document; a press in any other (after a navigation) is not that bid.
+    if (options && typeof options.documentToken === 'string' && options.documentToken !== DOCUMENT_TOKEN) {
+      return 'documentChanged';
+    }
     if (!layer || !layer.input) return 'bidLayerClosed';
     if (!submit.element) return 'submitNotFound';
     if (!submit.enabled) return 'submitDisabled';
@@ -1030,32 +1060,34 @@
       var args = arguments;
       var url = typeof input === 'string' ? input : (input && typeof input.url === 'string' ? input.url : String(input));
       if (!isPlaceBidUrl(url)) return original.apply(self, args);
-      // What is checked is what is sent: the options are copied now, so a later change to them cannot slip past.
-      var options = init && typeof init === 'object' ? Object.assign({}, init) : init;
-      var method = (options && options.method) || (input && typeof input === 'object' && input.method) || 'GET';
-      if (options && typeof options.body === 'string') return send(options.body);
+      var method = (init && init.method) || (input && typeof input === 'object' && input.method) || 'GET';
+      var isRequest = input && typeof input === 'object' && typeof input.clone === 'function';
       // fetch(Request) sends the Request's own body when the options give none (absent or null): read a copy first.
-      if (input && typeof input === 'object' && typeof input.clone === 'function' && (!options || options.body == null)) {
+      if (isRequest && (!init || init.body == null)) {
         var copy;
         try {
           copy = input.clone();
         } catch (error) {
-          return send(null);
+          return sendChecked(null);
         }
-        return copy.text().then(send, function () {
-          return send(null);
+        return copy.text().then(sendChecked, function () {
+          return sendChecked(null);
         });
       }
-      return send(null);
+      return sendChecked(null);
 
-      function send(body) {
+      // Checks the body that is about to be sent, then sends the caller's own arguments in the same step: what is
+      // checked is what is sent, even if the options changed while a Request's body was being read.
+      function sendChecked(requestBody) {
+        var optionsBody = init ? init.body : undefined;
+        var body = optionsBody != null ? optionsBody : requestBody;
         var verdict = ceilingVerdict(url, typeof body === 'string' ? body : null);
         if (verdict.block) {
           recordBlocked('fetch', url, verdict);
           return Promise.reject(new TypeError('Failed to fetch'));
         }
         var record = startRecord('fetch', method, url, verdict);
-        var promise = args.length > 1 ? original.call(self, input, options) : original.call(self, input);
+        var promise = original.apply(self, args);
         observeResponse(promise, record);
         return promise;
       }
@@ -1330,7 +1362,7 @@
       state.guard.mode = 'swallow';
     }
     centerOf(bidButton.element);
-    domPress(bidButton.element);
+    if (!domPress(bidButton.element, pressableStill(bidButton.element))) return { ok: false, reason: 'labelChanged' };
     return { ok: true, selector: bidButton.selector, label: bidButton.label };
   }
 
@@ -1556,11 +1588,11 @@
     var nativePress = state.press.method === 'native';
     if (!guard) {
       return { ok: true, armed: false, reached: nativePress, pressPerfTime: state.press.perfTime,
-        last: state.lastGuard || null };
+        last: state.lastGuard || null, documentToken: DOCUMENT_TOKEN };
     }
     return { ok: true, armed: true, which: guard.which, reached: guard.reached || (guard.which === 'submit' && nativePress),
       swallowed: guard.swallowed, labelChanged: guard.labelChanged, events: guard.events.slice(0, 20),
-      pressPerfTime: state.press.perfTime };
+      pressPerfTime: state.press.perfTime, documentToken: DOCUMENT_TOKEN };
   }
 
   function disarmTap() {
@@ -1635,7 +1667,10 @@
     centerOf(submit.element);
     press.perfTime = now();
     press.epochTime = Date.now();
-    domPress(submit.element);
+    // The one press is spent even when it stops part-way: a button that changed under the finger is not pressed again.
+    if (!domPress(submit.element, pressableStill(submit.element))) {
+      return { ok: false, dispatched: false, reason: 'labelChanged', label: submit.label };
+    }
     return { ok: true, dispatched: true, label: submit.label, selector: submit.selector, perfTime: press.perfTime,
       epochTime: press.epochTime };
   }

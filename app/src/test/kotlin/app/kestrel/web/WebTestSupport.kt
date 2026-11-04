@@ -298,6 +298,7 @@ internal class SimulatedEbayPage(
     /** kestrel.js's name for the current document; a navigation gives the next document a new one. */
     var documentToken = "document-1"
     var navigateAfterPress = false
+    var navigateOnSubmitTap = false
     var bidButtonPresses = 0
 
     init {
@@ -351,7 +352,16 @@ internal class SimulatedEbayPage(
         ) { arguments -> armTap(arguments[0].text(), arguments.getOrNull(1)?.objectField("expectValue")?.text()) }
         driver.on(
             "tapResult",
-        ) { json(mapOf("ok" to true, "armed" to (guardTarget != null), "reached" to guardReached)) }
+        ) {
+            json(
+                mapOf(
+                    "ok" to true,
+                    "armed" to (guardTarget != null),
+                    "reached" to guardReached,
+                    "documentToken" to documentToken,
+                ),
+            )
+        }
         driver.on("disarmTap") {
             guardTarget = null
             guardReached = false
@@ -544,6 +554,13 @@ internal class SimulatedEbayPage(
                 guardReached = true
                 pressMethod = "native"
                 press()
+            }
+
+            guardTarget == "submit" && navigateOnSubmitTap -> {
+                // The tap sent the bid and the page moved on before anyone could ask: a fresh helper, no history.
+                press()
+                documentToken = "document-2"
+                guardTarget = null
             }
         }
     }

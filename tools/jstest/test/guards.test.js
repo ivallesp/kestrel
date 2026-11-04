@@ -189,3 +189,32 @@ test('submit labels in the supported languages are recognised, other actions in 
     'Sofort-Kaufen', 'Make offer', 'Bid £5.57']
     .forEach((label) => assert.equal(call(openPage(ITEM, layerWith(label)).window, 'layerState').ready, false, label));
 });
+
+test('a press is refused on any document but the one the amount was typed in', async () => {
+  const page = await openSyntheticLayer();
+  call(page.window, 'openBidLayer');
+  const typed = call(page.window, 'typeMax', '12.50');
+  assert.equal(call(page.window, 'armTap', 'submit', { expectValue: '12.50', documentToken: 'another-document' }).reason,
+    'documentChanged');
+  assert.equal(call(page.window, 'submit', { expectValue: '12.50', documentToken: 'another-document' }).reason,
+    'documentChanged');
+  assert.equal(call(page.window, 'tapResult').documentToken, typed.documentToken);
+  assert.equal(call(page.window, 'submit', { expectValue: '12.50', documentToken: typed.documentToken }).dispatched, true);
+  await settle(page.window);
+  assert.equal(page.window.__fixtureCounts.submitClicks, 1);
+});
+
+test('a DOM press stops when eBay turns the button into something else mid-press', async () => {
+  const page = await openSyntheticLayer();
+  call(page.window, 'openBidLayer');
+  call(page.window, 'typeMax', '12.50');
+  const submit = page.window.document.querySelector('.place-bid-actions__submit button');
+  submit.addEventListener('pointerdown', () => {
+    submit.textContent = 'Bid £20.00';
+  });
+  assert.deepEqual(call(page.window, 'submit', { expectValue: '12.50' }),
+    { ok: false, dispatched: false, reason: 'labelChanged', label: 'Bid' });
+  await settle(page.window);
+  assert.equal(page.window.__fixtureCounts.submitClicks, 0, 'the click never reached the changed button');
+  assert.equal(call(page.window, 'submit', { expectValue: '12.50' }).reason, 'alreadySubmitted', 'the one press is spent');
+});

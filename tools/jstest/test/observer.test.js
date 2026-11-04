@@ -14,16 +14,26 @@ function confirmCalls(page) {
   return page.calls.filter((entry) => entry.url.indexOf('action=confirmbid') >= 0);
 }
 
-test('options changed after the call cannot slip a different body past the ceiling', async () => {
+test('options changed after the call are what gets checked, so a higher body cannot slip past the ceiling', async () => {
   const page = await openSyntheticLayer();
   call(page.window, 'armObserver', { ceilingMinor: 1250, currency: 'GBP', hold: false });
   const init = { method: 'POST' };
   const pending = page.window.fetch(new Request(CONFIRM_URL, { method: 'POST', body: PRICE_12_50 }), init);
   init.body = PRICE_1250;
-  await pending;
+  await assert.rejects(pending, /Failed to fetch/);
+  assert.equal(confirmCalls(page).length, 0);
+  assert.match(call(page.window, 'replyState').blocked[0].reason, /above the maximum/);
+});
+
+test('inherited fetch options travel unchanged', async () => {
+  const page = await openSyntheticLayer({ respond: () => ({ status: 200, body: '{}' }) });
+  call(page.window, 'armObserver', { ceilingMinor: 1250, currency: 'GBP', hold: false });
+  await page.window.fetch(CONFIRM_URL, Object.create({ method: 'POST', body: PRICE_12_50 }));
   const sent = confirmCalls(page);
   assert.equal(sent.length, 1);
-  assert.notEqual(sent[0].body, PRICE_1250, 'the late change did not travel with the request');
+  assert.equal(sent[0].method, 'POST');
+  assert.equal(sent[0].body, PRICE_12_50);
+  assert.equal(call(page.window, 'replyState').records[0].priceVerified, true);
 });
 
 test('a Request whose options give a null body is checked by its own body', async () => {

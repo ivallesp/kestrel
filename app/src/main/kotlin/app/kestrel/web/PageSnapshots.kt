@@ -161,7 +161,9 @@ internal data class TapResultSnapshot(
     val armed: Boolean = false,
     val reached: Boolean = false,
     val swallowed: Int = 0,
+    val labelChanged: Boolean = false,
     val pressPerfTime: Double? = null,
+    val documentToken: String? = null,
 )
 
 @Serializable

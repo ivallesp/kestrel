@@ -607,6 +607,33 @@ class WebBidPageTest {
         }
 
     @Test
+    fun `a native tap after which the page moved on is possibly sent and never pressed again`() =
+        runTest {
+            ebay.nativeTapReachesTarget = false
+            ebay.navigateOnSubmitTap = true
+            val page = page().readyToSubmit()
+            assertEquals(InputMethod.NATIVE_TOUCH, page.submit().method)
+            assertEquals(1, ebay.presses)
+            assertTrue("no DOM fallback on the new document", driver.callsOf("submit").isEmpty())
+        }
+
+    @Test
+    fun `every press names the document the amount was typed in`() =
+        runTest {
+            ebay.touchReachesPage = false
+            val page = page().readyToSubmit()
+            page.submit()
+            val options =
+                driver
+                    .callsOf("submit")
+                    .single()
+                    .arguments
+                    .single()
+            assertEquals("document-1", options.objectField("documentToken")?.text())
+            assertEquals("12.50", options.objectField("expectValue")?.text())
+        }
+
+    @Test
     fun `bid requests are held even when the layer is already open`() =
         runTest {
             val page = page()

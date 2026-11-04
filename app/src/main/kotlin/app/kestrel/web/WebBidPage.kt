@@ -551,7 +551,11 @@ class WebBidPage internal constructor(
 
     private suspend fun press(typing: VerifiedTyping): SubmitDispatch {
         dialogSince(typing.dialogCount)?.let { throw SubmitNotDispatchedException("eBay showed a message first: $it") }
-        val expectation = buildJsonObject { put("expectValue", typing.fieldValue) }
+        val expectation =
+            buildJsonObject {
+                put("expectValue", typing.fieldValue)
+                typing.documentToken?.let { put("documentToken", it) }
+            }
         var tapDispatchedAt: Long? = null
         var tapLabel: String? = null
         if (nativeTouch?.works == true) {
@@ -572,11 +576,12 @@ class WebBidPage internal constructor(
             if (target.ok && target.hit == true && tapSafely(target)) {
                 tapDispatchedAt = clock.elapsedRealtimeMillis()
                 tapLabel = target.label
-                val reached =
+                // A page that moved to another document after the tap cannot say the tap did not land there.
+                val settled =
                     driver.waitUntil(timing.tapConfirmMillis, timing.tapConfirmPollMillis) {
-                        tapResult().takeIf { it.reached }
+                        tapResult().takeIf { it.reached || otherDocument(it.documentToken, typing) }
                     }
-                if (reached != null) return SubmitDispatch(tapDispatchedAt, InputMethod.NATIVE_TOUCH, target.label)
+                if (settled != null) return SubmitDispatch(tapDispatchedAt, InputMethod.NATIVE_TOUCH, target.label)
                 note("submit: the native tap did not reach the button, pressing with DOM events")
             }
         }
@@ -663,6 +668,12 @@ class WebBidPage internal constructor(
             }
         return helper.call(PageFunction.ARM_OBSERVER, ObserverSnapshot.serializer(), options)
     }
+
+    /** True when the page now names a different document than the one the amount was typed in. */
+    private fun otherDocument(
+        token: String?,
+        typing: VerifiedTyping,
+    ): Boolean = token != null && typing.documentToken != null && token != typing.documentToken
 
     /** The newest JavaScript dialog the page opened after [count] dialogs, or null when there was none. */
     private fun dialogSince(count: Int): String? =
@@ -818,7 +829,7 @@ class WebBidPage internal constructor(
         const val NOT_IN_VIEWPORT = "notInViewport"
 
         // kestrel.js refuses a DOM press with these when a native tap reached the button, or may have.
-        val nativeOutcomeUnknownOrReached = setOf("nativeTapReached", "nativeTapUnknown")
+        val nativeOutcomeUnknownOrReached = setOf("nativeTapReached", "nativeTapUnknown", "documentChanged")
         const val REPORT_LIMIT = 32_000
         const val NOTE_LIMIT = 400
         const val NOTES_KEPT = 40
@@ -840,6 +851,8 @@ class WebBidPage internal constructor(
                 "expectedValueMissing" -> "the typed maximum was not passed to the page"
                 "bidButtonNotRecognised" -> "eBay's bid button does not say bid (it may carry an amount)"
                 "covered" -> "another dialog lies over eBay's bid button"
+                "documentChanged" -> "the page moved to another document after the amount was typed"
+                "labelChanged" -> "eBay changed the bid button while it was being pressed"
                 "nativeTapUnknown" -> "a tap on the bid button may have landed, so it is not pressed again"
                 null -> "the page did not say why"
                 else -> reason
