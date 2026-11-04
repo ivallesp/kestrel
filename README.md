@@ -55,6 +55,8 @@ machine, and nothing touched eBay from there. So the first real check of the bid
   notifications tell you when something is at risk.
 - eBay changes its pages from time to time. The daily and pre-end dry runs catch that before an auction is lost.
 - Extended bidding gives other bidders a chance to answer a late bid. Kestrel keeps following the auction to the end.
+- Kestrel signs in on ebay.co.uk only. A link on another eBay site (ebay.com, ebay.de) can be watched but not sniped.
+  Share foreign listings from the eBay UK app instead: they open on ebay.co.uk, where the snipe works.
 
 ## Build from source
 
