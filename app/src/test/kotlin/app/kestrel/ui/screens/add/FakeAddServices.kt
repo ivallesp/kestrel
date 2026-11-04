@@ -37,6 +37,7 @@ class FakeAddServices(
 ) : AddServices {
     val snipeList = MutableStateFlow(snipes)
     val groupList = MutableStateFlow(groups)
+    val groupWins = MutableStateFlow<Map<Long, Int>>(emptyMap())
     val clock = MutableStateFlow(Instant.ofEpochMilli(nowMillis))
     val fetched = mutableListOf<ParsedLink>()
     val added = mutableListOf<AddCall>()
@@ -54,6 +55,8 @@ class FakeAddServices(
     override fun snipes(): Flow<List<Snipe>> = snipeList
 
     override fun groups(): Flow<List<SnipeGroup>> = groupList
+
+    override fun groupWins(): Flow<Map<Long, Int>> = groupWins
 
     override suspend fun add(
         listing: Listing,

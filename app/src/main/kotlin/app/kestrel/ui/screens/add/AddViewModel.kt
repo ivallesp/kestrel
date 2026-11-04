@@ -78,11 +78,14 @@ class AddViewModel(
 
     val events: Flow<AddEvent> = eventChannel.receiveAsFlow()
 
+    // A group that already has its win would cancel the new snipe before it bids, so it is not offered.
     private val groupOptions: Flow<List<GroupOption>> =
-        combine(services.groups(), services.snipes()) { groups, snipes ->
-            groups.map { group ->
-                GroupOption(group.id, group.name, snipes.count { it.groupId == group.id && !it.status.isFinal })
-            }
+        combine(services.groups(), services.snipes(), services.groupWins()) { groups, snipes, wins ->
+            groups
+                .filter { group -> (wins[group.id] ?: 0) < group.targetWins }
+                .map { group ->
+                    GroupOption(group.id, group.name, snipes.count { it.groupId == group.id && !it.status.isFinal })
+                }
         }.onStart { emit(emptyList()) }
 
     val uiState: StateFlow<AddUiState> =

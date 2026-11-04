@@ -9,6 +9,7 @@ import app.kestrel.model.ListingStatus
 import app.kestrel.model.Money
 import app.kestrel.model.PageKind
 import app.kestrel.model.ParsedLink
+import app.kestrel.model.SnipeGroup
 import app.kestrel.ui.fixture.CatalogueFixture
 import app.kestrel.ui.fixture.CatalogueFixture.gbp
 import app.kestrel.ui.model.LotStatus
@@ -338,6 +339,24 @@ class AddViewModelTest {
             subject.viewModel.arm()
             assertEquals("Sony bodies", services.added.single().newGroupName)
             assertNull(services.added.single().groupId)
+        }
+
+    @Test
+    fun aGroupThatHasItsWinIsNotOffered() =
+        runTest(dispatcher) {
+            val won = SnipeGroup(id = 7, name = "Cameras")
+            val services =
+                FakeAddServices(groups = listOf(CatalogueFixture.portableAudio, won)).apply {
+                    groupWins.value = mapOf(won.id to 1)
+                }
+            val subject = subject(services)
+            subject.viewModel.openGroupPicker()
+            assertEquals(
+                listOf(CatalogueFixture.portableAudio.id),
+                subject.viewModel.uiState.value.groups
+                    ?.options
+                    ?.map { it.id },
+            )
         }
 
     @Test

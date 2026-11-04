@@ -33,6 +33,9 @@ interface AddServices {
 
     fun groups(): Flow<List<SnipeGroup>>
 
+    /** Won members per group, hidden ones included: a group with its wins would cancel a new member. */
+    fun groupWins(): Flow<Map<Long, Int>>
+
     /** Stores the snipe; [newGroupName] creates its group with it, only if the snipe is added. */
     suspend fun add(
         listing: Listing,
@@ -100,6 +103,8 @@ internal class ContainerAddServices(
     override fun snipes(): Flow<List<Snipe>> = container.repository.observeSnipes()
 
     override fun groups(): Flow<List<SnipeGroup>> = container.repository.observeGroups()
+
+    override fun groupWins(): Flow<Map<Long, Int>> = container.repository.observeGroupWins()
 
     override suspend fun add(
         listing: Listing,

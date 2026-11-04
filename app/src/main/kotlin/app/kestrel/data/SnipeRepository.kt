@@ -61,6 +61,13 @@ class SnipeRepository(
 
     fun observeGroups(): Flow<List<SnipeGroup>> = groups.observeAll().map { rows -> rows.map { it.toGroup() } }
 
+    /**
+     * The won members of each group that has any, counted as the engine's group rule counts them: a won member the
+     * user deleted from the history still counts. A group with its target of wins takes no new member.
+     */
+    fun observeGroupWins(): Flow<Map<Long, Int>> =
+        snipes.observeGroupWins().map { rows -> rows.associate { it.groupId to it.wins } }
+
     /** Finished snipes, most recent end first. */
     fun observeHistory(): Flow<List<Snipe>> =
         snipes.observeWithStatuses(SnipeRules.FINAL_STATUS_NAMES).map { rows -> rows.map { it.toSnipe() } }
@@ -105,8 +112,11 @@ class SnipeRepository(
         val ref = listing.relistedItemId?.let { ItemRef(listing.ref.site, it) } ?: listing.ref
         val result =
             database.withTransaction {
-                if (groupId != null && groups.find(groupId) == null) {
-                    return@withTransaction AddResult.Rejected("That group no longer exists.")
+                if (groupId != null) {
+                    val group =
+                        groups.find(groupId)
+                            ?: return@withTransaction AddResult.Rejected("That group no longer exists.")
+                    completeGroupRefusal(group)?.let { return@withTransaction AddResult.Rejected(it) }
                 }
                 val existing = snipes.findOpen(ref.site, ref.itemId, SnipeRules.FINAL_STATUS_NAMES)
                 if (existing != null) return@withTransaction AddResult.AlreadyAdded(existing.toSnipe())
@@ -180,6 +190,7 @@ class SnipeRepository(
             if (groupId == snipe.groupId) return@edit EditResult.Done(snipe)
             val group = groupId?.let { groups.find(it) }
             if (groupId != null && group == null) return@edit EditResult.NotAllowed("That group no longer exists.")
+            group?.let { completeGroupRefusal(it) }?.let { return@edit EditResult.NotAllowed(it) }
             val message = if (group == null) "Removed from its group." else "Added to the group \"${group.name}\"."
             val updated = snipe.copy(groupId = groupId, updatedAtUtcMillis = now)
             write(updated, event(snipe.id, now, TimelineKind.EDITED, message))
@@ -393,6 +404,17 @@ class SnipeRepository(
         timeline.insert(event)
         return EditResult.Done(snipe)
     }
+
+    /**
+     * A group that already has its wins would cancel a new member before it bids (GroupPolicy), so it takes none.
+     * Read inside the caller's transaction.
+     */
+    private suspend fun completeGroupRefusal(group: GroupEntity): String? =
+        if (snipes.winsInGroup(group.id) >= group.targetWins) {
+            "The group \"${group.name}\" already has its win, so Kestrel would cancel this snipe before it bids."
+        } else {
+            null
+        }
 
     private fun addRefusal(
         listing: Listing,

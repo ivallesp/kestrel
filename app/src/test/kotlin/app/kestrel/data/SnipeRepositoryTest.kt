@@ -121,6 +121,31 @@ class SnipeRepositoryTest {
         }
 
     @Test
+    fun aGroupThatHasItsWinTakesNoNewMemberEvenAfterTheWinIsDeleted() =
+        runTest {
+            val group = repository.createGroup("Portable audio")
+            val won =
+                (repository.addFromListing(testListing(itemId = "1"), gbp("45.00"), 6, group.id) as AddResult.Added)
+                    .snipe
+            repository.update(won.copy(status = SnipeStatus.WON))
+            val outside = addArmed(testListing(itemId = "2"))
+            val refusal =
+                "The group \"Portable audio\" already has its win, so Kestrel would cancel this snipe before it bids."
+
+            assertEquals(
+                AddResult.Rejected(refusal),
+                repository.addFromListing(testListing(itemId = "3"), gbp("40.00"), 6, group.id),
+            )
+            assertEquals(EditResult.NotAllowed(refusal), repository.setGroup(outside.id, group.id))
+            assertEquals(mapOf(group.id to 1), repository.observeGroupWins().first())
+
+            now += 11 * MINUTE
+            assertTrue(repository.delete(won.id) is EditResult.Done)
+            assertEquals(EditResult.NotAllowed(refusal), repository.setGroup(outside.id, group.id))
+            assertEquals("the hidden win still counts", mapOf(group.id to 1), repository.observeGroupWins().first())
+        }
+
+    @Test
     fun addingTheSameListingTwiceReturnsTheOpenSnipe() =
         runTest {
             val first = addArmed()

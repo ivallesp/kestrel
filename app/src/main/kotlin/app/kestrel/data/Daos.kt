@@ -54,6 +54,15 @@ interface SnipeDao {
     )
     suspend fun inGroup(groupId: Long): List<SnipeEntity>
 
+    // The wins inGroup sees, so the screens and the data layer judge a group complete as the engine does.
+    @Query("SELECT COUNT(*) FROM snipes WHERE groupId = :groupId AND status = 'WON'")
+    suspend fun winsInGroup(groupId: Long): Int
+
+    @Query(
+        "SELECT groupId, COUNT(*) AS wins FROM snipes WHERE groupId IS NOT NULL AND status = 'WON' GROUP BY groupId",
+    )
+    fun observeGroupWins(): Flow<List<GroupWinsRow>>
+
     // Only snipes that will still bid count: a finished or watched snipe's dry run says nothing about the next bid.
     // A failed dry run comes first (the one that bids soonest), so a later pass on another snipe never hides it.
     @Query(
@@ -87,6 +96,12 @@ interface SnipeDao {
     )
     suspend fun purgeDeleted(beforeUtcMillis: Long): Int
 }
+
+/** How many members of group [groupId] are won, hidden ones included. */
+data class GroupWinsRow(
+    val groupId: Long,
+    val wins: Int,
+)
 
 @Dao
 interface GroupDao {

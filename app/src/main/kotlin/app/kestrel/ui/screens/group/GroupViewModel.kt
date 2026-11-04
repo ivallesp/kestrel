@@ -82,12 +82,14 @@ class GroupViewModel(
     val uiState: StateFlow<GroupUiState> =
         combine(
             services.groups().map { groups -> groups.firstOrNull { it.id == groupId } },
-            services.snipes(),
+            combine(services.snipes(), services.groupWins().onStart { emit(emptyMap()) }) { snipes, wins ->
+                snipes to (wins[groupId] ?: 0)
+            },
             timelines,
             services.connectivity().onStart { emit(Connectivity.Online) },
             services.ticks().onStart { emit(Instant.ofEpochMilli(services.nowUtcMillis())) },
-        ) { group, snipes, events, connectivity, now ->
-            GroupPlanner.state(group, groupId, snipes, events, connectivity, now)
+        ) { group, (snipes, wins), events, connectivity, now ->
+            GroupPlanner.state(group, groupId, snipes, events, connectivity, now, wins)
         }.stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
@@ -168,6 +170,10 @@ class GroupViewModel(
 
 /** The Group screen's words and rows, from the group, its members and their timelines. Pure. */
 object GroupPlanner {
+    /**
+     * [wins] counts the group's won members as the engine does, including one the user deleted from the history
+     * ([snipes] no longer holds it); the group is complete once it reaches the target, and then takes no new member.
+     */
     fun state(
         group: SnipeGroup?,
         groupId: Long,
@@ -175,9 +181,11 @@ object GroupPlanner {
         events: Map<Long, List<TimelineEvent>>,
         connectivity: Connectivity,
         now: Instant,
+        wins: Int = 0,
     ): GroupUiState {
         if (group == null) return GroupUiState(now, GroupViewModel.GENERIC_TITLE, GroupContent.Missing)
         val members = snipes.filter { it.groupId == groupId }.sortedWith(compareBy({ it.endTimeUtcMillis }, { it.id }))
+        val complete = maxOf(wins, members.count { it.status == SnipeStatus.WON }) >= group.targetWins
         val openMembers = members.filter { !it.status.isFinal }
         val candidates =
             snipes
@@ -198,7 +206,15 @@ object GroupPlanner {
                     )
                 }
         val canUngroup = members.any { !it.status.isFinal }
-        if (members.isEmpty()) return GroupUiState(now, group.name, GroupContent.Empty, candidates, canUngroup)
+        if (members.isEmpty()) {
+            return GroupUiState(
+                now,
+                group.name,
+                GroupContent.Empty,
+                if (complete) emptyList() else candidates,
+                canUngroup,
+            )
+        }
         val wonMember = members.firstOrNull { it.status == SnipeStatus.WON }
         val rows =
             members.map { snipe ->
@@ -217,7 +233,6 @@ object GroupPlanner {
                     failedCheckAt = LotStatusMapper.failedCheckAt(snipe, history),
                 )
             }
-        val complete = members.count { it.status == SnipeStatus.WON } >= group.targetWins
         val content = GroupContent.Members(rule(group, members), rows, canAdd = !complete)
         return GroupUiState(now, group.name, content, if (complete) emptyList() else candidates, canUngroup)
     }

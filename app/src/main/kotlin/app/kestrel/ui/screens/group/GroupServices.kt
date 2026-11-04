@@ -19,6 +19,9 @@ interface GroupServices {
 
     fun snipes(): Flow<List<Snipe>>
 
+    /** Won members per group, hidden ones included (SnipeRepository.observeGroupWins). */
+    fun groupWins(): Flow<Map<Long, Int>>
+
     fun timeline(snipeId: Long): Flow<List<TimelineEvent>>
 
     fun connectivity(): Flow<Connectivity>
@@ -53,6 +56,8 @@ internal class ContainerGroupServices(
     override fun groups(): Flow<List<SnipeGroup>> = container.repository.observeGroups()
 
     override fun snipes(): Flow<List<Snipe>> = container.repository.observeSnipes()
+
+    override fun groupWins(): Flow<Map<Long, Int>> = container.repository.observeGroupWins()
 
     override fun timeline(snipeId: Long): Flow<List<TimelineEvent>> = container.repository.observeTimeline(snipeId)
 

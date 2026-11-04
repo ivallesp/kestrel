@@ -55,6 +55,8 @@ class GroupViewModelTest {
 
         override fun snipes(): Flow<List<Snipe>> = snipeList
 
+        override fun groupWins(): Flow<Map<Long, Int>> = flowOf(emptyMap())
+
         override fun timeline(snipeId: Long): Flow<List<TimelineEvent>> = flowOf(emptyList())
 
         override fun connectivity(): Flow<Connectivity> = flowOf(Connectivity.Online)
@@ -111,6 +113,24 @@ class GroupViewModelTest {
         assertEquals(listOf(3L, 4L), content.rows.map { it.snipeId })
         assertTrue(content.rows.all { it.status is LotStatus.Armed })
         assertTrue(content.canAdd)
+    }
+
+    @Test
+    fun aGroupWhoseWinWasDeletedOffersNoNewMember() {
+        val group = CatalogueFixture.portableAudio
+        val outside = CatalogueFixture.canon.copy(groupId = null)
+        val state =
+            GroupPlanner.state(
+                group,
+                group.id,
+                listOf(outside),
+                emptyMap(),
+                Connectivity.Online,
+                CatalogueFixture.now,
+                wins = 1,
+            )
+        assertEquals(GroupContent.Empty, state.content)
+        assertTrue("nothing can join", state.candidates.isEmpty())
     }
 
     @Test
