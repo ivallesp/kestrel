@@ -167,6 +167,11 @@ class SnipeEngineTest {
             assertEquals(1, harness.store.eventsOf(TimelineKind.EDITED).size)
             // £49 is above the old max, so only the edited max explains the win.
             assertEquals(SnipeOutcome.WON, result.outcome)
+            // The Live Update showed the new max as soon as it was typed, not only at the fire.
+            assertTrue(
+                harness.notifier.progress.toString(),
+                Triple(WindowPhase.READY, "Max £55.00 typed", gbp("55.00")) in harness.notifier.progress,
+            )
         }
 
     @Test

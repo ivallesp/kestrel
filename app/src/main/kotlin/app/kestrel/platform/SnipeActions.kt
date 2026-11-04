@@ -20,6 +20,8 @@ class SnipeActions internal constructor(
     private val cancelSchedule: (Long) -> Unit,
     private val stopJobs: (Long) -> Unit,
     private val clearNotifications: (Long) -> Unit,
+    /** Takes back alerts a change made untrue (SnipeNotifications.withdrawStale). */
+    private val withdrawStaleAlerts: (Snipe) -> Unit = {},
 ) {
     constructor(context: Context) : this(context.kestrelContainer)
 
@@ -29,6 +31,7 @@ class SnipeActions internal constructor(
         cancelSchedule = { container.scheduler.cancel(it) },
         stopJobs = { container.jobRegistry.cancelAll(it) },
         clearNotifications = { container.notifications.cancelForSnipe(it) },
+        withdrawStaleAlerts = { container.notifications.withdrawStale(it) },
     )
 
     /** [newGroupName] stores a new group with the snipe; see [SnipeRepository.addFromListing]. */
@@ -46,7 +49,7 @@ class SnipeActions internal constructor(
     suspend fun updateMax(
         snipeId: Long,
         maxBid: Money?,
-    ): EditResult = repository.updateMax(snipeId, maxBid).rescheduled()
+    ): EditResult = repository.updateMax(snipeId, maxBid).rescheduled().alsoWhenDone(withdrawStaleAlerts)
 
     suspend fun setLead(
         snipeId: Long,
@@ -72,7 +75,8 @@ class SnipeActions internal constructor(
     suspend fun undoDelete(snipeId: Long): EditResult = repository.undoDelete(snipeId).rescheduled()
 
     /** Brings back a cancelled snipe (same snipe, same timeline) and arms it again. */
-    suspend fun uncancel(snipeId: Long): EditResult = repository.uncancel(snipeId).rescheduled()
+    suspend fun uncancel(snipeId: Long): EditResult =
+        repository.uncancel(snipeId).rescheduled().alsoWhenDone(withdrawStaleAlerts)
 
     /** Returns why the group could not be renamed, or null when it was. */
     suspend fun renameGroup(

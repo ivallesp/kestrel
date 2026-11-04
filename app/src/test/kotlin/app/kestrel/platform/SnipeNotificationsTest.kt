@@ -288,6 +288,23 @@ class SnipeNotificationsTest {
     }
 
     @Test
+    fun alertsTheSnipesNewStateMadeUntrueAreTakenBack() {
+        val overMax = snipe.copy(status = SnipeStatus.PRICE_OVER_MAX, lastPrice = gbp("60.00"), lastBidCount = 5)
+        notifications.priceOverMax(overMax, gbp("60.00"), gbp("61.00"))
+        notifications.result(overMax, SnipeResult(SnipeOutcome.SKIPPED_BY_GROUP, null, null, null, null, null, "Won"))
+        notifications.priceOverMax(overMax, gbp("60.00"), gbp("61.00"))
+
+        // Still under the price: the alert stands.
+        notifications.withdrawStale(overMax.copy(maxBid = gbp("55.00")))
+        assertNotNull(posted(NotificationIds.priceAlert(snipe.id)))
+
+        // Raised above it and armed again: neither the price alert nor the old result applies any more.
+        notifications.withdrawStale(overMax.copy(status = SnipeStatus.ARMED, maxBid = gbp("80.00")))
+        assertNull(posted(NotificationIds.priceAlert(snipe.id)))
+        assertNull(posted(NotificationIds.result(snipe.id)))
+    }
+
+    @Test
     fun aNeedsYouAlertNeverTakesOverTheScreen() {
         // DESIGN 5.4 and MF46: never full-screen, neither minutes before the bid nor days after the end.
         notifications.needsUser(snipe, NeedsUserReason.CAPTCHA, detail = "eBay showed a security check.")

@@ -113,6 +113,8 @@ internal class ListingCheckProcedure(
             store.recordPrice(snipe.id, now, listing.currentPrice, listing.bidCount)
         }
         val statusChanged = status != snipe.status
+        // The page is normal again (signed in, the check answered): the alert that asked for it no longer applies.
+        if (snipe.status in NEEDS_THE_USER && status !in NEEDS_THE_USER) journal.notify { clearNeedsUser(snipe.id) }
         if (statusChanged && status == SnipeStatus.NEEDS_SIGN_IN) {
             alertUser(
                 updated,
@@ -381,6 +383,9 @@ internal class ListingCheckProcedure(
             } else {
                 "The price ${price.displayText()} has reached your max ${max.displayText()}."
             }
+
+        /** Statuses that come with a needs-you alert, taken back once a check leaves them. */
+        val NEEDS_THE_USER = setOf(SnipeStatus.NEEDS_SIGN_IN, SnipeStatus.NEEDS_YOU, SnipeStatus.DRY_RUN_FAILED)
 
         /** After this long past the end a bidding status means the window died without writing its result. */
         const val ABANDONED_WINDOW_AFTER_END_MILLIS = 10 * 60_000L

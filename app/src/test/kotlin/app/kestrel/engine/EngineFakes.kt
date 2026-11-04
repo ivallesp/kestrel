@@ -271,6 +271,10 @@ class FakeNotifier : SnipeNotifier {
     val userAlerts = mutableListOf<Pair<NeedsUserReason, String?>>()
     val results = mutableListOf<SnipeResult>()
 
+    /** Each progress: its phase, its detail and the max the Live Update was given. */
+    val progress = mutableListOf<Triple<WindowPhase, String?, Money?>>()
+    val needsUserCleared = mutableListOf<Long>()
+
     override fun windowOpened(
         snipe: Snipe,
         bidAtUtcMillis: Long,
@@ -285,6 +289,11 @@ class FakeNotifier : SnipeNotifier {
     ) {
         phases += phase
         phaseTimes += phase to clock()
+        progress += Triple(phase, detail, snipe.maxBid)
+    }
+
+    override fun clearNeedsUser(snipeId: Long) {
+        needsUserCleared += snipeId
     }
 
     override fun windowClosed(snipeId: Long) {

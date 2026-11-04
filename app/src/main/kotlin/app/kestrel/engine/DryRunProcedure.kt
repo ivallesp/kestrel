@@ -191,6 +191,8 @@ internal class DryRunProcedure(
                 "minimum" to minimum,
             ),
         )
+        // A sign-in, a check or a failed dry run is over, so the alert that asked for it no longer applies.
+        journal.notify { clearNeedsUser(snipe.id) }
         val sameLevel = snipe.lastPrice == listing.currentPrice && snipe.lastBidCount == listing.bidCount
         if (overMax && !(sameLevel && snipe.status == SnipeStatus.PRICE_OVER_MAX)) {
             journal.event(

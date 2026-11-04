@@ -154,6 +154,7 @@ open class AppContainer(
             cancelSchedule = { scheduler.cancel(it) },
             stopJobs = { jobRegistry.cancelAll(it) },
             clearNotifications = { notifications.cancelForSnipe(it) },
+            withdrawStaleAlerts = { notifications.withdrawStale(it) },
         )
     }
 

@@ -149,8 +149,11 @@ class ListingCheckTest {
 
             assertEquals(CheckOutcome.NeedsUser(NeedsUserReason.CAPTCHA), harness.run())
             assertEquals(SnipeStatus.NEEDS_YOU, harness.snipe().status)
+            assertTrue(harness.notifier.needsUserCleared.isEmpty())
             harness.run()
             assertEquals(SnipeStatus.ARMED, harness.snipe().status)
+            // The alert that asked for the check no longer applies.
+            assertEquals(listOf(1L), harness.notifier.needsUserCleared)
         }
 
     @Test

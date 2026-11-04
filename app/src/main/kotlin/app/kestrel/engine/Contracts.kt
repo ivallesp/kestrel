@@ -262,6 +262,9 @@ interface SnipeNotifier {
         snipe: Snipe,
         result: SnipeResult,
     )
+
+    /** The problem a [needsUser] alert described is over (a dry run passed, a check read a normal page). */
+    fun clearNeedsUser(snipeId: Long) {}
 }
 
 enum class WindowPhase { CHECKING, READY, BIDDING, BID_SENT, LEADING, OUTBID, EXTENDED, RESOLVING }

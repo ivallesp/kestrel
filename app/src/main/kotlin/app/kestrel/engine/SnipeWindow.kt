@@ -416,6 +416,15 @@ internal class SnipeWindow(
         }
         maxBid = newMax
         if (layerOpen) typeAndVerify(newMax)?.let { return it }
+        // The Live Update still shows the old max until the next phase otherwise, which can be the fire itself.
+        if (layerOpen) {
+            progress(
+                WindowPhase.READY,
+                "Max ${newMax.displayText()} typed",
+            )
+        } else {
+            progress(WindowPhase.CHECKING)
+        }
         alertIfOverMax()
         return null
     }

@@ -42,6 +42,7 @@ class SnipeActionsTest {
                 cancelSchedule = { calls += "cancel alarms $it" },
                 stopJobs = { calls += "stop jobs $it" },
                 clearNotifications = { calls += "clear notifications $it" },
+                withdrawStaleAlerts = { calls += "withdraw stale alerts ${it.id} ${it.status}" },
             )
     }
 
@@ -51,6 +52,31 @@ class SnipeActionsTest {
     }
 
     private suspend fun add() = (actions.add(testListing(), gbp("48.00"), leadSeconds = 6) as AddResult.Added).snipe
+
+    @Test
+    fun aMaxChangeOrAnUncancelTakesBackTheAlertsItMadeUntrue() =
+        runTest {
+            val overMax =
+                (
+                    actions.add(testListing(currentPrice = gbp("60.00"), bidCount = 5), gbp("50.00"), 6)
+                        as AddResult.Added
+                ).snipe
+            calls.clear()
+
+            actions.updateMax(overMax.id, gbp("80.00"))
+            assertEquals(
+                listOf("schedule ${overMax.id} ARMED", "withdraw stale alerts ${overMax.id} ARMED"),
+                calls,
+            )
+            actions.cancel(overMax.id)
+            calls.clear()
+            actions.uncancel(overMax.id)
+
+            assertEquals(
+                listOf("schedule ${overMax.id} ARMED", "withdraw stale alerts ${overMax.id} ARMED"),
+                calls,
+            )
+        }
 
     @Test
     fun aNewSnipeIsScheduledAtOnce() =
@@ -79,7 +105,14 @@ class SnipeActionsTest {
             actions.setLead(snipe.id, 8)
             actions.updateMax(snipe.id, gbp("0.00"))
 
-            assertEquals(listOf("schedule ${snipe.id} ARMED", "schedule ${snipe.id} ARMED"), calls)
+            assertEquals(
+                listOf(
+                    "schedule ${snipe.id} ARMED",
+                    "withdraw stale alerts ${snipe.id} ARMED",
+                    "schedule ${snipe.id} ARMED",
+                ),
+                calls,
+            )
         }
 
     @Test

@@ -147,6 +147,8 @@ class DryRunTest {
 
             assertEquals(SnipeStatus.ARMED, harness.snipe().status)
             assertEquals(true, harness.snipe().dryRunPassed)
+            // The pass proves the earlier problem over, so its alert is taken back.
+            assertEquals(listOf(1L), harness.notifier.needsUserCleared)
         }
 
     @Test

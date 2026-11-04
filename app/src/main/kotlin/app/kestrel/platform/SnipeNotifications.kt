@@ -22,6 +22,7 @@ import app.kestrel.model.Money
 import app.kestrel.model.Snipe
 import app.kestrel.model.SnipeOutcome
 import app.kestrel.model.SnipeResult
+import app.kestrel.model.SnipeStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -479,6 +480,24 @@ class SnipeNotifications internal constructor(
     }
 
     internal fun cancelPriceAlert(snipeId: Long) = cancel(NotificationIds.priceAlert(snipeId))
+
+    override fun clearNeedsUser(snipeId: Long) = cancel(NotificationIds.needsUser(snipeId))
+
+    /**
+     * Takes back what a change in the app made untrue: the price alert once the max beats the price (or the snipe only
+     * watches), and the result of a snipe that runs again after Undo cancel.
+     */
+    internal fun withdrawStale(snipe: Snipe) {
+        val max = snipe.maxBid
+        val stillOver =
+            max != null &&
+                (
+                    snipe.status == SnipeStatus.PRICE_OVER_MAX ||
+                        SnipeRules.isBelowPrice(max, snipe.lastPrice, snipe.lastBidCount)
+                )
+        if (!stillOver) cancel(NotificationIds.priceAlert(snipe.id))
+        if (!snipe.status.isFinal) cancel(NotificationIds.result(snipe.id))
+    }
 
     // Building blocks.
 
