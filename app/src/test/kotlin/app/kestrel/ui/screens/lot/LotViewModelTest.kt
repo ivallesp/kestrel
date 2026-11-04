@@ -3,6 +3,8 @@ package app.kestrel.ui.screens.lot
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import app.kestrel.data.EditResult
 import app.kestrel.data.PricePoint
+import app.kestrel.model.EbaySite
+import app.kestrel.model.ItemRef
 import app.kestrel.model.Money
 import app.kestrel.model.Snipe
 import app.kestrel.model.SnipeStatus
@@ -168,6 +170,30 @@ class LotViewModelTest {
             assertEquals(listOf(10), data.leadUpdates)
             assertEquals(listOf(CatalogueFixture.gbp("70.00")), data.maxUpdates)
             assertTrue((data.effects.single() as LotEffect.Show).message.text.startsWith("Armed: bids Thu 13 Nov at "))
+        }
+
+    @Test
+    fun aWatchedListingOnAnotherSiteCannotBeArmed() =
+        runTest(dispatcher) {
+            val polaroid = fixture.polaroidWatching
+            val german =
+                polaroid.snipe.copy(
+                    ref = ItemRef(EbaySite.DE, polaroid.snipe.ref.itemId),
+                    lastPrice = Money.of("60.00", "EUR"),
+                    postage = null,
+                )
+            val data = FakeLotData(polaroid.copy(snipe = german), testScheduler::currentTime)
+            val viewModel = viewModelFor(data)
+            viewModel.openSheet(SheetKind.Set)
+            viewModel.maxInput.setTextAndPlaceCursorAtEnd("70")
+            viewModel.save()
+            runCurrent()
+            assertTrue(data.maxUpdates.isEmpty())
+            assertTrue(data.leadUpdates.isEmpty())
+            assertEquals(
+                "Kestrel can sign in to ebay.co.uk only, so it can’t bid on this ebay.de listing. You can still watch it without a max.",
+                (viewModel.state.value as LotPage.Live).state.sheet?.error,
+            )
         }
 
     @Test

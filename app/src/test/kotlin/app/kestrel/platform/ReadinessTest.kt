@@ -16,9 +16,12 @@ import app.kestrel.data.KestrelDatabase
 import app.kestrel.data.SettingsStore
 import app.kestrel.data.SnipeRepository
 import app.kestrel.data.TEST_NOW
+import app.kestrel.data.gbp
 import app.kestrel.data.testFormatMoney
+import app.kestrel.data.testListing
 import app.kestrel.engine.ClockSync
 import app.kestrel.model.EbaySite
+import app.kestrel.model.Money
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -308,6 +311,14 @@ class ReadinessTest {
                 assertEquals(UsageStatsManager.STANDBY_BUCKET_RARE, android.standbyBucket())
                 assertTrue(android.isBackgroundRestricted())
                 assertTrue(android.sitesInUse().isEmpty())
+                // A watched listing on another site needs no session there: only snipes that will bid count.
+                repository.addFromListing(
+                    testListing(site = EbaySite.DE, currentPrice = Money.of("60.00", "EUR")),
+                    maxBid = null,
+                    leadSeconds = 6,
+                )
+                repository.addFromListing(testListing(itemId = "2"), gbp("48.00"), leadSeconds = 6)
+                assertEquals(setOf(EbaySite.UK), android.sitesInUse())
                 assertNull(android.latestDryRun())
             } finally {
                 database.close()

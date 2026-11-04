@@ -3,6 +3,9 @@ package app.kestrel.ui.screens.add
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.text.TextRange
+import app.kestrel.model.EbaySite
+import app.kestrel.model.ItemRef
+import app.kestrel.model.Money
 import app.kestrel.ui.fixture.CatalogueFixture
 import app.kestrel.ui.fixture.CatalogueFixture.at
 import app.kestrel.ui.fixture.CatalogueFixture.gbp
@@ -135,6 +138,28 @@ class EditMaxViewModelTest {
                     .single()
                     .message
                     ?.text,
+            )
+        }
+
+    @Test
+    fun aWatchedListingOnAnotherSiteCannotBeArmed() =
+        runTest(dispatcher) {
+            val polaroid = CatalogueFixture.polaroid
+            val german =
+                polaroid.copy(
+                    ref = ItemRef(EbaySite.DE, polaroid.ref.itemId),
+                    lastPrice = Money.of("60.00", "EUR"),
+                    postage = null,
+                )
+            val subject = subject(german, at("2025-11-09T18:09:10Z"))
+            assertEquals(EditMaxMode.Set, subject.state.mode)
+            subject.type("90.00")
+            subject.viewModel.save()
+            assertTrue(subject.services.calls.isEmpty())
+            assertEquals(SheetLineKind.Refused, subject.state.line.kind)
+            assertEquals(
+                "Kestrel can sign in to ebay.co.uk only, so it can’t bid on this ebay.de listing. You can still watch it without a max.",
+                subject.state.line.text,
             )
         }
 

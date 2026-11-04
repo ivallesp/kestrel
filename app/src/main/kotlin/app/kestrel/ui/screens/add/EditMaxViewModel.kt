@@ -220,6 +220,12 @@ class EditMaxViewModel(
         viewModelScope.launch {
             val snipe = services.snipe(snipeId).first() ?: return@launch
             val typed = EditMaxPlanner.typed(snipe, maxField.text.toString()) as? TypedMax.Valid ?: return@launch
+            // Arming a watched listing on another site would only lead to a sign-in Kestrel cannot do there.
+            val siteRefusal = if (snipe.maxBid == null) MaxRules.siteRefusal(snipe.ref.site) else null
+            if (siteRefusal != null) {
+                session.update { it?.copy(refusal = siteRefusal) }
+                return@launch
+            }
             if (MaxRules.needsWordsCheck(typed.max, snipe.lastPrice) && !current.wordsConfirmed) {
                 session.update { it?.copy(checkingWords = true) }
                 return@launch

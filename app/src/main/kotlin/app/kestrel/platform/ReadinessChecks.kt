@@ -121,7 +121,13 @@ internal class AndroidReadinessProbes(
 
     override fun hasSessionCookies(host: String): Boolean = sessionCookies(host)
 
-    override suspend fun sitesInUse(): Set<EbaySite> = repository.pendingSnipes().map { it.ref.site }.toSet()
+    // Watching needs no session: only a snipe that will bid has to be signed in on its site.
+    override suspend fun sitesInUse(): Set<EbaySite> =
+        repository
+            .pendingSnipes()
+            .filter { it.maxBid != null }
+            .map { it.ref.site }
+            .toSet()
 
     override suspend fun signedInName(): String? = settings.current().signedInName
 

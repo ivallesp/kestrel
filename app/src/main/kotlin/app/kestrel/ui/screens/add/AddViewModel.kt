@@ -217,7 +217,11 @@ class AddViewModel(
             is TypedMax.TooLow -> {}
 
             is TypedMax.Valid -> {
+                val siteRefusal = MaxRules.siteRefusal(loaded.listing.ref.site)
                 when {
+                    // Sign-in could not help here: S6 signs in to ebay.co.uk only.
+                    siteRefusal != null -> eventChannel.trySend(AddEvent.Message(siteRefusal))
+
                     !current.signedIn -> eventChannel.trySend(AddEvent.OpenSignIn)
 
                     MaxRules.needsWordsCheck(

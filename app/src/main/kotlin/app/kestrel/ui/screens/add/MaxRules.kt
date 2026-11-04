@@ -126,6 +126,23 @@ object MaxRules {
             }
         }
 
+    /**
+     * Why a listing on [site] cannot be armed, or null when it can. Kestrel signs in to ebay.co.uk only (S6) and eBay
+     * keeps a session per site, so a bid on another site would meet a sign-in page Kestrel cannot get past. Such a
+     * listing can still be watched.
+     */
+    fun siteRefusal(site: EbaySite): String? =
+        if (site == EbaySite.UK) {
+            null
+        } else {
+            "Kestrel can sign in to ${domainOf(
+                EbaySite.UK,
+            )} only, so it can’t bid on this ${domainOf(site)} listing. " +
+                "You can still watch it without a max."
+        }
+
+    private fun domainOf(site: EbaySite): String = site.host.removePrefix("www.")
+
     /** The field text for an amount: "90.37". */
     fun fieldText(amount: Money): String = amount.major.toPlainString()
 

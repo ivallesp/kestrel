@@ -3,7 +3,10 @@ package app.kestrel.ui.screens.add
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.runtime.snapshots.Snapshot
 import app.kestrel.data.AddResult
+import app.kestrel.model.EbaySite
+import app.kestrel.model.ItemRef
 import app.kestrel.model.ListingStatus
+import app.kestrel.model.Money
 import app.kestrel.model.PageKind
 import app.kestrel.model.ParsedLink
 import app.kestrel.ui.fixture.CatalogueFixture
@@ -65,6 +68,38 @@ class AddViewModelTest {
         backgroundScope.launch(dispatcher) { viewModel.events.collect { events += it } }
         return Subject(viewModel, events)
     }
+
+    @Test
+    fun aListingOnAnotherSiteCanBeWatchedButNeverSendsTheUserToAnUkSignIn() =
+        runTest(dispatcher) {
+            val german =
+                AddFixtures.sonyA700.copy(
+                    ref = ItemRef(EbaySite.DE, "127504318862"),
+                    currentPrice = Money.of("60.00", "EUR"),
+                    currentPriceInSiteCurrency = null,
+                    postage = null,
+                    buyerProtectionFee = null,
+                    signedIn = false,
+                )
+            val services = FakeAddServices(fetchResult = { FetchResult.Loaded(german) }, signedIn = false)
+            val subject = subject(services, link = "https://www.ebay.de/itm/127504318862")
+
+            subject.type("90.00")
+            subject.viewModel.arm()
+            assertTrue(services.added.isEmpty())
+            assertEquals(
+                listOf<AddEvent>(
+                    AddEvent.Message(
+                        "Kestrel can sign in to ebay.co.uk only, so it can’t bid on this ebay.de listing. You can still watch it without a max.",
+                    ),
+                ),
+                subject.events,
+            )
+
+            subject.type("")
+            subject.viewModel.arm()
+            assertNull(services.added.single().maxBid)
+        }
 
     @Test
     fun aSharedLinkLoadsTheListingAndOpensTheEmptyPlan() =

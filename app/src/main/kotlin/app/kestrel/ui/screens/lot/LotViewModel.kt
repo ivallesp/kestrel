@@ -24,6 +24,7 @@ import app.kestrel.ui.model.GroupContext
 import app.kestrel.ui.model.LotPhoto
 import app.kestrel.ui.model.LotTimes
 import app.kestrel.ui.model.UndoCancel
+import app.kestrel.ui.screens.add.MaxRules
 import app.kestrel.ui.screens.result.ResultVariant
 import app.kestrel.ui.shell.ShellMessage
 import kotlinx.coroutines.CoroutineDispatcher
@@ -256,6 +257,12 @@ class LotViewModel(
         val currency = snipe.maxBid?.currency ?: snipe.lastPrice?.currency ?: snipe.ref.site.currency
         val max = MoneyText.parseUserInput(maxInput.text.toString(), currency) ?: return
         val previous = snipe.maxBid
+        // Arming a watched listing on another site would only lead to a sign-in Kestrel cannot do there.
+        val siteRefusal = if (previous == null) MaxRules.siteRefusal(snipe.ref.site) else null
+        if (siteRefusal != null) {
+            sheet.value = request.copy(error = siteRefusal)
+            return
+        }
         sheet.value = request.copy(saving = true, error = null)
         viewModelScope.launch {
             val lead = request.leadSeconds
