@@ -26,6 +26,18 @@ class SchedulePlannerTest {
     }
 
     @Test
+    fun aDeferrableCheckNearTheLastHourHasAnExactBackstopAtTheHour() {
+        val end = now + 90 * MINUTE
+        val plan = planner.plan(testSnipe(endTimeUtcMillis = end, lastCheckedAtUtcMillis = now - 50 * MINUTE), now)
+
+        assertTrue(plan.check!!.deferrable)
+        assertEquals(end - HOUR, plan.exactCheckBackstopAtUtcMillis)
+        // Far from the end the next deferrable check comes long before the hour, so it needs none.
+        val far = planner.plan(testSnipe(endTimeUtcMillis = now + 72 * HOUR, lastCheckedAtUtcMillis = now - HOUR), now)
+        assertNull(far.exactCheckBackstopAtUtcMillis)
+    }
+
+    @Test
     fun checksInTheLastHourUseExactAlarms() {
         val end = now + 45 * MINUTE
         val plan = planner.plan(testSnipe(endTimeUtcMillis = end, lastCheckedAtUtcMillis = now - 10 * MINUTE), now)

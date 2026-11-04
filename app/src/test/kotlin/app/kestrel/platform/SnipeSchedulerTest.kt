@@ -126,6 +126,20 @@ class SnipeSchedulerTest {
     }
 
     @Test
+    fun theLastDeferrableCheckBeforeTheHourGetsAnExactBackstopAtTheHour() {
+        // 90 min before the end: WorkManager takes the next check, which Doze may hold until just before the dry run.
+        val end = clock.now + 90 * MINUTE
+        val snipe = testSnipe(id = 4, endTimeUtcMillis = end, lastCheckedAtUtcMillis = clock.now - 50 * MINUTE)
+
+        scheduler.schedule(snipe)
+
+        assertEquals(WorkInfo.State.ENQUEUED, checkWork(snipe.id).single().state)
+        val backstop = alarmFor(SnipeAction.CHECK, snipe.id)
+        assertNotNull(backstop)
+        assertEquals(elapsedAt(end - HOUR), backstop!!.triggerAtMs)
+    }
+
+    @Test
     fun aFarCheckGoesToWorkManagerWithANetworkConstraint() {
         val end = clock.now + 72 * HOUR
         val snipe = testSnipe(id = 3, endTimeUtcMillis = end, lastCheckedAtUtcMillis = clock.now - HOUR)

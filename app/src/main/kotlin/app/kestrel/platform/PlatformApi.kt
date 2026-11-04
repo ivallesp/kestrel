@@ -82,7 +82,8 @@ class SnipeScheduler internal constructor(
             }
 
             check.deferrable -> {
-                cancelAlarm(SnipeAction.CHECK, snipe.id)
+                // The exact backstop at the start of the last hour, when this is the last check before it.
+                setOrCancelAlarm(SnipeAction.CHECK, snipe, plan.exactCheckBackstopAtUtcMillis, now, problems)
                 enqueueCheckWork(snipe.id, check.atUtcMillis - now, problems)
             }
 

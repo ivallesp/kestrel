@@ -45,6 +45,11 @@ internal data class SchedulePlan(
     val dryRunAtUtcMillis: Long?,
     val windowAtUtcMillis: Long?,
     val backupAtUtcMillis: Long?,
+    /**
+     * An exact check at the start of the last hour, next to a deferrable check close to it: Doze can hold that work
+     * until shortly before the dry run, and the last hour's exact checks are only planned once a check has run.
+     */
+    val exactCheckBackstopAtUtcMillis: Long? = null,
 ) {
     val isEmpty: Boolean
         get() = check == null && dryRunAtUtcMillis == null && windowAtUtcMillis == null && backupAtUtcMillis == null
@@ -72,12 +77,24 @@ internal class SchedulePlanner(
         if (snipe.status.isFinal) return SchedulePlan.NOTHING
         val end = snipe.endTimeUtcMillis
         val willBid = snipe.maxBid != null && snipe.status.isActiveBid
+        val check = checkAt(snipe, nowUtcMillis, lastCheckAttemptUtcMillis)
         return SchedulePlan(
-            check = checkAt(snipe, nowUtcMillis, lastCheckAttemptUtcMillis),
+            check = check,
             dryRunAtUtcMillis = if (willBid) policy.dryRunAt(end).takeIf { it > nowUtcMillis } else null,
             windowAtUtcMillis = if (willBid) windowAt(snipe, nowUtcMillis, windowRunning) else null,
             backupAtUtcMillis = if (willBid) policy.backupWindowAt(end).takeIf { it > nowUtcMillis } else null,
+            exactCheckBackstopAtUtcMillis = backstopFor(check, end, nowUtcMillis),
         )
+    }
+
+    private fun backstopFor(
+        check: PlannedCheck?,
+        end: Long,
+        now: Long,
+    ): Long? {
+        if (check == null || !check.deferrable || check.atUtcMillis >= end) return null
+        if (end - check.atUtcMillis > BACKSTOP_FOR_CHECKS_WITHIN_MILLIS) return null
+        return (end - EXACT_CHECKS_BEFORE_END_MILLIS).takeIf { it > now }
     }
 
     private fun windowAt(
@@ -140,6 +157,9 @@ internal class SchedulePlanner(
         private const val MINUTE_MILLIS = 60_000L
         const val MINIMUM_CHECK_DELAY_MILLIS = MINUTE_MILLIS
         const val EXACT_CHECKS_BEFORE_END_MILLIS = 60 * MINUTE_MILLIS
+
+        /** A deferrable check this close to the end is the last one before the hour, and gets an exact backstop. */
+        const val BACKSTOP_FOR_CHECKS_WITHIN_MILLIS = 2 * 60 * MINUTE_MILLIS
         const val FIRST_RESOLVE_DELAY_MILLIS = 3 * MINUTE_MILLIS
         const val RESOLVE_SPACING_MILLIS = 30 * MINUTE_MILLIS
         const val RESOLVE_GIVE_UP_AFTER_MILLIS = 6 * 60 * MINUTE_MILLIS
