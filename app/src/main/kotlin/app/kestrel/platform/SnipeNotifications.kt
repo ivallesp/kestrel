@@ -214,9 +214,16 @@ class SnipeNotifications internal constructor(
         photos.cached(snipe?.imageUrl)?.let { builder.setLargeIcon(it) }
         val chip = state.outcome?.let(texts::chipText) ?: texts.chipText(state.phase)
         chip?.let { builder.setShortCriticalText(it) }
-        if (bidAt != null && state.outcome == null) {
+        // Counts down to the bid, then to the end (which moves with every extension); never to a moment gone by.
+        val countdownTo =
+            when {
+                state.outcome != null || bidAt == null -> null
+                state.phase in AFTER_THE_BID -> state.endTimeUtcMillis?.takeIf { it > clock.nowUtcMillis() }
+                else -> bidAt
+            }
+        if (countdownTo != null) {
             builder
-                .setWhen(toDeviceClock(bidAt))
+                .setWhen(toDeviceClock(countdownTo))
                 .setShowWhen(true)
                 .setUsesChronometer(true)
                 .setChronometerCountDown(true)
@@ -619,6 +626,16 @@ class SnipeNotifications internal constructor(
         const val RAISE_MAX_LABEL = "Raise max"
         const val OPEN_LABEL = "Open"
         const val EDIT_MAX_LABEL = "Edit max"
+
+        /** Phases once the bid went out: the countdown follows the end of the auction then. */
+        val AFTER_THE_BID =
+            setOf(
+                WindowPhase.BID_SENT,
+                WindowPhase.LEADING,
+                WindowPhase.OUTBID,
+                WindowPhase.EXTENDED,
+                WindowPhase.RESOLVING,
+            )
         const val OPEN_EBAY_PAGE_LABEL = "Open eBay page"
         const val CONFIRMATION_TIMEOUT_MILLIS = 5 * 60_000L
         const val WINDOW_NOTIFICATION_LINGER_MILLIS = 60 * 60_000L

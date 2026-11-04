@@ -116,6 +116,27 @@ class SnipeNotificationsTest {
     }
 
     @Test
+    fun afterTheBidTheCountdownFollowsTheEndThroughExtensions() {
+        val bidAt = snipe.endTimeUtcMillis - 6_000
+        notifications.windowOpened(snipe, bidAt)
+
+        // 20 s after the bid a late bid reset the clock: the countdown is to the new end, never to the past bid.
+        clock.now = bidAt + 20_000
+        val extended = snipe.copy(endTimeUtcMillis = snipe.endTimeUtcMillis + 60_000)
+        notifications.windowProgress(extended, WindowPhase.EXTENDED, "Ends 1 min later")
+        val live = posted(NotificationIds.window(snipe.id))!!
+        assertEquals("on the phone's clock", extended.endTimeUtcMillis - 2_500, live.`when`)
+        assertTrue(live.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER))
+        assertTrue(live.extras.getBoolean(Notification.EXTRA_CHRONOMETER_COUNT_DOWN))
+
+        // Past the end, while the result is read, there is nothing to count down to.
+        clock.now = extended.endTimeUtcMillis + 2_000
+        notifications.windowProgress(extended, WindowPhase.RESOLVING)
+        val reading = posted(NotificationIds.window(snipe.id))!!
+        assertFalse(reading.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER))
+    }
+
+    @Test
     fun theLiveUpdateDropsEditMaxOnceTheEditsLock() {
         val bidAt = snipe.endTimeUtcMillis - 6_000
         clock.now = bidAt - 2_000
