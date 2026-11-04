@@ -880,6 +880,7 @@ internal class SnipeWindow(
             )
         }
         checkGroup(atFire = true)?.let { return it }
+        confirmTypedStillShown()?.let { return it }
         val minimum = watch.minimumNextBid()
         when (prices.isOverMax(minimum, watch.level?.price, watch.level?.bidCount, maxBid)) {
             true -> {
@@ -909,6 +910,27 @@ internal class SnipeWindow(
             )
         }
         return null
+    }
+
+    /**
+     * The press only goes through if the field shows exactly what the page verified. In the wait since typing eBay
+     * may have reformatted the field or redrawn the layer, so the page looks once more (which also takes a reformatted
+     * value as the one to expect) and the max is typed again if the field no longer holds it.
+     */
+    private suspend fun confirmTypedStillShown(): SnipeResult? {
+        val currentPage = page ?: return null
+        if (typedAmount != maxBid) return null
+        val budget = minOf(TYPE_TIMEOUT, latestDispatchUtcMillis - clock.nowUtcMillis() - TYPE_MINIMUM_BUDGET)
+        val check = callWithin(budget) { currentPage.checkTyped() }.valueOrNull()
+        if (check != null && check.verified && AmountField.minorUnits(check.fieldValue) == maxBid.minor) return null
+        journal.event(
+            snipeId,
+            TimelineKind.PROBLEM,
+            "At the last look before the bid, eBay's field showed \"${check?.fieldValue}\" " +
+                "(${check?.inlineError ?: "the page did not answer"}). Kestrel types your max again.",
+            mapOf("fieldValue" to check?.fieldValue, "problem" to check?.problem),
+        )
+        return typeAndVerify(maxBid)
     }
 
     private suspend fun fire(): SnipeResult? {

@@ -32,6 +32,7 @@ import org.junit.Test
 class EngineOnWebPageTest {
     private class Rig(
         scope: TestScope,
+        val max: Money = Money.of("12.50", "GBP"),
     ) {
         val store = FakeStore()
         val notifier = FakeNotifier()
@@ -41,7 +42,6 @@ class EngineOnWebPageTest {
         val ebay = SimulatedEbayPage(driver)
         val parsers = FakeParsers()
         val price = Money.of("5.37", "GBP")
-        val max = Money.of("12.50", "GBP")
         var finalPrice = Money.of("9.00", "GBP")
         var pagesCreated = 0
         val engine =
@@ -90,6 +90,36 @@ class EngineOnWebPageTest {
             assertEquals(1, rig.ebay.presses)
             assertEquals(6_000L, result.bidLeadMillis)
             assertEquals(1, rig.store.eventsOf(TimelineKind.BID_SENT).size)
+        }
+
+    @Test
+    fun aFieldEbayReformattedAfterTypingStillGetsTheBid() =
+        runTest {
+            val rig = Rig(this, max = Money.of("12.00", "GBP"))
+            // Kestrel types "12"; ten seconds later eBay's formatter shows "12.00".
+            rig.ebay.fieldChangeAfterTypingMillis = 10_000
+            rig.ebay.fieldChange = { "$it.00" }
+
+            val result = rig.run()
+
+            assertEquals(1, rig.ebay.presses)
+            assertEquals(6_000L, result.bidLeadMillis)
+            assertEquals("the same amount needs no second typing", 1, rig.driver.callsOf("typeMax").size)
+        }
+
+    @Test
+    fun aFieldTheLayerEmptiedWhileWaitingIsTypedAgainBeforeThePress() =
+        runTest {
+            val rig = Rig(this)
+            // The layer redraws itself when a rival bids during the 40 s wait, and the field comes back empty.
+            rig.ebay.fieldChangeAfterTypingMillis = 20_000
+            rig.ebay.fieldChange = { "" }
+
+            val result = rig.run()
+
+            assertEquals(1, rig.ebay.presses)
+            assertEquals(2, rig.driver.callsOf("typeMax").size)
+            assertTrue(result.bidLeadMillis!! in 5_000L..6_000L)
         }
 
     @Test

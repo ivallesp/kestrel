@@ -296,6 +296,18 @@ internal class SimulatedEbayPage(
     /** A check eBay shows right after the amount is typed (kind, text). */
     var interstitialAfterTyping: Pair<String, String>? = null
 
+    /** eBay rewrites the field this long after typing (a debounced formatter, or the layer redrawing itself). */
+    var fieldChangeAfterTypingMillis: Long? = null
+    var fieldChange: (String) -> String = { it }
+    private var fieldChanged = false
+
+    private fun applyLateFieldChange() {
+        val after = fieldChangeAfterTypingMillis ?: return
+        if (fieldChanged || fieldValue.isEmpty() || clock() - typedAtMillis < after) return
+        fieldChanged = true
+        fieldValue = fieldChange(fieldValue)
+    }
+
     var probes = 0
     var layerOpen = false
     var interstitialShown = false
@@ -459,6 +471,7 @@ internal class SimulatedEbayPage(
         valid && submitEnabledWhenValid && clock() - typedAtMillis >= submitEnableDelayMillis
 
     private fun layerState(): String {
+        applyLateFieldChange()
         if (interstitialShown) {
             val (kind, text) = interstitial!!
             return json(
@@ -530,6 +543,7 @@ internal class SimulatedEbayPage(
     private fun typeMax(text: String): String {
         fieldValue = fieldRewrite(text)
         typedAtMillis = clock()
+        fieldChanged = false
         interstitialAfterTyping?.let {
             interstitial = it
             interstitialShown = true
@@ -550,6 +564,7 @@ internal class SimulatedEbayPage(
         expectValue: String?,
     ): String {
         if (which == "submit") {
+            applyLateFieldChange()
             if (pressMethod != null) return json(mapOf("ok" to false, "reason" to "alreadySubmitted"))
             if (fieldValue != expectValue) return json(mapOf("ok" to false, "reason" to "amountChanged"))
             guardTarget = "submit"
@@ -620,6 +635,7 @@ internal class SimulatedEbayPage(
         expectValue: String?,
         expectedDocument: String?,
     ): String {
+        applyLateFieldChange()
         val refusal =
             when {
                 submitRefusalOverride != null -> submitRefusalOverride
