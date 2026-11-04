@@ -3,6 +3,7 @@ package app.kestrel.platform
 import android.content.Context
 import android.os.PowerManager
 import android.util.Log
+import app.kestrel.engine.BidLayerPreview
 import app.kestrel.engine.BidPage
 import app.kestrel.engine.BidPageFactory
 import app.kestrel.engine.DryRun
@@ -59,6 +60,8 @@ internal class EngineJobRunner(
     private val dryRun: () -> DryRun,
     private val listingCheck: () -> ListingCheck,
     private val pages: () -> BidPageFactory,
+    // Dry runs and checks get a page that has no submit step at all (the web layer's preview page).
+    private val previews: () -> PreviewPages = { PreviewPages.from(pages()) },
 ) : SnipeJobRunner {
     override suspend fun run(
         kind: JobKind,
@@ -74,9 +77,9 @@ internal class EngineJobRunner(
             JobKind.WINDOW -> engine().runWindow(snipeId)
 
             // A dry run only ever sees the preview type, so it has no way to submit.
-            JobKind.DRY_RUN -> withPage(pages()) { page -> dryRun().run(snipeId, page) }
+            JobKind.DRY_RUN -> withPreview(previews()) { page -> dryRun().run(snipeId, page) }
 
-            JobKind.CHECK -> withPage(pages()) { page -> listingCheck().check(snipeId, page) }
+            JobKind.CHECK -> withPreview(previews()) { page -> listingCheck().check(snipeId, page) }
         }
     }
 
@@ -105,6 +108,48 @@ internal suspend fun withPage(
             } catch (error: RuntimeException) {
                 // A failing close must not hide why the job ended.
                 Log.w("withPage", "Could not close a page", error)
+            }
+        }
+    }
+}
+
+/** Opens pages for dry runs and checks. In production these are submit-free preview pages. */
+internal fun interface PreviewPages {
+    suspend fun open(): PreviewHandle
+
+    companion object {
+        /** Adapts a full page factory (tests); production passes the web layer's preview pages instead. */
+        fun from(factory: BidPageFactory): PreviewPages =
+            PreviewPages {
+                val page = factory.create()
+                PreviewHandle(page) { page.close() }
+            }
+    }
+}
+
+/** A preview page plus how to close it. */
+internal class PreviewHandle(
+    val preview: BidLayerPreview,
+    private val closeAction: () -> Unit,
+) : AutoCloseable {
+    override fun close() = closeAction()
+}
+
+/** Like [withPage] for preview pages: created on the main thread, always closed. */
+internal suspend fun withPreview(
+    pages: PreviewPages,
+    mainDispatcher: CoroutineDispatcher = Dispatchers.Main,
+    use: suspend (BidLayerPreview) -> Unit,
+) {
+    withContext(mainDispatcher) {
+        val handle = pages.open()
+        try {
+            use(handle.preview)
+        } finally {
+            try {
+                handle.close()
+            } catch (error: RuntimeException) {
+                Log.w("withPreview", "Could not close a preview page", error)
             }
         }
     }
