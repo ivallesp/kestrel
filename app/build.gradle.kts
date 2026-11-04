@@ -54,6 +54,8 @@ android {
 
     buildFeatures {
         compose = true
+        // BuildConfig.DEBUG lets debug builds assert the copy rules (SmallCaps rejects units and "eBay").
+        buildConfig = true
     }
 
     compileOptions {
@@ -82,6 +84,18 @@ android {
                 )
             }
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        // The design is built on Material 3 Expressive (material3 1.5.0-beta02), whose components are still marked
+        // experimental; opting in once keeps every screen free of per-call annotations.
+        optIn.addAll(
+            "androidx.compose.material3.ExperimentalMaterial3Api",
+            "androidx.compose.material3.ExperimentalMaterial3ExpressiveApi",
+            "androidx.compose.animation.ExperimentalSharedTransitionApi",
+        )
     }
 }
 

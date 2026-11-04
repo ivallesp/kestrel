@@ -1,5 +1,24 @@
-<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#FFFFFFFF" android:pathData="M54,34 L66,54 L54,74 L42,54 Z" />
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- shoulders -->
+    <path android:fillColor="#C0582A" android:pathData="M17.16,109.76 C18.60,85.28 33.00,74.84 48.84,74.19 C64.68,73.62 80.52,82.40 86.28,109.76 Z" />
+    <!-- head -->
+    <path android:fillColor="#5A6EA6" android:pathData="M75.48,51.44 C75.48,64.56 64.84,75.20 51.72,75.20 C38.60,75.20 27.96,64.56 27.96,51.44 C27.96,38.32 38.60,27.68 51.72,27.68 C64.84,27.68 75.48,38.32 75.48,51.44 Z" />
+    <!-- cheek -->
+    <path android:fillColor="#FFF6EC" android:pathData="M40.57,72.42 C43.08,63.68 48.84,57.56 56.76,56.12 C63.24,55.04 69.00,55.47 75.12,55.57 C73.80,63.06 68.97,69.46 62.14,72.80 C55.30,76.13 47.28,75.99 40.57,72.42 Z" />
+    <!-- malar -->
+    <path android:fillColor="#252D4B" android:pathData="M58.34,51.87 C60.79,52.30 61.80,54.03 61.37,56.91 C60.94,60.08 59.50,63.39 57.19,66.85 C56.47,64.11 56.18,60.80 56.47,57.63 C56.69,54.75 57.19,52.74 58.34,51.87 Z" />
+    <!-- beak -->
+    <path android:fillColor="#252D4B" android:pathData="M70.87,44.38 C76.34,44.53 80.95,48.27 82.25,53.89 C82.97,57.06 81.96,59.79 79.66,61.09 C79.80,58.64 78.50,57.06 76.20,56.77 L71.88,56.48 Z" />
+    <!-- cere -->
+    <path android:fillColor="#EC9F36" android:pathData="M70.15,44.10 C72.46,43.66 74.62,44.10 76.20,45.25 C75.19,46.26 74.47,47.41 74.18,48.70 L70.73,48.56 C70.51,46.98 70.30,45.54 70.15,44.10 Z" />
+    <!-- eyering -->
+    <path android:fillColor="#EC9F36" android:pathData="M68.14,46.40 C68.14,49.90 65.30,52.74 61.80,52.74 C58.30,52.74 55.46,49.90 55.46,46.40 C55.46,42.90 58.30,40.06 61.80,40.06 C65.30,40.06 68.14,42.90 68.14,46.40 Z" />
+    <!-- iris -->
+    <path android:fillColor="#252D4B" android:pathData="M66.84,46.40 C66.84,49.18 64.58,51.44 61.80,51.44 C59.02,51.44 56.76,49.18 56.76,46.40 C56.76,43.62 59.02,41.36 61.80,41.36 C64.58,41.36 66.84,43.62 66.84,46.40 Z" />
+    <!-- glint -->
+    <path android:fillColor="#FFFFFF" android:pathData="M65.04,44.53 C65.04,45.28 64.43,45.90 63.67,45.90 C62.92,45.90 62.30,45.28 62.30,44.53 C62.30,43.77 62.92,43.16 63.67,43.16 C64.43,43.16 65.04,43.77 65.04,44.53 Z" />
 </vector>

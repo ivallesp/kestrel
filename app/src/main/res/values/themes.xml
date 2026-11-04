@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Kestrel" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- The window shows the page colour before Compose draws, so no white flash on paper or in dark theme. -->
+    <style name="Theme.Kestrel" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/page</item>
+    </style>
 
     <style name="Theme.Kestrel.Starting" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">@android:color/white</item>
+        <item name="windowSplashScreenBackground">@color/page</item>
         <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
         <item name="postSplashScreenTheme">@style/Theme.Kestrel</item>
     </style>

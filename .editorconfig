@@ -3,3 +3,6 @@ root = true
 [*.{kt,kts}]
 ktlint_function_naming_ignore_when_annotated_with = Composable
 max_line_length = 120
+# Theme-scoped locals, provided once by KestrelTheme like MaterialTheme's own, plus the photo loader and the
+# shared-element scopes the app shell provides to each screen.
+compose_allowed_composition_locals = LocalCatalogueColors,LocalStatusPalette,LocalCatalogueType,LocalReduceMotion,LocalDarkTheme,LocalLotPhotoLoader,LocalPlateTransition

@@ -1,0 +1,12 @@
+Fixture photographs for screenshot tests only; the app shows each listing's own eBay photo.
+All from Wikimedia Commons, scaled to 960 px wide. Attribution as each licence requires.
+
+canon_ae1.jpg     "Canon AE-1 Program"            KurtClark          CC BY 2.0     https://commons.wikimedia.org/wiki/File:Canon_AE-1_Program.jpg
+speedmaster.jpg   "Vintage Omega Speedmaster"     Shane Lin          CC BY-SA 2.0  https://commons.wikimedia.org/wiki/File:Vintage_Omega_Speedmaster_%22Pre-moon%22.jpg
+polaroid.jpg      "Polaroid SX-70"                Cburnett           CC BY-SA 3.0  https://commons.wikimedia.org/wiki/File:Polaroid_SX-70.jpg
+gameboy.jpg       "Game-Boy-FL"                   Evan-Amos          Public domain https://commons.wikimedia.org/wiki/File:Game-Boy-FL.jpg
+walkman.jpg       "Sony WM-FX421 Walkman"         Evan-Amos          Public domain https://commons.wikimedia.org/wiki/File:Sony-wm-fx421-walkman.jpg
+gameandwatch.jpg  "Game & Watch Donkey Kong II"   Evan-Amos          Public domain https://commons.wikimedia.org/wiki/File:Game%26watch-donkey-kong-2.jpg
+n64.png           "Nintendo 64 Console"           Evan-Amos          Public domain https://commons.wikimedia.org/wiki/File:Nintendo-64-Console-FL.png
+sony_a700.jpg     "Sony Alpha A700"               Evan-Amos          Public domain https://commons.wikimedia.org/wiki/File:Sony-Alpha-A700-Front.jpg
+minidisc.jpg      "Sony MZ-N707 MD Walkman"       Evan-Amos          Public domain https://commons.wikimedia.org/wiki/File:Sony-MZ-N707-MD-Walkman.jpg
