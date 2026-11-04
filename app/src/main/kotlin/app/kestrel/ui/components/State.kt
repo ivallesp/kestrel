@@ -1,5 +1,6 @@
 package app.kestrel.ui.components
 
+import androidx.annotation.DrawableRes
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
@@ -80,13 +81,15 @@ fun StateLabel(
 
 /**
  * The state chip (DESIGN 3.1), at most one per screen: a pill on the family container with the glyph in the accent
- * and the words in the on-container colour. TalkBack reads "Status: Armed".
+ * and the words in the on-container colour. TalkBack reads "Status: Armed". [icon] replaces the family glyph where
+ * DESIGN 2.2 asks for another: check_circle on S5's "Ready to snipe", because a passed check is not a win.
  */
 @Composable
 fun StateChip(
     tone: StatusTone,
     text: String,
     modifier: Modifier = Modifier,
+    @DrawableRes icon: Int = tone.icon,
 ) {
     val colors = KestrelTheme.status[tone]
     val effects = MaterialTheme.motionScheme.defaultEffectsSpec<Color>()
@@ -104,7 +107,7 @@ fun StateChip(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        StateGlyph(tone = tone, tint = accent)
+        StateGlyph(tone = tone, tint = accent, icon = icon)
         Text(text = text, style = KestrelTheme.type.stateWord, color = onContainer, maxLines = 1)
     }
 }
@@ -115,9 +118,10 @@ private fun StateGlyph(
     tone: StatusTone,
     tint: Color,
     modifier: Modifier = Modifier,
+    @DrawableRes icon: Int = tone.icon,
 ) {
     Crossfade(
-        targetState = tone.icon,
+        targetState = icon,
         modifier = modifier,
         animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
         label = "state glyph",

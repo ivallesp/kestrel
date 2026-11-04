@@ -2,6 +2,8 @@ package app.kestrel.ui.shell
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -31,12 +33,16 @@ class ShellTest {
             Destination.Result(3) to "Result",
             Destination.Ready to "Ready to snipe",
             Destination.SignIn to "Sign in to eBay",
-            Destination.SignInBrowser to "eBay sign-in",
-            Destination.HandOff(3) to "eBay page",
+            // eBay's pages show their host in the bar, and the hand-off its Done button whatever the snipe.
+            Destination.SignInBrowser to "signin.ebay.co.uk",
+            Destination.HandOff(3) to "Done",
             Destination.Group(1) to "Group",
             Destination.Settings to "Settings",
             Destination.History to "History",
         )
+
+    /** S6 and eBay's pages are left with Close (DESIGN S6); every other screen has Back. */
+    private val closedWithClose = setOf(Destination.SignIn, Destination.SignInBrowser, Destination.HandOff(3))
 
     @Test
     fun everyDestinationOpensItsScreenAndBackReturns() {
@@ -56,8 +62,18 @@ class ShellTest {
         titles.forEach { (destination, title) ->
             runBlocking { incoming.emit(destination) }
             composeRule.waitForIdle()
-            composeRule.onNodeWithText(title).assertIsDisplayed()
-            composeRule.onNodeWithContentDescription("Back").performClick()
+            // S5's chip repeats its title once every check passes.
+            composeRule.onAllNodesWithText(title).onFirst().assertIsDisplayed()
+            composeRule
+                .onNodeWithContentDescription(
+                    if (destination in
+                        closedWithClose
+                    ) {
+                        "Close"
+                    } else {
+                        "Back"
+                    },
+                ).performClick()
             composeRule.waitForIdle()
             composeRule.onNodeWithText("Snipes").assertIsDisplayed()
         }
@@ -90,9 +106,18 @@ class ShellTest {
                 )
             }
         }
-        composeRule.onNodeWithText("Finish onboarding").performClick()
+        // Skip the three pages, then pass on signing in and on notifications: onboarding ends on Ready to snipe,
+        // with Home underneath.
+        composeRule.onNodeWithText("Skip").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Not now").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Not now").performClick()
+        composeRule.waitForIdle()
+        assertTrue(stored)
+        composeRule.onAllNodesWithText("Ready to snipe").onFirst().assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Back").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Snipes").assertIsDisplayed()
-        assertTrue(stored)
     }
 }
