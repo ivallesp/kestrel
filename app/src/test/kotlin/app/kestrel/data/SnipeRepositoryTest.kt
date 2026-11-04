@@ -456,6 +456,93 @@ class SnipeRepositoryTest {
             assertEquals(event, repository.latestEvent(snipe.id, TimelineKind.CLOCK_SYNCED))
         }
 
+    @Test
+    fun aStaleCheckCannotDisarmASnipeTheUserJustArmed() =
+        runTest {
+            val watched = addWatching(testListing())
+            val staleCopy = repository.snipe(watched.id)!!
+            repository.updateMax(watched.id, gbp("60.00"))
+
+            repository.update(staleCopy.copy(lastPrice = gbp("33.00")))
+
+            val after = repository.snipe(watched.id)!!
+            assertEquals(SnipeStatus.ARMED, after.status)
+            assertEquals(gbp("60.00"), after.maxBid)
+            assertEquals(gbp("33.00"), after.lastPrice)
+        }
+
+    @Test
+    fun aStaleCopyCannotArmASnipeTheUserTurnedIntoWatching() =
+        runTest {
+            val armed = addArmed()
+            val staleCopy = repository.snipe(armed.id)!!
+            repository.updateMax(armed.id, null)
+
+            repository.update(staleCopy)
+
+            assertEquals(SnipeStatus.WATCHING, repository.snipe(armed.id)?.status)
+        }
+
+    @Test
+    fun aWatchedListingCanStillReportThatSignInIsNeeded() =
+        runTest {
+            val watched = addWatching(testListing())
+
+            repository.update(repository.snipe(watched.id)!!.copy(status = SnipeStatus.NEEDS_SIGN_IN))
+
+            assertEquals(SnipeStatus.NEEDS_SIGN_IN, repository.snipe(watched.id)?.status)
+        }
+
+    @Test
+    fun onceEbayHasTheBidAStaleProblemCannotReopenEditsOrCancel() =
+        runTest {
+            val snipe = addArmed()
+            val stale = repository.snipe(snipe.id)!!
+            forceStatus(snipe.id, SnipeStatus.BID_SENT)
+
+            repository.update(stale.copy(status = SnipeStatus.PRICE_OVER_MAX))
+            repository.update(stale.copy(status = SnipeStatus.NEEDS_SIGN_IN))
+
+            assertEquals(SnipeStatus.BID_SENT, repository.snipe(snipe.id)?.status)
+            assertTrue(repository.updateMax(snipe.id, gbp("90.00")) is EditResult.NotAllowed)
+            assertTrue(repository.cancel(snipe.id) is EditResult.NotAllowed)
+
+            val won = SnipeResult(SnipeOutcome.WON, gbp("41.00"), now, 6_000, 300, "You won", null)
+            repository.update(stale.copy(status = SnipeStatus.WON, result = won))
+            assertEquals(SnipeStatus.WON, repository.snipe(snipe.id)?.status)
+        }
+
+    @Test
+    fun aDeletedWinStillCountsForItsGroupAndIsNeverPurged() =
+        runTest {
+            val group = repository.createGroup("Cameras")
+            val won = addArmed(testListing(itemId = "1"))
+            val other = addArmed(testListing(itemId = "2"))
+            repository.setGroup(won.id, group.id)
+            repository.setGroup(other.id, group.id)
+            finish(won.id, SnipeStatus.WON, gbp("40.00"))
+
+            repository.delete(won.id)
+            now += 2 * 24 * HOUR
+            repository.purgeDeleted(now - 24 * HOUR)
+
+            assertNull("hidden from the user", repository.snipe(won.id))
+            assertEquals(setOf(won.id, other.id), repository.groupMembers(group.id).map { it.id }.toSet())
+        }
+
+    @Test
+    fun aDeletedLossLeavesItsGroup() =
+        runTest {
+            val group = repository.createGroup("Cameras")
+            val lost = addArmed(testListing(itemId = "1"))
+            repository.setGroup(lost.id, group.id)
+            finish(lost.id, SnipeStatus.LOST, gbp("90.00"))
+
+            repository.delete(lost.id)
+
+            assertTrue(repository.groupMembers(group.id).isEmpty())
+        }
+
     // History.
 
     @Test

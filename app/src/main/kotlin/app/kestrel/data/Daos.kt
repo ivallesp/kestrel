@@ -46,8 +46,10 @@ interface SnipeDao {
         finalStatuses: List<String>,
     ): SnipeEntity?
 
+    // A won member stays visible to group rules even after the user deleted it from the history: hiding it
+    // would let a "win 1 of N" group win a second time.
     @Query(
-        "SELECT * FROM snipes WHERE groupId = :groupId AND deletedAtUtcMillis IS NULL " +
+        "SELECT * FROM snipes WHERE groupId = :groupId AND (deletedAtUtcMillis IS NULL OR status = 'WON') " +
             "ORDER BY endTimeUtcMillis ASC, id ASC",
     )
     suspend fun inGroup(groupId: Long): List<SnipeEntity>
@@ -73,7 +75,11 @@ interface SnipeDao {
     @Query("UPDATE snipes SET deletedAtUtcMillis = NULL WHERE id = :id AND deletedAtUtcMillis IS NOT NULL")
     suspend fun restore(id: Long): Int
 
-    @Query("DELETE FROM snipes WHERE deletedAtUtcMillis IS NOT NULL AND deletedAtUtcMillis < :beforeUtcMillis")
+    // Won group members are kept (hidden) for the same reason as in inGroup.
+    @Query(
+        "DELETE FROM snipes WHERE deletedAtUtcMillis IS NOT NULL AND deletedAtUtcMillis < :beforeUtcMillis " +
+            "AND NOT (status = 'WON' AND groupId IS NOT NULL)",
+    )
     suspend fun purgeDeleted(beforeUtcMillis: Long): Int
 }
 

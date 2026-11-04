@@ -63,21 +63,36 @@ internal object SnipeRules {
     /**
      * Whether an engine write may replace the stored status and result. Engine jobs can run side by side (a window
      * and a slow background check) and each writes back its own copy, so a stale copy must not undo progress:
-     * a cancelled snipe stays cancelled unless a bid provably went out, a finished snipe never becomes active again,
-     * and once the window opened the snipe never returns to "not started".
+     * - whether a snipe bids at all follows the user's max, so a snipe with a max is never set to watching and a
+     *   watched one is never armed;
+     * - a cancelled snipe stays cancelled unless a bid provably went out;
+     * - a finished snipe never becomes active again;
+     * - once eBay has the bid, the snipe only moves on to a later bid state or a result, never back to a state
+     *   where its max could be edited or a second window could open;
+     * - once the window opened, the snipe never returns to "not started".
      */
     fun acceptsEngineStatus(
         stored: Snipe,
         incoming: Snipe,
     ): Boolean {
         if (incoming.status == stored.status) return true
+        if (stored.maxBid == null && incoming.status.needsMax) return false
+        if (stored.maxBid != null && incoming.status == SnipeStatus.WATCHING) return false
         return when {
             stored.status == SnipeStatus.CANCELLED -> provesBidWasSent(incoming)
             stored.status.isFinal -> incoming.status.isFinal
+            stored.status in bidInFlight -> incoming.status in bidInFlight || incoming.status.isFinal
             stored.status.family == StatusFamily.BIDDING -> incoming.status !in notStarted
             else -> true
         }
     }
+
+    /** Statuses that only make sense with a bidding instruction; sign-in and "needs you" can happen while watching. */
+    private val SnipeStatus.needsMax: Boolean get() = this in statusesNeedingMax
+
+    private val statusesNeedingMax =
+        bidInFlight +
+            setOf(SnipeStatus.ARMED, SnipeStatus.PRICE_OVER_MAX, SnipeStatus.DRY_RUN_FAILED, SnipeStatus.BIDDING)
 
     private fun provesBidWasSent(snipe: Snipe): Boolean =
         snipe.status in bidInFlight ||
