@@ -48,7 +48,17 @@ data class SnipeResult(
     val reason: String?,
 )
 
-enum class SnipeOutcome { WON, LOST, ENDED_EARLY, PRICE_PASSED_MAX, NOT_PLACED, FAILED, CANCELLED, SKIPPED_BY_GROUP, UNKNOWN }
+enum class SnipeOutcome {
+    WON,
+    LOST,
+    ENDED_EARLY,
+    PRICE_PASSED_MAX,
+    NOT_PLACED,
+    FAILED,
+    CANCELLED,
+    SKIPPED_BY_GROUP,
+    UNKNOWN,
+}
 
 enum class SnipeStatus(
     val family: StatusFamily,
@@ -75,7 +85,9 @@ enum class SnipeStatus(
     val isFinal: Boolean get() = family == StatusFamily.WON || family == StatusFamily.ENDED
 
     /** True while Kestrel still intends to bid (or is bidding) on this listing. */
-    val isActiveBid: Boolean get() = this in setOf(ARMED, PRICE_OVER_MAX, NEEDS_SIGN_IN, NEEDS_YOU, DRY_RUN_FAILED, BIDDING)
+    val isActiveBid: Boolean get() =
+        this in
+            setOf(ARMED, PRICE_OVER_MAX, NEEDS_SIGN_IN, NEEDS_YOU, DRY_RUN_FAILED, BIDDING)
 }
 
 /** The six visible families. Colour is always paired with an icon and words. */
