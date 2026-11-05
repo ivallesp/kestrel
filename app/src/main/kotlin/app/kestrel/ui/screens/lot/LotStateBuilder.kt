@@ -149,6 +149,7 @@ object LotStateBuilder {
     private const val FINAL_MINUTE_SECONDS = 60L
     private const val RECENT_RISE_MILLIS = 60 * 60_000L
     private const val DRY_RUN_BEFORE_END_MINUTES = 10L
+    private const val TEST_BIDDING_MINIMUM_LEFT_MILLIS = 5 * 60_000L
 
     /** A bid tick closer than this to either end of the scale would sit on the start or the end. */
     private const val TICK_MARGIN = 0.02f
@@ -407,8 +408,20 @@ object LotStateBuilder {
                 status is LotStatus.ReadingResult -> null
                 else -> MenuEntry("Stop sniping", enabled = true)
             }
+        // A dry run on demand: armed (or needing attention), no bid out, and far enough from the end that it cannot
+        // meet the bid window (which opens 2 minutes before the end).
+        val testBidding =
+            snipe.maxBid != null &&
+                !status.kind.isFinal &&
+                !bidSent &&
+                snipe.status.family != StatusFamily.BIDDING &&
+                snipe.endTimeUtcMillis - now.toEpochMilli() > TEST_BIDDING_MINIMUM_LEFT_MILLIS
         // The data layer refuses to delete while a bid window may still run the snipe.
-        return LotMenuState(stop, canDelete = SnipeRules.deleteRefusal(snipe, now.toEpochMilli()) == null)
+        return LotMenuState(
+            stop,
+            canDelete = SnipeRules.deleteRefusal(snipe, now.toEpochMilli()) == null,
+            testBidding = testBidding,
+        )
     }
 
     // The banner says the phone is offline once. When a bid is due within the hour its card says what that does to

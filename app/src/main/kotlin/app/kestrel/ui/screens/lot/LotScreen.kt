@@ -99,6 +99,7 @@ fun LotScreen(
     onOpenOnEbay: () -> Unit = {},
     onStopSniping: () -> Unit = {},
     onDelete: () -> Unit = {},
+    onTestBidding: () -> Unit = {},
 ) {
     val page = MaterialTheme.colorScheme.background
     val density = LocalDensity.current
@@ -153,6 +154,7 @@ fun LotScreen(
                 onOpenOnEbay = onOpenOnEbay,
                 onStopSniping = onStopSniping,
                 onDelete = onDelete,
+                onTestBidding = onTestBidding,
             )
             BottomFade(windowInsets = windowInsets)
         }
@@ -252,6 +254,7 @@ private fun PhotoButtons(
     onOpenOnEbay: () -> Unit,
     onStopSniping: () -> Unit,
     onDelete: () -> Unit,
+    onTestBidding: () -> Unit,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     Row(
@@ -273,6 +276,16 @@ private fun PhotoButtons(
                         onOpenOnEbay()
                     },
                 )
+                if (menu.testBidding) {
+                    DropdownMenuItem(
+                        text = { Text("Test bidding now") },
+                        leadingIcon = { SymbolIcon(Symbols.TaskAlt) },
+                        onClick = {
+                            expanded = false
+                            onTestBidding()
+                        },
+                    )
+                }
                 menu.stopSniping?.let { stop ->
                     DropdownMenuItem(
                         text = { Text(stop.label) },

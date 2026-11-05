@@ -136,6 +136,7 @@ fun LotDestination(
                         onOpenOnEbay = { navigator.open(Destination.HandOff(id)) },
                         onStopSniping = viewModel::stopSniping,
                         onDelete = viewModel::delete,
+                        onTestBidding = viewModel::testBidding,
                     )
                 }
 

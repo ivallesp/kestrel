@@ -356,6 +356,14 @@ class LotViewModel(
 
     // The overflow menu.
 
+    /** "Test bidding now": a dry run on eBay's own bid panel, which types the max and closes it without bidding. */
+    fun testBidding() {
+        viewModelScope.launch {
+            val started = data.startDryRun(snipeId)
+            effectChannel.send(LotEffect.Show(ShellMessage(if (started) TEST_STARTED else TEST_NOT_STARTED)))
+        }
+    }
+
     /**
      * "Stop sniping": the lot goes back to watching, with Undo. Inside the bid window the data layer refuses a new max,
      * so the snipe is cancelled instead, with Undo while it can still come back (SnipeRules.uncancelRefusal: a minute
@@ -495,3 +503,6 @@ class LotViewModel(
         fun plainAmount(money: Money): String = money.major.toPlainString()
     }
 }
+
+private const val TEST_STARTED = "Testing on eBay’s bid panel. Nothing is bid; the result shows in the timeline."
+private const val TEST_NOT_STARTED = "Kestrel couldn’t start the test."

@@ -3,12 +3,15 @@ package app.kestrel.ui.components
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
@@ -19,12 +22,16 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import app.kestrel.ui.theme.KestrelTheme
 import app.kestrel.ui.theme.Spacing
 import app.kestrel.ui.theme.StatusTone
@@ -163,13 +170,52 @@ fun ConnectedToggleRow(
                         checkedContainerColor = scheme.primary,
                         checkedContentColor = scheme.onPrimary,
                     ),
+                // A third of a phone row is narrow: the default 16-24 dp sides cut "✓ System" at larger text sizes.
+                contentPadding = PaddingValues(horizontal = ToggleSidePadding),
             ) {
-                if (checked) {
-                    SymbolIcon(Symbols.Check, size = 18.dp)
-                    Spacer(Modifier.width(6.dp))
-                }
-                Text(option, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                ToggleLabel(option, checked)
             }
         }
     }
 }
+
+private val ToggleSidePadding = 8.dp
+private val CheckSize = 18.dp
+private val CheckGap = 6.dp
+
+/**
+ * The label of one choice. The check mark shows only when it fits next to the whole word; when even the word alone
+ * does not fit (very large text), it shrinks rather than being cut. The filled pill still marks the choice.
+ */
+@Composable
+private fun ToggleLabel(
+    option: String,
+    checked: Boolean,
+) {
+    val style = MaterialTheme.typography.labelLarge
+    val measurer = rememberTextMeasurer()
+    BoxWithConstraints(contentAlignment = Alignment.Center) {
+        val labelWidth =
+            with(LocalDensity.current) {
+                measurer
+                    .measure(option, style, maxLines = 1)
+                    .size.width
+                    .toDp()
+            }
+        val showCheck = checked && labelWidth + CheckSize + CheckGap <= maxWidth
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (showCheck) {
+                SymbolIcon(Symbols.Check, size = CheckSize)
+                Spacer(Modifier.width(CheckGap))
+            }
+            Text(
+                option,
+                style = style,
+                maxLines = 1,
+                autoSize = TextAutoSize.StepBased(minFontSize = MinimumLabelSize, maxFontSize = style.fontSize),
+            )
+        }
+    }
+}
+
+private val MinimumLabelSize = 9.sp

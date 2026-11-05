@@ -138,11 +138,15 @@ data class EditRowState(
     val enabled: Boolean,
 )
 
-/** The overflow menu: "Open on eBay" always, "Stop sniping" ([stopSniping], null when hidden), "Delete" if allowed. */
+/**
+ * The overflow menu: "Open on eBay" always, "Test bidding now" while a dry run can run ([testBidding]), "Stop sniping"
+ * ([stopSniping], null when hidden), "Delete" if allowed.
+ */
 @Immutable
 data class LotMenuState(
     val stopSniping: MenuEntry?,
     val canDelete: Boolean,
+    val testBidding: Boolean = false,
 )
 
 @Immutable

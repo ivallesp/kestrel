@@ -8,6 +8,8 @@ import app.kestrel.model.Money
 import app.kestrel.model.Snipe
 import app.kestrel.model.SnipeStatus
 import app.kestrel.model.TimelineEvent
+import app.kestrel.platform.SnipeAction
+import app.kestrel.platform.SnipeService
 import app.kestrel.ui.model.Connectivity
 import app.kestrel.ui.model.GroupContext
 import app.kestrel.ui.shell.ConnectivityMonitor
@@ -84,6 +86,9 @@ interface LotData {
 
     suspend fun markSealStamped(id: Long)
 
+    /** Starts a dry run of the snipe now (it never bids). False when the snipe is gone. */
+    suspend fun startDryRun(id: Long): Boolean = false
+
     /**
      * Runs [action] in the app's own scope. An Undo tapped on the next screen still reaches the data after this screen
      * and its ViewModel are gone.
@@ -99,6 +104,12 @@ class ContainerLotData(
     private val actions get() = container.snipeActions
 
     override fun snipe(id: Long): Flow<Snipe?> = repository.observeSnipe(id)
+
+    override suspend fun startDryRun(id: Long): Boolean {
+        val snipe = repository.snipe(id) ?: return false
+        SnipeService.start(container.context, SnipeAction.DRY_RUN, snipe)
+        return true
+    }
 
     override fun timeline(id: Long): Flow<List<TimelineEvent>> = repository.observeTimeline(id)
 

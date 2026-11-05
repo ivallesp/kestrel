@@ -280,6 +280,33 @@ class LotStateBuilderTest {
     }
 
     @Test
+    fun testBiddingIsOfferedOnlyWhileADryRunCannotMeetTheBidWindow() {
+        // Armed with 13 minutes left: a dry run on demand fits before the window opens.
+        assertTrue(
+            LotFixtures.canonArmedToday
+                .lotState()
+                .menu.testBidding,
+        )
+        // Watching: there is no max to type.
+        assertFalse(
+            fixture.polaroidWatching
+                .lotState()
+                .menu.testBidding,
+        )
+        // The final minute and a sent bid: the window owns the page.
+        assertFalse(
+            fixture.canonFinalMinute
+                .lotState()
+                .menu.testBidding,
+        )
+        assertFalse(
+            fixture.canonBidSent
+                .lotState()
+                .menu.testBidding,
+        )
+    }
+
+    @Test
     fun theResultReplacesTheLivePageOnceItIsKnown() {
         assertTrue(fixture.canonFinalMinute.page() is LotPage.Live)
         assertTrue(fixture.canonReadingResult.page() is LotPage.Live)
