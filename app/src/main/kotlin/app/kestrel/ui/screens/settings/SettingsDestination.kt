@@ -15,14 +15,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.kestrel.BuildConfig
 import app.kestrel.data.ThemeMode
+import app.kestrel.platform.ProblemReport
 import app.kestrel.ui.screens.ready.openSystemPage
 import app.kestrel.ui.shell.Destination
 import app.kestrel.ui.shell.KestrelNavigator
 import app.kestrel.ui.shell.ShellMessage
 import app.kestrel.ui.shell.kestrelViewModel
 import app.kestrel.ui.shell.show
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Settings: Destination.Settings. The readiness row is checked again each time the screen resumes. */
 @Composable
@@ -72,6 +76,26 @@ fun SettingsDestination(
                 override fun openSheet(sheet: SettingsSheet) = viewModel.openSheet(sheet)
 
                 override fun closeSheet() = viewModel.closeSheet()
+
+                override fun sendProblemReport() {
+                    scope.launch {
+                        val sent =
+                            runCatching {
+                                val report =
+                                    withContext(Dispatchers.IO) {
+                                        ProblemReport.write(context, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE)
+                                    }
+                                val send =
+                                    Intent(Intent.ACTION_SEND)
+                                        .setType("text/plain")
+                                        .putExtra(Intent.EXTRA_STREAM, report)
+                                        .putExtra(Intent.EXTRA_SUBJECT, "Kestrel problem report")
+                                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                context.startActivity(Intent.createChooser(send, "Send the problem report"))
+                            }.isSuccess
+                        if (!sent) snackbarHostState.show(ShellMessage(NO_REPORT))
+                    }
+                }
             }
         }
     SettingsScreen(
@@ -88,5 +112,7 @@ private fun settingsViewModel(): SettingsViewModel {
     val context = LocalContext.current.applicationContext
     return kestrelViewModel(key = "settings") { container -> SettingsViewModel.from(container, context) }
 }
+
+private const val NO_REPORT = "Kestrel couldn’t write the problem report."
 
 private const val NO_SETTINGS_PAGE = "This phone has no notification settings page for Kestrel."

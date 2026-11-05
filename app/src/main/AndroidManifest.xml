@@ -49,6 +49,17 @@
             </intent-filter>
         </activity>
 
+        <!-- Shares the problem report the user asks for in Settings; nothing else is exposed. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.reports"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/report_paths" />
+        </provider>
+
         <service
             android:name=".platform.SnipeService"
             android:exported="false"
