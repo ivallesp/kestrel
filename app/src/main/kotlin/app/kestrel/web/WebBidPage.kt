@@ -400,13 +400,17 @@ class WebBidPage internal constructor(
         } ?: decideLayer(layerState(), timedOut = true) ?: LayerState.Failed("eBay's bid layer did not open", report())
     }
 
-    /** See kestrel.js prepareForHiddenPage: only acts on a page that has had no animation frame. */
+    /** See kestrel.js prepareForHiddenPage: the bidding page is never drawn, so CSS transitions never run there. */
     private suspend fun prepareForHiddenPage() {
         val prepared = helper.call(PageFunction.PREPARE_FOR_HIDDEN_PAGE, HiddenPageSnapshot.serializer())
-        when {
-            !prepared.ok -> note("hidden page: ${prepared.error}")
-            prepared.applied -> note("hidden page: no animation frames after ${prepared.elapsed} ms, timer frames on")
-            else -> note("hidden page: ${prepared.frames} animation frames, nothing changed")
+        if (!prepared.ok) {
+            note("hidden page: ${prepared.error}")
+        } else {
+            note(
+                "hidden page: transitions off, ${prepared.finished} running animations finished, " +
+                    "${prepared.frames} frames in ${prepared.elapsed} ms" +
+                    if (prepared.timerFrames) ", timer frames on" else "",
+            )
         }
     }
 

@@ -1463,6 +1463,8 @@
   }
 
   function layerState() {
+    // Transitions that started since the last look (the layer's own fade-in) end now on the hidden page.
+    settleHiddenPage();
     var layer = findLayer();
     var interstitial = detectInterstitial(layer);
     var result = {
@@ -1802,6 +1804,7 @@
   }
 
   function replyState() {
+    settleHiddenPage();
     var layer = findLayer();
     var baseline = state.press.baseline;
     var layerNotices = layer ? noticeTexts(layer.element) : [];
@@ -1870,9 +1873,12 @@
       roots.push(bidButton.element.closest('[data-testid="x-bid-action"], .x-buybox-cta, .vim') || bidButton.element);
     }
     if (layer && layer.element && layer.element !== document.body) roots.push(layer.element);
-    queryAll(document, '[role="dialog"], .lightbox-dialog, .placebid-redesign-wrapper, .place-bid-wrapper-ocv')
+    queryAll(document, '.placebid-redesign-wrapper, .place-bid-wrapper-ocv, .lightbox-dialog__window, .lightbox-dialog')
+      .concat(queryAll(document, '[role="dialog"]').filter(function (node) {
+        return !node.closest('header, #gh, .gh-ham-menu, [class*="gh-"]');
+      }))
       .slice(0, 3).forEach(function (node) {
-        if (roots.indexOf(node) < 0) roots.push(node);
+        if (roots.indexOf(node) < 0 && !roots.some(function (root) { return root.contains(node); })) roots.push(node);
       });
     var parts = roots.map(function (root) {
       try {
@@ -1902,32 +1908,78 @@
     return truncate(parts.join('\n---\n'), 12000);
   }
 
-  // A WebView that is never on screen may get no animation frames: callbacks queued with requestAnimationFrame never
-  // run and CSS transitions never advance, so a dialog that fades in (eBay's bid layer) stays invisible. When this
-  // page has had no frame at all, later requestAnimationFrame calls run on a timer and transitions and animations
-  // take no time. Nothing changes on a page that gets frames.
+  // A WebView that is never on screen draws nothing, so CSS transitions and animations never advance (seen on a
+  // Pixel 9a, 2026-11-06: a fade-in stayed at opacity 0 while timers and some frames ran) and eBay's bid layer, which
+  // fades in, stays invisible at opacity 0. On the bidding page (always such a page) every look at the layer finishes
+  // the transitions that are running, so they end in their final state and eBay still gets its transitionend events.
+  // If a dialog window is still transparent 1.5 s later, transitions are switched off altogether. Only when no
+  // animation frame ever arrived does requestAnimationFrame run on a timer.
   function prepareForHiddenPage() {
     var diagnostics = state.diagnostics;
     var elapsed = Date.now() - diagnostics.installedAt;
-    if (diagnostics.hiddenPageMode) return { ok: true, applied: true, already: true, frames: 0, elapsed: elapsed };
-    if (diagnostics.animationFrames > 0 || elapsed < 500) {
-      return { ok: true, applied: false, frames: diagnostics.animationFrames, elapsed: elapsed };
+    if (!diagnostics.timerFrames && diagnostics.animationFrames === 0 && elapsed >= 500) {
+      window.requestAnimationFrame = function (callback) {
+        return window.setTimeout(function () {
+          callback(now());
+        }, 16);
+      };
+      window.cancelAnimationFrame = function (handle) {
+        window.clearTimeout(handle);
+      };
+      diagnostics.timerFrames = true;
     }
-    window.requestAnimationFrame = function (callback) {
-      return window.setTimeout(function () {
-        callback(now());
-      }, 16);
-    };
-    window.cancelAnimationFrame = function (handle) {
-      window.clearTimeout(handle);
-    };
+    diagnostics.hiddenPageMode = true;
+    return { ok: true, applied: true, timerFrames: !!diagnostics.timerFrames, frames: diagnostics.animationFrames,
+      elapsed: elapsed, finished: finishAnimations() };
+  }
+
+  function switchTransitionsOff() {
+    if (document.getElementById('kestrel-hidden-page')) return;
     var style = document.createElement('style');
     style.id = 'kestrel-hidden-page';
     style.textContent = '*,*::before,*::after{transition-duration:0s!important;transition-delay:0s!important;' +
       'animation-duration:0s!important;animation-delay:0s!important}';
     (document.head || document.documentElement).appendChild(style);
-    diagnostics.hiddenPageMode = true;
-    return { ok: true, applied: true, already: false, frames: 0, elapsed: elapsed };
+    state.diagnostics.transitionsOff = true;
+  }
+
+  // On the hidden page: finish what runs, and switch transitions off when a dialog window stays transparent.
+  function settleHiddenPage() {
+    var diagnostics = state.diagnostics;
+    if (!diagnostics.hiddenPageMode) return;
+    diagnostics.finishedAnimations = (diagnostics.finishedAnimations || 0) + finishAnimations();
+    if (diagnostics.transitionsOff) return;
+    if (transparentDialogWindows().length === 0) {
+      diagnostics.transparentSince = null;
+      return;
+    }
+    diagnostics.transparentSince = diagnostics.transparentSince || Date.now();
+    if (Date.now() - diagnostics.transparentSince >= 1500) switchTransitionsOff();
+  }
+
+  function transparentDialogWindows() {
+    return queryAll(document, '*').filter(function (node) {
+      if (node.hidden || !isDialogContainer(node)) return false;
+      var style = window.getComputedStyle(node);
+      return style.display !== 'none' && style.opacity === '0';
+    });
+  }
+
+  // Ends every running transition and animation at its end state. Endless ones (a spinner) cannot finish and stay.
+  function finishAnimations() {
+    if (typeof document.getAnimations !== 'function') return 0;
+    var finished = 0;
+    document.getAnimations().forEach(function (animation) {
+      try {
+        if (animation.playState !== 'finished') {
+          animation.finish();
+          finished += 1;
+        }
+      } catch (error) {
+        // An infinite animation refuses finish(); it is not what hides the layer.
+      }
+    });
+    return finished;
   }
 
   function report() {
@@ -1994,6 +2046,8 @@
         intersectionCallbacks: state.diagnostics.intersectionCallbacks,
         secondsSinceInstall: Math.round((Date.now() - state.diagnostics.installedAt) / 1000),
         hidden: !!document.hidden, hiddenPageMode: !!state.diagnostics.hiddenPageMode,
+        timerFrames: !!state.diagnostics.timerFrames, transitionsOff: !!state.diagnostics.transitionsOff,
+        finishedAnimations: state.diagnostics.finishedAnimations || 0,
         userAgent: truncate(navigator.userAgent, 200) },
       requests: state.diagnostics.requests.slice(),
       bidArea: bidAreaSnapshot(bidButton, layer),

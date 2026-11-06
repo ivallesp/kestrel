@@ -32,12 +32,13 @@ function call(window, name) {
 
 const wait = (millis) => new Promise((resolve) => setTimeout(resolve, millis));
 
-test('a page without frames is switched to timer frames and instant transitions', async () => {
+test('a page without frames gets timer frames, and transitions stay on until a dialog is stuck', async () => {
   const window = pageWith({ frames: false });
   await wait(600);
   const prepared = call(window, 'prepareForHiddenPage');
   assert.equal(prepared.applied, true);
-  assert.ok(window.document.getElementById('kestrel-hidden-page'), 'the no-transition style is in the page');
+  assert.equal(prepared.timerFrames, true);
+  assert.equal(window.document.getElementById('kestrel-hidden-page'), null);
   const ran = await new Promise((resolve) => {
     window.requestAnimationFrame(() => resolve(true));
     setTimeout(() => resolve(false), 300);
@@ -47,19 +48,38 @@ test('a page without frames is switched to timer frames and instant transitions'
   window.close();
 });
 
-test('a page that gets frames is left alone', async () => {
+test('a page that gets frames keeps its own requestAnimationFrame', async () => {
   const window = pageWith({ frames: true });
+  const ownFrame = window.requestAnimationFrame;
   await wait(600);
   const prepared = call(window, 'prepareForHiddenPage');
-  assert.equal(prepared.applied, false);
+  assert.equal(prepared.timerFrames, false);
   assert.ok(prepared.frames > 0);
-  assert.equal(window.document.getElementById('kestrel-hidden-page'), null);
+  assert.equal(window.requestAnimationFrame, ownFrame);
   window.close();
 });
 
-test('too soon after install nothing is decided', () => {
-  const window = pageWith({ frames: false });
-  assert.equal(call(window, 'prepareForHiddenPage').applied, false);
+test('a dialog window that stays transparent gets transitions switched off after 1.5 s of looks', async () => {
+  const window = pageWith({ frames: true });
+  window.document.body.insertAdjacentHTML('beforeend',
+    '<div class="lightbox-dialog" role="dialog"><div class="lightbox-dialog__window lightbox-dialog__window--animate"' +
+    ' style="opacity: 0">loading</div></div>');
+  call(window, 'prepareForHiddenPage');
+  call(window, 'layerState');
+  assert.equal(window.document.getElementById('kestrel-hidden-page'), null, 'not at the first look');
+  await wait(1600);
+  call(window, 'layerState');
+  assert.ok(window.document.getElementById('kestrel-hidden-page'), 'switched off once it stayed transparent');
+  assert.equal(call(window, 'report').environment.transitionsOff, true);
+  window.close();
+});
+
+test('nothing is switched off when no dialog is transparent', async () => {
+  const window = pageWith({ frames: true });
+  call(window, 'prepareForHiddenPage');
+  await wait(1600);
+  call(window, 'layerState');
+  assert.equal(window.document.getElementById('kestrel-hidden-page'), null);
   window.close();
 });
 

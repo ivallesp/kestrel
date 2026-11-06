@@ -177,8 +177,8 @@ internal object ProblemReport {
     }
 
     private const val SNIPES_KEPT = 6
-    private const val EVENTS_KEPT = 20
-    private const val MAXIMUM_DETAIL_CHARS = 15_000
+    private const val EVENTS_KEPT = 12
+    private const val MAXIMUM_DETAIL_CHARS = 80_000
 
     private suspend fun recentSnipes(context: Context): String {
         val repository = runCatching { context.kestrelContainer.repository }.getOrNull() ?: return "unavailable"
