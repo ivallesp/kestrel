@@ -8,15 +8,20 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import app.kestrel.KestrelApp
 import app.kestrel.data.ThemeMode
+import app.kestrel.ui.celebration.AndroidCelebrationSound
+import app.kestrel.ui.celebration.CelebrationSound
+import app.kestrel.ui.celebration.LocalCelebrationSound
 import app.kestrel.ui.shell.Destination
 import app.kestrel.ui.shell.KestrelShell
 import app.kestrel.ui.shell.LaunchIntents
@@ -71,14 +76,21 @@ class MainActivity : ComponentActivity() {
             }
             val startStack = remember { LaunchIntents.startStack(done, asked) }
             val requests = remember { incoming.receiveAsFlow() }
+            // The win celebration plays its sound unless it is turned off in Settings.
+            val soundOn = settings?.celebrationSound != false
+            val context = LocalContext.current
+            val celebrationSound: () -> CelebrationSound? =
+                remember(soundOn, context) { { if (soundOn) AndroidCelebrationSound(context) else null } }
             KestrelTheme(darkTheme = dark) {
-                KestrelShell(
-                    startStack = startStack,
-                    onFinishOnboarding = { lifecycleScope.launch { app.uiPreferences.markOnboardingDone() } },
-                    onExit = ::finish,
-                    incoming = requests,
-                    afterOnboarding = asked.takeIf { !done },
-                )
+                CompositionLocalProvider(LocalCelebrationSound provides celebrationSound) {
+                    KestrelShell(
+                        startStack = startStack,
+                        onFinishOnboarding = { lifecycleScope.launch { app.uiPreferences.markOnboardingDone() } },
+                        onExit = ::finish,
+                        incoming = requests,
+                        afterOnboarding = asked.takeIf { !done },
+                    )
+                }
             }
         }
     }

@@ -99,6 +99,9 @@ interface SettingsActions {
 
     /** "Buy me a coffee": opens the link, or says it isn't set up yet. */
     fun buyMeACoffee() {}
+
+    /** Turns the win celebration's sound on or off. */
+    fun setCelebrationSound(on: Boolean) {}
 }
 
 private const val ABOUT_ROWS = 5
@@ -181,7 +184,18 @@ fun SettingsScreen(
                         )
                     }
                     Section("This phone") { ReadyRow(state, actions) }
-                    Section("Appearance") { ThemeRow(state, actions) }
+                    Section("Appearance") {
+                        ThemeRow(state, actions)
+                        Gap()
+                        SwitchRow(
+                            title = "Sound for a win",
+                            detail = "The celebration’s bells and kestrel calls, at media volume",
+                            checked = state.celebrationSound,
+                            onCheckedChange = actions::setCelebrationSound,
+                            index = 1,
+                            count = 2,
+                        )
+                    }
                     Section("Help") {
                         LinkRow(
                             title = "How Kestrel bids",
@@ -359,7 +373,7 @@ private fun ThemeRow(
         onSelect = { actions.setTheme(modes[it]) },
         note = null,
         index = 0,
-        count = 1,
+        count = 2,
     )
 }
 

@@ -3,6 +3,7 @@ package app.kestrel.ui.celebration
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -12,6 +13,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -54,7 +56,7 @@ class WinCelebrationTest {
         // Small capitals are set in capitals.
         for (words in listOf(
             "PREVIEW",
-            "You won",
+            "What a catch!",
             "Your next win",
             "This plays the first time you open a win. Nothing was bid.",
         )) {
@@ -88,6 +90,83 @@ class WinCelebrationTest {
         }
         composeRule.onNodeWithText("Play again").performClick()
         composeRule.onNodeWithText("Done").assertExists()
+    }
+
+    @Test
+    fun aWinCheersInItsOwnWordsAroundThePlainFact() {
+        val state = fixture.canonWon.resultState()
+        val content = CelebrationContent.of(state)
+        assertTrue(content.headline in CelebrationContent.HEADLINES)
+        assertEquals("Won for £101.00", content.wonFor)
+        // eBay's timing line, retold: the figure and unit keep the app's narrow no-break space.
+        assertEquals("Struck 6.1\u202Fs before the end. It’s yours.", content.strikeLine)
+        composeRule.setContent {
+            ScreenshotSurface(darkTheme = false, time = "18:22", reduceMotion = true) {
+                WinCelebration(content, onDone = {}, windowInsets = PhoneInsets)
+            }
+        }
+        // The fact in the Won state's words, the cheer as the heading.
+        composeRule.onNodeWithText("YOU WON").assertExists()
+        composeRule.onNodeWithText(content.headline).assertExists()
+        composeRule.onNodeWithText("£19.00 under your £120.00 max").assertExists()
+        composeRule.onNodeWithText(content.strikeLine!!).assertExists()
+    }
+
+    @Test
+    fun theSoundPlaysWithTheSceneAndStopsWhenItIsSkipped() {
+        val sound = RecordingSound()
+        composeRule.mainClock.autoAdvance = false
+        composeRule.setContent {
+            ScreenshotSurface(darkTheme = false, time = "18:22") {
+                CompositionLocalProvider(LocalCelebrationSound provides { sound }) {
+                    WinCelebration(CelebrationContent.Preview, onDone = {}, windowInsets = PhoneInsets)
+                }
+            }
+        }
+        composeRule.mainClock.advanceTimeBy(500L)
+        assertEquals(1, sound.plays)
+        assertEquals(0, sound.stops)
+        composeRule.onNodeWithContentDescription(SCENE_WORDS, substring = true).performClick()
+        composeRule.mainClock.advanceTimeBy(100L)
+        assertTrue("skipping stops the sound", sound.stops >= 1)
+        assertEquals(1, sound.plays)
+    }
+
+    @Test
+    fun playAgainStartsAFreshSoundFromTheTop() {
+        val sounds = mutableListOf<RecordingSound>()
+        composeRule.setContent {
+            ScreenshotSurface(darkTheme = false, time = "18:22") {
+                CompositionLocalProvider(LocalCelebrationSound provides { RecordingSound().also { sounds += it } }) {
+                    WinCelebration(CelebrationContent.Preview, onDone = {}, windowInsets = PhoneInsets)
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Play again").performClick()
+        composeRule.waitForIdle()
+        assertEquals(2, sounds.size)
+        assertEquals(listOf(1, 1), sounds.map { it.plays })
+        assertTrue("the first run's sound is stopped", sounds.first().stops >= 1)
+    }
+
+    @Test
+    fun reducedMotionAndFixedFramesAreSilent() {
+        var made = 0
+        composeRule.setContent {
+            ScreenshotSurface(darkTheme = false, time = "18:22", reduceMotion = true) {
+                CompositionLocalProvider(
+                    LocalCelebrationSound provides {
+                        made++
+                        RecordingSound()
+                    },
+                ) {
+                    WinCelebration(CelebrationContent.Preview, onDone = {}, windowInsets = PhoneInsets)
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        assertEquals(0, made)
     }
 
     @Test
@@ -189,5 +268,23 @@ class WinCelebrationTest {
             "\"$text\" runs off the screen ($case): $bounds",
             bounds.left >= root.left - 0.5f && bounds.right <= root.right + 0.5f,
         )
+    }
+
+    private class RecordingSound : CelebrationSound {
+        var plays = 0
+        var stops = 0
+
+        override fun play() {
+            plays++
+        }
+
+        override fun stop() {
+            stops++
+        }
+    }
+
+    private companion object {
+        /** Part of the scene's spoken description, which is also its "skip" target. */
+        const val SCENE_WORDS = "A kestrel hovers in the wind"
     }
 }

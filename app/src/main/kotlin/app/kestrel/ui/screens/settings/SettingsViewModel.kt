@@ -66,6 +66,8 @@ data class SettingsUiState(
     /** "Suggest odd pence": S2 and the set-max sheets offer £90.37 for a round £90.00. */
     val suggestOddPence: Boolean = true,
     val themeMode: ThemeMode,
+    /** The win celebration's sound. */
+    val celebrationSound: Boolean = true,
     /** Null until the first readiness check finishes. */
     val readiness: PhoneReadiness?,
     /** "1.0 (1)" */
@@ -86,6 +88,8 @@ interface SettingsSources {
     suspend fun setDefaultLeadSeconds(seconds: Int)
 
     suspend fun setThemeMode(mode: ThemeMode)
+
+    suspend fun setCelebrationSound(on: Boolean) {}
 
     /** The screens' own choices: odd pence, and when the phone signed in. */
     fun uiPreferences(): Flow<UiPreferenceValues> = flowOf(UiPreferenceValues())
@@ -136,6 +140,7 @@ class SettingsViewModel(
                 defaultLeadSeconds = settings.defaultLeadSeconds,
                 suggestOddPence = ui.suggestOddPence,
                 themeMode = settings.themeMode,
+                celebrationSound = settings.celebrationSound,
                 readiness = phone,
                 version = version,
                 confirmingSignOut = dialogs.first,
@@ -183,6 +188,8 @@ class SettingsViewModel(
     fun setDefaultLead(seconds: Int) = launchStore { sources.setDefaultLeadSeconds(seconds) }
 
     fun setThemeMode(mode: ThemeMode) = launchStore { sources.setThemeMode(mode) }
+
+    fun setCelebrationSound(on: Boolean) = launchStore { sources.setCelebrationSound(on) }
 
     fun setSuggestOddPence(on: Boolean) = launchStore { sources.setSuggestOddPence(on) }
 
@@ -247,6 +254,8 @@ internal class ContainerSettingsSources(
     override suspend fun setDefaultLeadSeconds(seconds: Int) = container.settings.setDefaultLeadSeconds(seconds)
 
     override suspend fun setThemeMode(mode: ThemeMode) = container.settings.setThemeMode(mode)
+
+    override suspend fun setCelebrationSound(on: Boolean) = container.settings.setCelebrationSound(on)
 
     private val ui by lazy { UiPreferences.of(container.context) }
 

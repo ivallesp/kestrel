@@ -4,5 +4,6 @@ root = true
 ktlint_function_naming_ignore_when_annotated_with = Composable
 max_line_length = 120
 # Theme-scoped locals, provided once by KestrelTheme like MaterialTheme's own, plus the photo loader and the
-# shared-element scopes the app shell provides to each screen, and the sheets' bottom inset screenshot tests set.
-compose_allowed_composition_locals = LocalCatalogueColors,LocalStatusPalette,LocalCatalogueType,LocalReduceMotion,LocalDarkTheme,LocalLotPhotoLoader,LocalPlateTransition,LocalSheetInsets
+# shared-element scopes the app shell provides to each screen, the sheets' bottom inset screenshot tests set, and the
+# win celebration's sound, which the activity provides from Settings (silent everywhere else).
+compose_allowed_composition_locals = LocalCelebrationSound,LocalCatalogueColors,LocalStatusPalette,LocalCatalogueType,LocalReduceMotion,LocalDarkTheme,LocalLotPhotoLoader,LocalPlateTransition,LocalSheetInsets

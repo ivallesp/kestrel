@@ -9,8 +9,10 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import app.kestrel.ui.fixture.CatalogueFixture
 import app.kestrel.ui.harness.PhoneInsets
 import app.kestrel.ui.harness.ScreenshotSurface
+import app.kestrel.ui.screens.lot.LotFixtures.resultState
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
@@ -71,12 +73,6 @@ class CelebrationFrames {
     }
 
     private companion object {
-        val SAMPLE =
-            CelebrationContent(
-                title = "Canon AE-1 Program 35mm film camera with 50mm f/1.8 lens",
-                summary = "Won for £101.00 · £19.00 under your £120.00 max",
-                timing = "Sent 6.1 s before the end · reply in 0.8 s",
-                preview = false,
-            )
+        val SAMPLE = CelebrationContent.of(CatalogueFixture.canonWon.resultState())
     }
 }

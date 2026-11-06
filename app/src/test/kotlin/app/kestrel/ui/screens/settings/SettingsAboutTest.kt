@@ -25,6 +25,7 @@ class SettingsAboutTest {
 
     private var celebrations = 0
     private var coffees = 0
+    private val sounds = mutableListOf<Boolean>()
 
     private val actions =
         object : SettingsActions by NoSettingsActions {
@@ -34,6 +35,10 @@ class SettingsAboutTest {
 
             override fun buyMeACoffee() {
                 coffees++
+            }
+
+            override fun setCelebrationSound(on: Boolean) {
+                sounds += on
             }
         }
 
@@ -50,5 +55,16 @@ class SettingsAboutTest {
         composeRule.onNodeWithText("Buy me a coffee").performClick()
         assertEquals(1, celebrations)
         assertEquals(1, coffees)
+    }
+
+    @Test
+    fun appearanceTurnsTheCelebrationSoundOff() {
+        composeRule.setContent {
+            ScreenshotSurface(darkTheme = false, time = "18:08", reduceMotion = true) {
+                SettingsScreen(SettingsFixtures.signedIn, actions, windowInsets = PhoneInsets)
+            }
+        }
+        composeRule.onNodeWithText("Sound for a win").performScrollTo().performClick()
+        assertEquals(listOf(false), sounds)
     }
 }

@@ -80,6 +80,8 @@ fun SettingsDestination(
 
                 override fun openCelebration() = navigator.open(Destination.Celebration)
 
+                override fun setCelebrationSound(on: Boolean) = viewModel.setCelebrationSound(on)
+
                 override fun buyMeACoffee() {
                     if (!CoffeeLink.open(context)) {
                         scope.launch { snackbarHostState.show(ShellMessage(CoffeeLink.PLACEHOLDER)) }

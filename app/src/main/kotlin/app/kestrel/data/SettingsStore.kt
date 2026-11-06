@@ -28,6 +28,8 @@ data class Settings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val pureBlack: Boolean = false,
     val haptics: Boolean = true,
+    /** The win celebration's sound, at media volume. */
+    val celebrationSound: Boolean = true,
     /** The eBay user name shown in the app after sign-in; null when signed out. */
     val signedInName: String? = null,
 ) {
@@ -76,6 +78,10 @@ class SettingsStore(
         dataStore.edit { it[Keys.HAPTICS] = enabled }
     }
 
+    suspend fun setCelebrationSound(enabled: Boolean) {
+        dataStore.edit { it[Keys.CELEBRATION_SOUND] = enabled }
+    }
+
     /** Null or blank clears the name (signed out). */
     suspend fun setSignedInName(name: String?) {
         dataStore.edit { preferences ->
@@ -103,6 +109,7 @@ class SettingsStore(
             themeMode = ThemeMode.entries.firstOrNull { it.name == this[Keys.THEME_MODE] } ?: defaults.themeMode,
             pureBlack = this[Keys.PURE_BLACK] ?: defaults.pureBlack,
             haptics = this[Keys.HAPTICS] ?: defaults.haptics,
+            celebrationSound = this[Keys.CELEBRATION_SOUND] ?: defaults.celebrationSound,
             signedInName = this[Keys.SIGNED_IN_NAME],
         )
     }
@@ -113,6 +120,7 @@ class SettingsStore(
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val PURE_BLACK = booleanPreferencesKey("pure_black")
         val HAPTICS = booleanPreferencesKey("haptics")
+        val CELEBRATION_SOUND = booleanPreferencesKey("celebration_sound")
         val SIGNED_IN_NAME = stringPreferencesKey("signed_in_name")
     }
 

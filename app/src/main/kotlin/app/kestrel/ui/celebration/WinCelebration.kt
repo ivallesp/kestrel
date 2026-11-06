@@ -31,6 +31,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -77,35 +78,59 @@ import app.kestrel.ui.theme.KestrelTheme
 import app.kestrel.ui.theme.Spacing
 import kotlinx.coroutines.flow.first
 import kotlin.math.PI
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
-/** What the celebration says under the scene: a won lot's own facts, or the preview's explanation. */
+/**
+ * What the celebration says under the scene. The plain fact stays plain ("YOU WON", in the Won state's colours), and
+ * the words around it cheer: a [headline] that lands with the strike ("What a catch!"), the money, and a [strikeLine]
+ * that comes with the mantle. The preview explains itself instead.
+ */
 @Immutable
 data class CelebrationContent(
     val title: String,
-    val summary: String?,
-    val timing: String?,
+    val headline: String,
+    val wonFor: String?,
+    val under: String?,
+    val strikeLine: String?,
     val preview: Boolean,
 ) {
     companion object {
+        /** Said with the strike, in the bird's terms. Declared first: the preview below uses it. */
+        val HEADLINES = listOf("What a catch!", "Clean strike!", "Snatched it!", "Bagged it!")
+
         /** From Settings: no snipe, no money, nothing bid; it only shows what a win looks like. */
         val Preview =
             CelebrationContent(
                 title = "Your next win",
-                summary = null,
-                timing = null,
+                headline = HEADLINES.first(),
+                wonFor = null,
+                under = null,
+                strikeLine = PREVIEW_NOTE,
                 preview = true,
             )
 
-        /** A verified win's result: "Won for £101.00 · £19.00 under your £120.00 max" and eBay's timing line. */
+        /**
+         * A verified win: its title, "Won for £101.00", "£19.00 under your £120.00 max" and, from eBay's timing line
+         * ("Sent 6.1 s before the end · reply in 0.8 s"), "Struck 6.1 s before the end. It’s yours." Each win keeps
+         * its own headline.
+         */
         fun of(state: ResultUiState): CelebrationContent {
             val paid = state.paid
-            val summary =
-                paid?.let {
-                    val under = listOfNotNull(it.under, it.maxLine).joinToString(" ").ifEmpty { null }
-                    listOfNotNull("Won for ${it.wonFor}", under).joinToString(" · ")
-                }
-            return CelebrationContent(state.title, summary, state.quote?.timing, preview = false)
+            val lead =
+                state.quote
+                    ?.timing
+                    ?.takeIf { it.startsWith("Sent ") }
+                    ?.removePrefix("Sent ")
+                    ?.substringBefore(" · ")
+            return CelebrationContent(
+                title = state.title,
+                headline = HEADLINES[Math.floorMod(state.id, HEADLINES.size.toLong()).toInt()],
+                wonFor = paid?.wonFor?.let { "Won for $it" },
+                under = paid?.let { listOfNotNull(it.under, it.maxLine).joinToString(" ").ifEmpty { null } },
+                strikeLine = lead?.let { "Struck $it. It’s yours." } ?: "It’s yours.",
+                preview = false,
+            )
         }
     }
 }
@@ -147,9 +172,15 @@ fun WinCelebration(
     val clock = remember(run) { mutableLongStateOf(frameMillis ?: if (reduceMotion) CelebrationTimeline.END else 0L) }
     val playing = frameMillis == null && !reduceMotion
     val haptics = LocalHapticFeedback.current
+    val makeSound = LocalCelebrationSound.current
+    // One track per run, timed to the scene: it starts on the first frame and stops when the scene is skipped,
+    // closed or played again.
+    val sound = remember(run) { if (playing) makeSound() else null }
+    DisposableEffect(sound) { onDispose { sound?.stop() } }
     if (playing) {
         LaunchedEffect(run) {
             val start = withFrameMillis { it }
+            sound?.play()
             while (clock.longValue < CelebrationTimeline.END) {
                 withFrameMillis { frame -> clock.longValue = (frame - start).coerceAtMost(CelebrationTimeline.END) }
             }
@@ -184,6 +215,7 @@ fun WinCelebration(
                                     .fillMaxSize()
                                     .clickable(enabled = playing, onClickLabel = "Skip to the end") {
                                         clock.longValue = CelebrationTimeline.END
+                                        sound?.stop()
                                     }.semantics { contentDescription = SCENE_DESCRIPTION },
                         )
                         IconButton(
@@ -256,6 +288,7 @@ private fun CelebrationSheet(
     windowInsets: WindowInsets,
 ) {
     val inkSoft = MaterialTheme.colorScheme.onSurfaceVariant
+    val typography = MaterialTheme.typography
     Column(
         Modifier
             .fillMaxWidth()
@@ -269,18 +302,29 @@ private fun CelebrationSheet(
             .windowInsetsPadding(windowInsets.only(WindowInsetsSides.Horizontal))
             .padding(start = Spacing.ColumnA, end = Spacing.ColumnA, top = 24.dp, bottom = Spacing.Large),
     ) {
-        // The words come in three beats: the lot as the bird hovers, the price as it strikes, the coffee at the end.
+        // The words come in beats with the scene: the win as the bird hovers, the cheer with the strike, the money
+        // after it, and the strike line with the mantle.
         Column(Modifier.reveal(time, CelebrationTimeline.TITLE_FROM)) {
             if (content.preview) {
                 SmallCaps("Preview")
-                Spacer(Modifier.height(4.dp))
+            } else {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    SymbolIcon(Symbols.Trophy, tint = KestrelTheme.status.won.accent, size = 18.dp)
+                    SmallCaps("You won", color = KestrelTheme.status.won.accent)
+                }
             }
-            Text(
-                "You won",
-                style = MaterialTheme.typography.displaySmall,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.cheer(time).semantics { heading() },
-            )
+        }
+        Spacer(Modifier.height(2.dp))
+        Text(
+            content.headline,
+            style = MaterialTheme.typography.displayMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.unfold(time, CelebrationTimeline.STRIKE).cheer(time).semantics { heading() },
+        )
+        Column(Modifier.reveal(time, CelebrationTimeline.TITLE_FROM)) {
             Spacer(Modifier.height(2.dp))
             Text(
                 content.title,
@@ -291,17 +335,28 @@ private fun CelebrationSheet(
             )
         }
         Column(Modifier.reveal(time, CelebrationTimeline.LABEL_FROM)) {
-            content.summary?.let {
-                Spacer(Modifier.height(8.dp))
-                Text(it, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground)
+            content.wonFor?.let {
+                Spacer(Modifier.height(10.dp))
+                Text(it, style = KestrelTheme.type.priceRow, color = MaterialTheme.colorScheme.onBackground)
             }
-            content.timing?.let {
+            content.under?.let {
                 Spacer(Modifier.height(2.dp))
-                Text(it, style = MaterialTheme.typography.bodyMedium, color = inkSoft)
+                Text(
+                    it,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = KestrelTheme.status.won.accent,
+                )
             }
-            if (content.preview) {
+        }
+        content.strikeLine?.let {
+            val from = if (content.preview) CelebrationTimeline.TITLE_FROM else CelebrationTimeline.MANTLE_FROM
+            Column(Modifier.reveal(time, from)) {
                 Spacer(Modifier.height(8.dp))
-                Text(PREVIEW_NOTE, style = MaterialTheme.typography.bodyMedium, color = inkSoft)
+                Text(
+                    it,
+                    style = if (content.preview) typography.bodyMedium else typography.titleMedium,
+                    color = if (content.preview) inkSoft else MaterialTheme.colorScheme.onBackground,
+                )
             }
         }
         Spacer(Modifier.height(20.dp))
@@ -399,25 +454,37 @@ private fun Modifier.reveal(
         translationY = (1f - p) * 16.dp.toPx()
     }
 
-/** "You won" jumps once as the talons close, and once more as the kestrel throws its wings up. */
+/**
+ * The headline lands with the strike: it pops in from small with an overshoot, and jumps once more as the kestrel
+ * throws its wings up. Before the strike it is not there yet (its place is kept, so nothing below moves).
+ */
 private fun Modifier.cheer(time: () -> Long): Modifier =
     graphicsLayer {
-        val strike =
-            CelebrationTimeline.progress(
-                time(),
-                CelebrationTimeline.STRIKE,
-                CelebrationTimeline.STRIKE + CHEER_MILLIS,
-            )
-        val mantle =
-            CelebrationTimeline.progress(
-                time(),
-                CelebrationTimeline.MANTLE_FROM,
-                CelebrationTimeline.MANTLE_FROM + CHEER_MILLIS,
-            )
-        val jump = 0.07f * sin(PI.toFloat() * strike) + 0.05f * sin(PI.toFloat() * mantle)
-        scaleX = 1f + jump
-        scaleY = 1f + jump
-        transformOrigin = TransformOrigin(0f, 1f)
+        val now = time()
+        val strike = CelebrationTimeline.STRIKE
+        val mantleFrom = CelebrationTimeline.MANTLE_FROM
+        val pop = CelebrationTimeline.progress(now, strike, strike + CHEER_MILLIS)
+        val mantle = CelebrationTimeline.progress(now, mantleFrom, mantleFrom + CHEER_MILLIS)
+        val scale = (0.55f + 0.45f * easeOutBack(pop)) * (1f + 0.07f * sin(PI.toFloat() * mantle))
+        // It shows once its slot has mostly opened, so it never lies over the title below while it unfolds.
+        alpha = CelebrationTimeline.progress(now, strike + APPEAR_FROM_MILLIS, strike + APPEAR_TO_MILLIS)
+        scaleX = scale
+        scaleY = scale
+        transformOrigin = TransformOrigin(0f, 0.7f)
+    }
+
+/**
+ * Takes no room until [from], then opens to its full height over [UNFOLD_MILLIS], so the headline arrives with the
+ * strike and nudges the words below it down once, instead of leaving a gap for them to wait under.
+ */
+private fun Modifier.unfold(
+    time: () -> Long,
+    from: Long,
+): Modifier =
+    layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        val open = easeOut(CelebrationTimeline.progress(time(), from, from + UNFOLD_MILLIS))
+        layout(placeable.width, (placeable.height * open).roundToInt()) { placeable.place(0, 0) }
     }
 
 /** Ink on the morning sky, paper on the dusk sky: the close button sits on the scene. */
@@ -428,7 +495,10 @@ private const val LARGE_TEXT = 1.3f
 private const val REVEAL_MILLIS = 600L
 private val SHEET_OVERLAP = 28.dp
 private const val TAG_WORD = "WON"
-private const val CHEER_MILLIS = 520L
+private const val CHEER_MILLIS = 560L
+private const val UNFOLD_MILLIS = 260L
+private const val APPEAR_FROM_MILLIS = 150L
+private const val APPEAR_TO_MILLIS = 330L
 private val CALL_WORDS = listOf("kee", "kee", "kee!")
 
 private const val SCENE_DESCRIPTION =

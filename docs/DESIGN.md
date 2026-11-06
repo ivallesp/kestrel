@@ -656,9 +656,18 @@ once and never loops, so P5 holds everywhere else).
   an overshoot); nine kestrel feathers drift down and rest in the grass. Then it folds its wings, settles and bobs
   its head once. "You won" jumps once at the strike and once at the mantle. A firm haptic tick at the strike and a
   light one for each "kee". 7.4 s in all; nothing loops and the last frame keeps the flowers, rays and feathers.
-- **Page** (rises over the scene's lower edge, 28 dp corners): "You won" in displaySmall and the title (lotTitle, two
-  lines) from 0.3 s; "Won for £101.00 · £19.00 under your £120.00 max" and eBay's timing line after the strike; the
-  coffee note at 6.3 s, once the celebration settles. The preview shows PREVIEW and "This plays the first time you open a win. Nothing was bid."
+- **Page** (rises over the scene's lower edge, 28 dp corners), in beats with the scene (more festive words asked for
+  on 6 Nov): from 0.3 s, trophy and "YOU WON" in the Won accent (the plain fact) over the title (lotTitle, two lines);
+  at the strike a cheer in displayMedium unfolds above the title with an overshoot ("What a catch!", "Clean
+  strike!", "Snatched it!" or "Bagged it!", one per lot) and jumps again at the mantle; then "Won for £101.00" in
+  priceRow and "£19.00 under your £120.00 max" in titleMedium bold, Won accent; at the mantle "Struck 6.1 s before
+  the end. It's yours." in titleMedium; the coffee note at 6.3 s, once the celebration settles.
+- **Sound** (asked for on 6 Nov): one 7.4 s track, res/raw/celebration.wav, synthesised by
+  tools/sound/celebration_sound.py from sine waves and noise (no third-party audio), timed to the scene: wind and
+  hover wingbeats, a fold, a rising whoosh, a thump and a bell at the strike, deeper wingbeats, a knock on the post,
+  a five-bell arpeggio and three "kee" calls with the mantle, a pluck per flower and a warm chord that fades. It
+  plays at media volume and ducks other audio; reduced motion, skipping and closing silence it. Settings >
+  Appearance > "Sound for a win" turns it off. The preview shows PREVIEW and "This plays the first time you open a win. Nothing was bid."
 - **Coffee note** (card colour, 16 dp): coffee glyph and "NO ADS · NO FEES", then "Kestrel hunts for you alone: no ads,
   no fees, nothing sold. If it caught you a good one, you can buy me a coffee.", a tonal "Buy me a coffee" and "Link
   coming soon". There is no link yet (`CoffeeLink.url` is null): the button says "Not set up yet: there's no link to
@@ -1270,7 +1279,8 @@ Opened from the S1 account button.
    - "Price passed your max" / "One alert per listing when the price goes past your max", with a Switch, shown on and disabled until the alerts can be turned off;
    - "Notification settings" / "Live Updates, sounds and lock screen", with a chevron to the system page.
 5. **"THIS PHONE":** "Phone checks", whose StateLabel reads "1 thing needs attention" (or "All checks passed at 18:06"). It opens S5 ("This phone").
-6. **"APPEARANCE":** "Theme", with connected toggles System / Light / Dark.
+6. **"APPEARANCE":** "Theme", with connected toggles System / Light / Dark; "Sound for a win" / "The celebration's
+   bells and kestrel calls, at media volume", with a Switch (3.21).
 7. **"HELP":** "How Kestrel bids" (a sheet: one bid at the end, a dry run first, you stay in charge, from this phone) and eBay's own words on sniping as a pull-quote.
 8. **"ABOUT":**
    - "Kestrel 1.0 (1)" / "Kestrel isn't made by or affiliated with eBay.";
