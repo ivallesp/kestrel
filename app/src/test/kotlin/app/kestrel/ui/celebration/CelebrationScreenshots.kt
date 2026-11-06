@@ -30,6 +30,12 @@ class CelebrationScreenshots : ScreenshotTest() {
     fun carryLight() = frame("celebration-carry", 3_900L)
 
     @Test
+    fun mantleLight() = frame("celebration-mantle", 5_400L)
+
+    @Test
+    fun mantleDark() = frame("celebration-mantle", 5_400L, darkTheme = true)
+
+    @Test
     fun endLight() = frame("celebration-end", CelebrationTimeline.END)
 
     @Test

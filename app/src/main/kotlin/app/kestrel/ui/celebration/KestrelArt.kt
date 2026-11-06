@@ -60,6 +60,7 @@ internal data class BirdPose(
     val bob: Float = 0f,
     val headTurn: Float = 0f,
     val fold: Float = 0f,
+    val farWingAngle: Float? = null,
 ) {
     /** Turning, the bird narrows to a sliver and comes back the other way, never to nothing. */
     val drawnFacing: Float get() = if (facing < 0f) minOf(facing, -MIN_FACING) else maxOf(facing, MIN_FACING)
@@ -284,7 +285,15 @@ private fun DrawScope.drawWing(
     near: Boolean,
 ) {
     // Folded, both wings lie along the flank and the far one hides behind the near one.
-    val angle = pose.wingAngle + if (near) 0f else lerp(-12f, -2f, pose.fold)
+    val angle =
+        when {
+            near -> pose.wingAngle
+
+            // Spread, the far wing shows on the other side of the body: both wings up, a V over the prize.
+            pose.farWingAngle != null -> pose.farWingAngle
+
+            else -> pose.wingAngle + lerp(-12f, -2f, pose.fold)
+        }
     val s = 47f * pose.wingSpan * if (near) 1f else 0.93f
     val c = 15f * pose.wingChord * if (near) 1f else 0.9f
     val root =

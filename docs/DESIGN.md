@@ -308,7 +308,7 @@ Emphasized variants add 100 weight: serif 400 to 500 and 500 to 600; sans 400 to
 | List insert, remove, reorder | `Modifier.animateItem` | fade-in defaultEffectsSpec, placement defaultSpatialSpec, fade-out fastEffectsSpec |
 | Final-minute wave | amplitude 0 to full at 60 s left; waveSpeed = wavelength / 2 per second; progress steps once a second; amplitude goes to 0 at Bid sent | amplitude slowEffectsSpec, flattening defaultEffectsSpec; progress `ProgressIndicatorDefaults.ProgressAnimationSpec` |
 | WON seal | stamps once: scale 1.15 to 1, rotation -16° to -10°, alpha 0 to 1. Plays on the first open only (persist `sealShown`). | defaultSpatialSpec; alpha fastEffectsSpec |
-| Win celebration (3.21) | one 6 s scene on the first open of a win, then the seal stamps; tap skips to the end; the Settings preview can play again | frame clock, scene drawn per frame; words fade in and rise 16 dp over 600 ms |
+| Win celebration (3.21) | one 7.4 s scene on the first open of a win, then the seal stamps; tap skips to the end; the Settings preview can play again | frame clock, scene drawn per frame; words fade in and rise 16 dp over 600 ms |
 | Lost and failed results | content fades in, nothing moves | defaultEffectsSpec |
 | Split-button chevron | rotates 180° while the menu is open | fastSpatialSpec |
 | Buttons, toggles, segments | built-in shape morphs | defaults |
@@ -648,11 +648,17 @@ once and never loops, so P5 holds everywhere else).
 - **Scene** (top 47 % of the screen, 38 % at text scale above 1.3; drawn, not a photo): a morning sky (dusk in the
   dark theme), sun, hills, a fence and a lot tag in the grass. The launcher icon's kestrel hovers with its head
   perfectly still while its body rides the wingbeats (the bird's own trick and Kestrel's: wait, then strike at the
-  last moment), folds and stoops onto the tag, carries it up, turns and lands on the post, turns round on it and
-  bobs its head once. One haptic tick as the talons close. 6 s in all.
+  last moment), folds and stoops onto the tag, carries it up, turns and lands on the post and turns round on it.
+- **The celebration** (added on 6 Nov when the owner asked for more): on the post the kestrel throws its wings up over
+  its prize in a V (a raptor's mantle, with a little overshoot and a shiver) and calls "kee", "kee", "kee!" in serif
+  italic rising from the beak; the sun breaks into 18 rays that turn a few degrees once and soften but stay; the
+  meadow blooms in a wave from the post outwards (30 poppies, cornflowers, daisies and buttercups, each opening with
+  an overshoot); nine kestrel feathers drift down and rest in the grass. Then it folds its wings, settles and bobs
+  its head once. "You won" jumps once at the strike and once at the mantle. A firm haptic tick at the strike and a
+  light one for each "kee". 7.4 s in all; nothing loops and the last frame keeps the flowers, rays and feathers.
 - **Page** (rises over the scene's lower edge, 28 dp corners): "You won" in displaySmall and the title (lotTitle, two
   lines) from 0.3 s; "Won for £101.00 · £19.00 under your £120.00 max" and eBay's timing line after the strike; the
-  coffee note at 4.8 s. The preview shows PREVIEW and "This plays the first time you open a win. Nothing was bid."
+  coffee note at 6.3 s, once the celebration settles. The preview shows PREVIEW and "This plays the first time you open a win. Nothing was bid."
 - **Coffee note** (card colour, 16 dp): coffee glyph and "NO ADS · NO FEES", then "Kestrel hunts for you alone: no ads,
   no fees, nothing sold. If it caught you a good one, you can buy me a coffee.", a tonal "Buy me a coffee" and "Link
   coming soon". There is no link yet (`CoffeeLink.url` is null): the button says "Not set up yet: there's no link to

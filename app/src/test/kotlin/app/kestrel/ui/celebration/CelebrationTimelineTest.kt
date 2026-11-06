@@ -86,10 +86,43 @@ class CelebrationTimelineTest {
     }
 
     @Test
+    fun theMeadowBloomsAfterTheLandingAndIsInFlowerAtTheEnd() {
+        assertTrue(layout.flowers.size >= 20)
+        for (flower in layout.flowers) {
+            assertTrue(flower.bloomAt >= CelebrationTimeline.PERCH)
+            assertTrue(flower.bloomAt + CelebrationTimeline.BLOOM_MILLIS <= CelebrationTimeline.END)
+            // Above the page's edge, so every flower is seen.
+            assertTrue(flower.at.y < size.height * 0.94f)
+        }
+    }
+
+    @Test
+    fun everyFeatherComesToRestInTheGrassBeforeTheEnd() {
+        for (feather in layout.feathers) {
+            assertTrue(feather.from >= CelebrationTimeline.MANTLE_FROM)
+            assertEquals(null, feather.at(feather.from - 1L))
+            assertTrue((feather.at(CelebrationTimeline.END)!!.first - feather.rest).getDistance() < 0.01f)
+            assertTrue(feather.from + feather.fallMillis <= CelebrationTimeline.END)
+        }
+    }
+
+    @Test
+    fun theKestrelCallsWithItsWingsUpAndIsQuietAtTheEnd() {
+        for (call in CelebrationTimeline.CALLS) {
+            assertTrue(call in CelebrationTimeline.MANTLE_FROM..CelebrationTimeline.MANTLE_HOLD_TO)
+        }
+        assertTrue(CelebrationTimeline.calls(CelebrationTimeline.END).all { it == null })
+        assertTrue(CelebrationTimeline.calls(CelebrationTimeline.CALLS.first()).first() != null)
+        // At the peak the wings are a V: the far wing forward of the body, the near one over the back.
+        val peak = CelebrationTimeline.bird(CelebrationTimeline.MANTLE_PEAK, size)
+        assertTrue(peak.farWingAngle!! > 0f && peak.wingAngle < -30f)
+    }
+
+    @Test
     fun theWordsComeAfterTheirMoments() {
         assertTrue(CelebrationTimeline.TITLE_FROM < CelebrationTimeline.STRIKE)
         assertTrue(CelebrationTimeline.LABEL_FROM > CelebrationTimeline.STRIKE)
-        assertTrue(CelebrationTimeline.COFFEE_FROM > CelebrationTimeline.PERCH)
+        assertTrue(CelebrationTimeline.COFFEE_FROM > CelebrationTimeline.MANTLE_HOLD_TO)
         assertTrue(CelebrationTimeline.COFFEE_FROM + 600L <= CelebrationTimeline.END)
     }
 }

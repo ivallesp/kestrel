@@ -47,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.layout
@@ -57,6 +58,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -73,6 +76,8 @@ import app.kestrel.ui.shell.KestrelNavigator
 import app.kestrel.ui.theme.KestrelTheme
 import app.kestrel.ui.theme.Spacing
 import kotlinx.coroutines.flow.first
+import kotlin.math.PI
+import kotlin.math.sin
 
 /** What the celebration says under the scene: a won lot's own facts, or the preview's explanation. */
 @Immutable
@@ -125,7 +130,7 @@ object CoffeeLink {
 
 /**
  * The win celebration, full screen over the result: the kestrel's scene above, the won lot and the coffee note on
- * the page below. It plays once (about six seconds), a tap on the scene skips to the end, and with reduced motion it
+ * the page below. It plays once (about seven seconds), a tap on the scene skips to the end, and with reduced motion it
  * opens on the last frame. [frameMillis] fixes the moment, for screenshots and tests. The preview ([content] from
  * [CelebrationContent.Preview]) can play again; it never touches a snipe.
  */
@@ -150,9 +155,16 @@ fun WinCelebration(
             }
         }
         LaunchedEffect(run) {
-            // One tick as the talons close on the tag; a skipped celebration has nothing to feel.
+            // A firm tick as the talons close on the tag, and a light one for each "kee" of the call. A skipped
+            // celebration has nothing to feel.
             snapshotFlow { clock.longValue }.first { it >= CelebrationTimeline.STRIKE }
-            if (clock.longValue < CelebrationTimeline.END) haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+            if (clock.longValue >= CelebrationTimeline.END) return@LaunchedEffect
+            haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+            for (call in CelebrationTimeline.CALLS) {
+                snapshotFlow { clock.longValue }.first { it >= call }
+                if (clock.longValue >= CelebrationTimeline.END) return@LaunchedEffect
+                haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+            }
         }
     }
     // A fixed frame is read as it is; a playing one from the clock, in the draw and layer phases only.
@@ -212,6 +224,7 @@ internal fun CelebrationBand(
     val palette = if (KestrelTheme.isDark) ScenePalette.Dusk else ScenePalette.Morning
     val measurer = rememberTextMeasurer()
     val tagStyle = KestrelTheme.type.smallCaps
+    val callStyle = MaterialTheme.typography.displaySmall
     Box(
         modifier.drawWithCache {
             val unit = SceneLayout(size).unit
@@ -223,7 +236,15 @@ internal fun CelebrationBand(
                     letterSpacing = tagStyle.letterSpacing,
                 )
             val word = measurer.measure(TAG_WORD, style.copy(fontSize = (4.6f * unit).toSp()))
-            onDrawBehind { drawCelebrationScene(time(), palette, word) }
+            val call =
+                TextStyle(
+                    fontFamily = callStyle.fontFamily,
+                    fontWeight = FontWeight.Medium,
+                    fontStyle = FontStyle.Italic,
+                    fontSize = (11f * unit).toSp(),
+                )
+            val calls = CALL_WORDS.map { measurer.measure(it, call) }
+            onDrawBehind { drawCelebrationScene(time(), palette, SceneWords(word, calls)) }
         },
     )
 }
@@ -258,7 +279,7 @@ private fun CelebrationSheet(
                 "You won",
                 style = MaterialTheme.typography.displaySmall,
                 color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.semantics { heading() },
+                modifier = Modifier.cheer(time).semantics { heading() },
             )
             Spacer(Modifier.height(2.dp))
             Text(
@@ -378,6 +399,27 @@ private fun Modifier.reveal(
         translationY = (1f - p) * 16.dp.toPx()
     }
 
+/** "You won" jumps once as the talons close, and once more as the kestrel throws its wings up. */
+private fun Modifier.cheer(time: () -> Long): Modifier =
+    graphicsLayer {
+        val strike =
+            CelebrationTimeline.progress(
+                time(),
+                CelebrationTimeline.STRIKE,
+                CelebrationTimeline.STRIKE + CHEER_MILLIS,
+            )
+        val mantle =
+            CelebrationTimeline.progress(
+                time(),
+                CelebrationTimeline.MANTLE_FROM,
+                CelebrationTimeline.MANTLE_FROM + CHEER_MILLIS,
+            )
+        val jump = 0.07f * sin(PI.toFloat() * strike) + 0.05f * sin(PI.toFloat() * mantle)
+        scaleX = 1f + jump
+        scaleY = 1f + jump
+        transformOrigin = TransformOrigin(0f, 1f)
+    }
+
 /** Ink on the morning sky, paper on the dusk sky: the close button sits on the scene. */
 @Composable
 private fun sceneInk(): Color = if (KestrelTheme.isDark) Color(0xFFEDE6D9) else Color(0xFF1E1B16)
@@ -386,9 +428,12 @@ private const val LARGE_TEXT = 1.3f
 private const val REVEAL_MILLIS = 600L
 private val SHEET_OVERLAP = 28.dp
 private const val TAG_WORD = "WON"
+private const val CHEER_MILLIS = 520L
+private val CALL_WORDS = listOf("kee", "kee", "kee!")
 
 private const val SCENE_DESCRIPTION =
-    "A kestrel hovers in the wind, dives onto your lot’s tag in the grass and carries it to a fence post."
+    "A kestrel hovers in the wind, dives onto your lot’s tag in the grass and carries it to a fence post. There it " +
+        "spreads its wings and calls, the sun breaks into rays and the meadow blooms."
 
 private const val PREVIEW_NOTE = "This plays the first time you open a win. Nothing was bid."
 

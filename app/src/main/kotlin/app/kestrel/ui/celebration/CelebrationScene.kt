@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.drawText
@@ -22,8 +23,10 @@ import kotlin.math.sin
 /**
  * The win's story, as a pure function of time so every frame can be drawn and tested on its own. A kestrel hangs in
  * the wind with its head perfectly still (the bird's own trick, and Kestrel's: wait, then strike at the last moment),
- * folds and stoops onto the lot's tag in the grass, carries it up, turns and lands on a fence post, and looks round.
- * It plays once; nothing loops.
+ * folds and stoops onto the lot's tag in the grass, carries it up, turns and lands on a fence post. Then the
+ * celebration: it turns round, throws its wings up over its prize (a raptor's mantle) and calls "kee-kee-kee", the sun
+ * breaks into rays, the meadow blooms from the post outwards and a few feathers drift down. It settles and looks
+ * round. It plays once; nothing loops, and the last frame stays festive.
  */
 internal object CelebrationTimeline {
     const val HOVER_FROM = 0L
@@ -38,15 +41,27 @@ internal object CelebrationTimeline {
     const val LAND_FROM = 4_380L
     const val PERCH = 4_620L
     const val TURN_ROUND_TO = 4_900L
-    const val SETTLED = 5_100L
-    const val LOOK_FROM = 5_300L
-    const val LOOK_TO = 5_900L
+    const val MANTLE_FROM = 4_900L
+    const val MANTLE_PEAK = 5_250L
+    const val MANTLE_HOLD_TO = 5_850L
+    const val SETTLED = 6_350L
+    const val LOOK_FROM = 6_550L
+    const val LOOK_TO = 7_050L
+
+    /** The festivities, timed to the mantle: the call, the sun's rays, the meadow's bloom and the feathers. */
+    val CALLS = listOf(5_000L, 5_260L, 5_520L)
+    const val CALL_MILLIS = 760L
+    const val SUNBURST_FROM = 4_950L
+    const val BLOOM_FROM = 5_000L
+    const val BLOOM_SPREAD = 900L
+    const val BLOOM_MILLIS = 420L
+    const val FEATHERS_FROM = 5_150L
 
     /** Under the scene: the lot as the bird hovers, the price after the strike, and the coffee note at the end. */
     const val TITLE_FROM = 300L
     const val LABEL_FROM = 3_200L
-    const val COFFEE_FROM = 4_800L
-    const val END = 6_000L
+    const val COFFEE_FROM = 6_300L
+    const val END = 7_400L
 
     /** Beats per second while hovering and while climbing with the lot. */
     private const val HOVER_BEATS = 7.5f
@@ -57,6 +72,12 @@ internal object CelebrationTimeline {
         from: Long,
         to: Long,
     ): Float = ((timeMillis - from).toFloat() / (to - from)).coerceIn(0f, 1f)
+
+    fun progress(
+        value: Float,
+        from: Float,
+        to: Float,
+    ): Float = ((value - from) / (to - from)).coerceIn(0f, 1f)
 
     /** The bird at [timeMillis] in a scene of [size]. */
     fun bird(
@@ -184,29 +205,53 @@ internal object CelebrationTimeline {
             }
 
             else -> {
-                val settle = easeOut(progress(t, PERCH, SETTLED))
                 val turnRound = easeInOut(progress(t, PERCH, TURN_ROUND_TO))
-                val look = progress(t, LOOK_FROM, LOOK_TO)
                 val facing = lerp(-1f, 1f, turnRound)
+                // Wings thrown up over the prize with a little overshoot, held with a shiver, then folded away.
+                val mantle = easeOutBack(progress(t, MANTLE_FROM, MANTLE_PEAK))
+                val release = easeInOut(progress(t, MANTLE_HOLD_TO, SETTLED))
+                val spread = mantle * (1f - release)
+                val held = progress(t, MANTLE_PEAK, MANTLE_HOLD_TO)
+                val shiver =
+                    if (t in
+                        MANTLE_PEAK..MANTLE_HOLD_TO
+                    ) {
+                        5f * sin(2f * PI.toFloat() * 7f * held * 0.6f) * (1f - held)
+                    } else {
+                        0f
+                    }
+                val look = progress(t, LOOK_FROM, LOOK_TO)
+                val pitch = -76f - 5f * spread
+                val near = lerp(lerp(-100f, -52f, mantle) + shiver, -182f, release)
+                val far = lerp(lerp(-112f, 34f, mantle) - shiver, -184f, release)
                 BirdPose(
-                    // The feet stay on the post while the bird turns round on them.
-                    position = layout.perchOrigin(facing),
+                    // The feet stay on the post while the bird turns round and spreads its wings on them.
+                    position = layout.perchOrigin(facing, pitch),
                     unit = unit,
                     facing = facing,
-                    pitch = -76f,
-                    wingAngle = lerp(-100f, 178f, settle),
-                    wingSpan = lerp(0.8f, 0.74f, settle),
-                    wingChord = lerp(1f, 0.72f, settle),
-                    tailFan = lerp(1f, 0f, settle),
+                    pitch = pitch,
+                    wingAngle = near,
+                    farWingAngle = far,
+                    wingSpan = lerp(lerp(0.8f, 1.15f, mantle.coerceAtMost(1f)), 0.74f, release),
+                    wingChord = lerp(1f, 0.72f, release),
+                    tailFan = 1f - release,
                     legs = 1f,
-                    legAngle = 76f,
-                    // Level, then one curious bob of the head, as kestrels do, and back.
-                    headTurn = 76f + 16f * sin(PI.toFloat() * look),
-                    fold = settle,
+                    // Legs straight down whatever the body's lean.
+                    legAngle = -pitch,
+                    // Beak up to call, then level, then one curious bob of the head, as kestrels do.
+                    headTurn = -pitch - 20f * spread + 16f * sin(PI.toFloat() * look),
+                    fold = release,
                 )
             }
         }
     }
+
+    /** How far each call ("kee", "kee", "kee!") has risen from the beak (0 to 1), or null when it is not showing. */
+    fun calls(timeMillis: Long): List<Float?> =
+        CALLS.map { at ->
+            val p = progress(timeMillis, at, at + CALL_MILLIS)
+            p.takeIf { timeMillis >= at && it < 1f }
+        }
 
     /** The tag: where its string is tied and how far it swings from hanging straight down (degrees). */
     fun tag(
@@ -221,9 +266,40 @@ internal object CelebrationTimeline {
         val velocityX = (pose.talons.x - before.talons.x) / layout.unit / 0.04f
         val since = (t - STRIKE).toFloat()
         val drag = (-velocityX * 0.22f).coerceIn(-34f, 34f)
-        val settle = if (t >= PERCH) 1f - progress(t, PERCH, SETTLED) else 1f
+        val settle = if (t >= PERCH) 1f - progress(t, PERCH, PERCH + 480L) else 1f
         val wobble = 20f * exp(-since / 650f) * sin(2f * PI.toFloat() * since / 520f)
         return TagState(pose.talons, swing = (drag + wobble) * settle, lying = false)
+    }
+}
+
+internal enum class FlowerKind { Poppy, Cornflower, Daisy, Buttercup }
+
+/** A wildflower of the bloom: it opens at [bloomAt] with a little overshoot and stays open. */
+internal data class Flower(
+    val at: Offset,
+    val kind: FlowerKind,
+    val radius: Float,
+    val bloomAt: Long,
+)
+
+/** A feather from the mantle: it puffs out, drifts down swaying from [start] and rests at [rest]. */
+internal data class Feather(
+    val start: Offset,
+    val rest: Offset,
+    val from: Long,
+    val fallMillis: Long,
+    val phase: Float,
+    val blue: Boolean,
+) {
+    /** Where it is at [timeMillis] and how far it has turned (degrees); null before it is shaken loose. */
+    fun at(timeMillis: Long): Pair<Offset, Float>? {
+        if (timeMillis < from) return null
+        val p = CelebrationTimeline.progress(timeMillis, from, from + fallMillis)
+        val fall = easeInOut(p)
+        val sway = sin(2f * PI.toFloat() * 1.4f * p + phase) * (1f - p) * (rest.y - start.y) * 0.08f
+        val position = Offset(lerp(start.x, rest.x, easeOut(p)) + sway, lerp(start.y, rest.y, fall))
+        val turn = 50f * sin(2f * PI.toFloat() * 1.1f * p + phase) * (1f - p) + 70f + phase * 9f
+        return position to turn
     }
 }
 
@@ -250,11 +326,57 @@ internal class SceneLayout(
             tagRest - pose.talons + Offset(0f, -1.5f * unit)
         }
 
-    /** The body origin of the bird standing on the post (upright, legs straight down), facing [facing]. */
-    fun perchOrigin(facing: Float): Offset =
-        BirdPose(Offset.Zero, unit, facing = facing, pitch = -76f, legs = 1f, legAngle = 76f).let { pose ->
+    /** The body origin of the bird standing on the post (legs straight down), facing [facing], leaning [pitch]. */
+    fun perchOrigin(
+        facing: Float,
+        pitch: Float = -76f,
+    ): Offset =
+        BirdPose(Offset.Zero, unit, facing = facing, pitch = pitch, legs = 1f, legAngle = -pitch).let { pose ->
             postTop - pose.talons
         }
+
+    /** The sun, which the rays break from. */
+    val sunCentre = Offset(size.width * 0.76f, size.height * 0.62f)
+    val sunRadius = size.width * 0.12f
+
+    /** Thirty wildflowers across the meadow, each blooming as the wave from the post reaches it. */
+    val flowers: List<Flower> =
+        (0 until FLOWERS).map { index ->
+            val x = size.width * ((index * 0.6180339f + 0.04f) % 1f)
+            // In the meadow above the page's edge, which covers the scene's last few per cent.
+            val y = size.height * (0.855f + 0.075f * ((index * 0.4142135f) % 1f))
+            val reach = kotlin.math.abs(x - postTop.x) / size.width
+            Flower(
+                at = Offset(x, y),
+                kind = FlowerKind.entries[index % FlowerKind.entries.size],
+                radius = unit * (3.6f + 2.2f * ((index * 0.7071068f) % 1f)),
+                bloomAt = CelebrationTimeline.BLOOM_FROM + (reach * CelebrationTimeline.BLOOM_SPREAD).toLong(),
+            )
+        }
+
+    /** Nine feathers shaken loose by the mantle: where they start, where they come to rest in the grass. */
+    val feathers: List<Feather> =
+        (0 until FEATHERS).map { index ->
+            val start = postTop + Offset((index - 4) * 3.2f * unit, (-34f + (index % 3) * 6f) * unit)
+            val rest =
+                Offset(
+                    postTop.x + (index - 4) * 9f * unit + ((index * 0.618f) % 1f) * 6f * unit,
+                    size.height * (0.9f + 0.07f * ((index * 0.4142f) % 1f)),
+                )
+            Feather(
+                start = start,
+                rest = rest,
+                from = CelebrationTimeline.FEATHERS_FROM + index * 70L,
+                fallMillis = 1_300L + (index % 4) * 120L,
+                phase = index * 1.7f,
+                blue = index % 3 == 2,
+            )
+        }
+
+    private companion object {
+        const val FLOWERS = 30
+        const val FEATHERS = 9
+    }
 
     val glideStart = Offset(size.width * 0.5f, size.height * 0.33f)
     val flare = Offset(size.width * 0.3f, size.height * 0.44f)
@@ -290,6 +412,7 @@ internal data class ScenePalette(
     val tagText: Color,
     val string: Color,
     val wind: Color,
+    val call: Color,
 ) {
     companion object {
         val Morning =
@@ -315,6 +438,7 @@ internal data class ScenePalette(
                 tagText = Color(0xFF5A4320),
                 string = Color(0xFF7A6248),
                 wind = Color(0xA6FFFFFF),
+                call = Color(0xFF3A2D20),
             )
 
         val Dusk =
@@ -340,16 +464,27 @@ internal data class ScenePalette(
                 tagText = Color(0xFF3E2E16),
                 string = Color(0xFFA48D6E),
                 wind = Color(0x40FFFFFF),
+                call = Color(0xFFF6E7CF),
             )
     }
 }
 
-/** Draws the whole scene at [timeMillis]: sky, sun, clouds, hills, fence, the tag, the bird and the grass in front. */
+/** The words drawn into the scene: the tag's and the kestrel's three calls. */
+internal class SceneWords(
+    val tag: TextLayoutResult,
+    val calls: List<TextLayoutResult>,
+)
+
+/**
+ * Draws the whole scene at [timeMillis]: sky, sun and its rays, clouds, hills, fence, the tag, the bird, the grass and
+ * its flowers in front, the feathers and the calls.
+ */
 internal fun DrawScope.drawCelebrationScene(
     timeMillis: Long,
     palette: ScenePalette,
-    tagText: TextLayoutResult,
+    words: SceneWords,
 ) {
+    val tagText = words.tag
     val t = timeMillis.coerceIn(0L, CelebrationTimeline.END)
     val layout = SceneLayout(size)
     val rise = (1f - easeOut(CelebrationTimeline.progress(t, 0L, 700L))) * 18f * layout.unit
@@ -362,6 +497,7 @@ internal fun DrawScope.drawCelebrationScene(
             endY = size.height,
         ),
     )
+    drawSunburst(layout, palette, t)
     drawSun(layout, palette, rise)
     drawClouds(layout, palette, t)
     drawWind(layout, palette, t)
@@ -377,16 +513,183 @@ internal fun DrawScope.drawCelebrationScene(
     drawKestrel(CelebrationTimeline.bird(t, size))
     if (!tag.lying) drawTag(tag, layout, palette, tagText)
     translate(0f, rise) { drawGrass(layout, palette, t) }
+    drawFlowers(layout, palette, t)
     drawStrikePuff(layout, palette, t)
+    drawFeathers(layout, t)
+    drawCalls(t, words.calls, palette)
 }
+
+/** Rays breaking from the sun as the kestrel mantles: they grow, turn a few degrees once, and soften but stay. */
+private fun DrawScope.drawSunburst(
+    layout: SceneLayout,
+    palette: ScenePalette,
+    t: Long,
+) {
+    val grow =
+        easeOut(
+            CelebrationTimeline.progress(
+                t,
+                CelebrationTimeline.SUNBURST_FROM,
+                CelebrationTimeline.SUNBURST_FROM + 750L,
+            ),
+        )
+    if (grow <= 0f) return
+    val soften =
+        1f - 0.5f * CelebrationTimeline.progress(t, CelebrationTimeline.SUNBURST_FROM + 750L, CelebrationTimeline.END)
+    val turn = 9f * easeOut(CelebrationTimeline.progress(t, CelebrationTimeline.SUNBURST_FROM, CelebrationTimeline.END))
+    val centre = layout.sunCentre
+    val radius = layout.sunRadius
+    val reach = radius * (1.2f + 2.6f * grow)
+    val brush =
+        Brush.radialGradient(
+            0f to palette.sunGlow.copy(alpha = 0.85f * soften),
+            1f to palette.sunGlow.copy(alpha = 0f),
+            center = centre,
+            radius = reach,
+        )
+    for (index in 0 until RAYS) {
+        val middle = (index * 360f / RAYS + turn) * PI.toFloat() / 180f
+        val length = if (index % 2 == 0) reach else reach * 0.74f
+        val half = (if (index % 2 == 0) 4.2f else 3f) * PI.toFloat() / 180f
+        val inner = radius * 1.05f
+        val path =
+            Path().apply {
+                moveTo(centre.x + cos(middle - half * 0.4f) * inner, centre.y + sin(middle - half * 0.4f) * inner)
+                lineTo(centre.x + cos(middle - half) * length, centre.y + sin(middle - half) * length)
+                lineTo(centre.x + cos(middle + half) * length, centre.y + sin(middle + half) * length)
+                lineTo(centre.x + cos(middle + half * 0.4f) * inner, centre.y + sin(middle + half * 0.4f) * inner)
+                close()
+            }
+        drawPath(path, brush)
+    }
+}
+
+private const val RAYS = 18
+
+/** The meadow blooms in a wave from the post: each flower opens with a little overshoot and stays open. */
+private fun DrawScope.drawFlowers(
+    layout: SceneLayout,
+    palette: ScenePalette,
+    t: Long,
+) {
+    for (flower in layout.flowers) {
+        val open =
+            easeOutBack(
+                CelebrationTimeline.progress(
+                    t,
+                    flower.bloomAt,
+                    flower.bloomAt + CelebrationTimeline.BLOOM_MILLIS,
+                ),
+            )
+        if (open <= 0f) continue
+        val r = flower.radius * open
+        val centre = flower.at - Offset(0f, 6f * layout.unit * open)
+        drawLine(palette.grass, flower.at, centre, strokeWidth = 0.9f * layout.unit, cap = StrokeCap.Round)
+        val (petal, heart) = flowerColours(flower.kind, palette)
+        val petals = if (flower.kind == FlowerKind.Daisy) 8 else 5
+        for (index in 0 until petals) {
+            val angle = (index * 360f / petals + flower.at.x % 40f) * PI.toFloat() / 180f
+            drawCircle(petal, radius = r * 0.52f, center = centre + Offset(cos(angle), sin(angle)) * (r * 0.55f))
+        }
+        drawCircle(heart, radius = r * 0.38f, center = centre)
+    }
+}
+
+private fun flowerColours(
+    kind: FlowerKind,
+    palette: ScenePalette,
+): Pair<Color, Color> {
+    val dusk = palette == ScenePalette.Dusk
+    val (petal, heart) =
+        when (kind) {
+            FlowerKind.Poppy -> Color(0xFFD9452F) to Color(0xFF2B2220)
+            FlowerKind.Cornflower -> Color(0xFF5677CC) to Color(0xFF2C3A72)
+            FlowerKind.Daisy -> Color(0xFFFFFCF4) to Color(0xFFF2C230)
+            FlowerKind.Buttercup -> Color(0xFFF5C94A) to Color(0xFFD9961C)
+        }
+    return if (dusk) petal.darken(0.78f) to heart.darken(0.78f) else petal to heart
+}
+
+/** The feathers the mantle shakes loose, drifting down and coming to rest in the grass. */
+private fun DrawScope.drawFeathers(
+    layout: SceneLayout,
+    t: Long,
+) {
+    val u = layout.unit
+    for (feather in layout.feathers) {
+        val (position, turn) = feather.at(t) ?: continue
+        val body = if (feather.blue) Plumage.tail else Plumage.back
+        rotate(turn, position) {
+            val length = 6.5f * u
+            val width = 2.6f * u
+            val path =
+                Path().apply {
+                    moveTo(position.x, position.y - length)
+                    quadraticTo(position.x + width, position.y - length * 0.1f, position.x, position.y + length)
+                    quadraticTo(position.x - width, position.y - length * 0.1f, position.x, position.y - length)
+                    close()
+                }
+            drawPath(path, body)
+            // A dark bar across, as on a kestrel's wing and tail feathers, and the shaft.
+            val bar = Offset(1.7f * u, 0f)
+            drawLine(
+                Plumage.spots,
+                position + Offset(0f, 2.6f * u) - bar,
+                position + Offset(0f, 2.6f * u) + bar,
+                strokeWidth =
+                    1.1f * u,
+            )
+            drawLine(
+                body.darken(0.65f),
+                position - Offset(0f, length),
+                position + Offset(0f, length),
+                strokeWidth =
+                    0.4f * u,
+            )
+        }
+    }
+}
+
+/** "kee", "kee", "kee!": each pops out by the beak, rises and fades. */
+private fun DrawScope.drawCalls(
+    t: Long,
+    calls: List<TextLayoutResult>,
+    palette: ScenePalette,
+) {
+    val progress = CelebrationTimeline.calls(t)
+    if (progress.all { it == null }) return
+    val layout = SceneLayout(size)
+    val bird = CelebrationTimeline.bird(t, size)
+    val beak = bird.toScene(KestrelShape.Beak.getBounds().topRight)
+    for ((index, p) in progress.withIndex()) {
+        if (p == null) continue
+        val text = calls.getOrNull(index) ?: continue
+        val pop = easeOutBack(CelebrationTimeline.progress(p, 0f, 0.35f))
+        val alpha = if (p < 0.6f) 1f else 1f - (p - 0.6f) / 0.4f
+        // An arc up and away from the beak, each call higher and further than the last.
+        val lift = (10f + index * 13f + 14f * easeOut(p)) * layout.unit
+        val sideways = (16f + index * 19f + 4f * p) * layout.unit
+        val topLeft = beak + Offset(sideways, -lift) - Offset(text.size.width / 2f, text.size.height / 2f)
+        val scale = 0.6f + 0.4f * pop
+        withTransformScale(scale, topLeft + Offset(text.size.width / 2f, text.size.height / 2f)) {
+            drawText(text, color = palette.call.copy(alpha = alpha), topLeft = topLeft)
+        }
+    }
+}
+
+private inline fun DrawScope.withTransformScale(
+    scale: Float,
+    pivot: Offset,
+    block: DrawScope.() -> Unit,
+) = scale(scale, scale, pivot, block)
 
 private fun DrawScope.drawSun(
     layout: SceneLayout,
     palette: ScenePalette,
     rise: Float,
 ) {
-    val centre = Offset(size.width * 0.76f, size.height * 0.62f + rise * 0.3f)
-    val radius = size.width * 0.12f
+    val centre = layout.sunCentre + Offset(0f, rise * 0.3f)
+    val radius = layout.sunRadius
     drawCircle(
         Brush.radialGradient(
             0f to palette.sunGlow.copy(alpha = 0.55f),
@@ -702,6 +1005,13 @@ private fun DrawScope.drawStrikePuff(
 }
 
 internal fun easeOut(p: Float): Float = 1f - (1f - p) * (1f - p) * (1f - p)
+
+/** Overshoots a little and comes back: for things that open with joy (wings, flowers). */
+internal fun easeOutBack(p: Float): Float {
+    val c = 1.7f
+    val q = p - 1f
+    return 1f + (c + 1f) * q * q * q + c * q * q
+}
 
 internal fun easeIn(p: Float): Float = p * p * p
 
