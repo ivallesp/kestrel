@@ -93,7 +93,15 @@ interface SettingsActions {
 
     /** Shares a report of recent freezes and crashes (nothing leaves the phone unless the user sends it). */
     fun sendProblemReport() {}
+
+    /** Plays the win celebration as a preview: nothing is bid and no snipe changes. */
+    fun openCelebration() {}
+
+    /** "Buy me a coffee": opens the link, or says it isn't set up yet. */
+    fun buyMeACoffee() {}
 }
+
+private const val ABOUT_ROWS = 5
 
 /** The lead times on offer (DESIGN 3.17): 3 s, 6 s and 10 s. */
 val LeadTimeChoices: List<Int> = listOf(3, 6, 10)
@@ -190,23 +198,39 @@ fun SettingsScreen(
                             title = "Kestrel ${state.version}",
                             detail = "Kestrel isn’t made by or affiliated with eBay.",
                             index = 0,
-                            count = 3,
+                            count = ABOUT_ROWS,
+                        )
+                        Gap()
+                        LinkRow(
+                            title = "Watch the win celebration",
+                            detail = "What plays the first time you open a win. Nothing is bid.",
+                            onClick = actions::openCelebration,
+                            index = 1,
+                            count = ABOUT_ROWS,
+                        )
+                        Gap()
+                        LinkRow(
+                            title = "Buy me a coffee",
+                            detail = "Kestrel has no ads and no fees. Link coming soon.",
+                            onClick = actions::buyMeACoffee,
+                            index = 2,
+                            count = ABOUT_ROWS,
                         )
                         Gap()
                         LinkRow(
                             title = "Send a problem report",
                             detail = "Recent freezes and crashes, to share in a message",
                             onClick = actions::sendProblemReport,
-                            index = 1,
-                            count = 3,
+                            index = 3,
+                            count = ABOUT_ROWS,
                         )
                         Gap()
                         LinkRow(
                             title = "Licences",
                             detail = "Fonts and open-source software",
                             onClick = { actions.openSheet(SettingsSheet.Licences) },
-                            index = 2,
-                            count = 3,
+                            index = 4,
+                            count = ABOUT_ROWS,
                         )
                     }
                 }

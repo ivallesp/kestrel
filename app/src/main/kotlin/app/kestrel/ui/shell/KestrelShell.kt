@@ -13,6 +13,7 @@ import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import androidx.navigation3.ui.NavDisplay
+import app.kestrel.ui.celebration.CelebrationPreviewDestination
 import app.kestrel.ui.components.LocalPlateTransition
 import app.kestrel.ui.components.PlateTransition
 import app.kestrel.ui.screens.add.AddDestination
@@ -89,6 +90,9 @@ fun KestrelShell(
                     }
                     entry<Destination.Settings> { key ->
                         Screen(sharedScope, navigator, key) { SettingsDestination(it) }
+                    }
+                    entry<Destination.Celebration> { key ->
+                        Screen(sharedScope, navigator, key) { CelebrationPreviewDestination(it) }
                     }
                     entry<Destination.History> { key -> Screen(sharedScope, navigator, key) { HistoryDestination(it) } }
                     entry<Destination.Onboarding> { key ->

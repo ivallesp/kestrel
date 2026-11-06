@@ -100,6 +100,7 @@ fun ResultScreen(
     onDelete: () -> Unit = {},
     onAction: (LotAction) -> Unit = {},
     onSettle: (won: Boolean) -> Unit = {},
+    sealHeld: Boolean = false,
 ) {
     val won = state.variant == ResultVariant.Won
     // "You won" one step above every other result (rule MF7).
@@ -119,7 +120,7 @@ fun ResultScreen(
                         .windowInsetsPadding(windowInsets.only(WindowInsetsSides.Bottom))
                         .padding(start = Spacing.ColumnA, end = Spacing.ColumnA, bottom = Spacing.ScreenEnd),
                 ) {
-                    ResultPlate(state, plateKey, Modifier.zIndex(1f))
+                    ResultPlate(state, plateKey, sealHeld, Modifier.zIndex(1f))
                     Spacer(Modifier.height(16.dp))
                     // The seal hangs only 12 dp below the plate, so the line under it has the whole width.
                     StateLabel(tone = state.tone, words = state.statusLine, large = true)
@@ -239,6 +240,7 @@ private fun ResultTopBar(
 private fun ResultPlate(
     state: ResultUiState,
     plateKey: String?,
+    sealHeld: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val won = state.variant == ResultVariant.Won
@@ -260,6 +262,7 @@ private fun ResultPlate(
         if (won) {
             WonSeal(
                 stamp = state.stampSeal,
+                held = sealHeld,
                 modifier =
                     Modifier
                         .align(Alignment.BottomEnd)
@@ -272,18 +275,20 @@ private fun ResultPlate(
 /**
  * The WON seal (DESIGN 3.15): a Cookie12Sided in the Won accent, rotated -10°, with the trophy and "WON". It stamps
  * once on the first open (scale 1.15 to 1, rotation -16° to -10°, fading in); with reduced motion it simply sits there.
+ * [held] keeps it unstamped while the win celebration covers the page, so it stamps as the page comes into view.
  */
 @Composable
 private fun WonSeal(
     stamp: Boolean,
+    held: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val motion = MaterialTheme.motionScheme
     val animate = stamp && !KestrelTheme.reduceMotion
     val settle = remember { Animatable(if (animate) 0f else 1f) }
     val fade = remember { Animatable(if (animate) 0f else 1f) }
-    LaunchedEffect(animate) {
-        if (animate) {
+    LaunchedEffect(animate, held) {
+        if (animate && !held) {
             coroutineScope {
                 launch { fade.animateTo(1f, motion.fastEffectsSpec()) }
                 settle.animateTo(1f, motion.defaultSpatialSpec())

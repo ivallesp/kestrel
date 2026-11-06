@@ -80,6 +80,9 @@ object Symbols {
 
     @DrawableRes val Info = R.drawable.ic_info
 
+    /** Only for "Buy me a coffee". Drawn in the Material Symbols Rounded grid; not a Material Symbol. */
+    @DrawableRes val Coffee = R.drawable.ic_coffee
+
     @DrawableRes val Mail = R.drawable.ic_mail
 
     @DrawableRes val TrendingUp = R.drawable.ic_trending_up

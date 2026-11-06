@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.kestrel.ui.celebration.CelebratedResult
 import app.kestrel.ui.model.LotAction
 import app.kestrel.ui.screens.lot.LotEffect
 import app.kestrel.ui.screens.lot.LotPage
@@ -72,22 +73,25 @@ fun ResultDestination(
     Box(modifier.fillMaxSize()) {
         when (val current = page) {
             is LotPage.Finished -> {
-                ResultScreen(
-                    state = current.state,
-                    windowInsets = windowInsets,
-                    onClose = navigator::back,
-                    onShare = { shareReceipt(context, current.state.shareText) },
-                    onOpenOnEbay = { navigator.open(Destination.HandOff(id)) },
-                    onDelete = viewModel::delete,
-                    onSettle = viewModel::settle,
-                    onAction = { action ->
-                        if (action == LotAction.UNDO_CANCEL) {
-                            viewModel.undoCancel()
-                        } else {
-                            routeAction(action, null, id, navigator, openSheet = {})
-                        }
-                    },
-                )
+                CelebratedResult(current.state, windowInsets) { sealHeld ->
+                    ResultScreen(
+                        state = current.state,
+                        windowInsets = windowInsets,
+                        onClose = navigator::back,
+                        onShare = { shareReceipt(context, current.state.shareText) },
+                        onOpenOnEbay = { navigator.open(Destination.HandOff(id)) },
+                        onDelete = viewModel::delete,
+                        onSettle = viewModel::settle,
+                        onAction = { action ->
+                            if (action == LotAction.UNDO_CANCEL) {
+                                viewModel.undoCancel()
+                            } else {
+                                routeAction(action, null, id, navigator, openSheet = {})
+                            }
+                        },
+                        sealHeld = sealHeld,
+                    )
+                }
             }
 
             LotPage.Gone -> {

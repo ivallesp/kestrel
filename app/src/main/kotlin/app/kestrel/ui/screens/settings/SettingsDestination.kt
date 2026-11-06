@@ -18,6 +18,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.kestrel.BuildConfig
 import app.kestrel.data.ThemeMode
 import app.kestrel.platform.ProblemReport
+import app.kestrel.ui.celebration.CoffeeLink
 import app.kestrel.ui.screens.ready.openSystemPage
 import app.kestrel.ui.shell.Destination
 import app.kestrel.ui.shell.KestrelNavigator
@@ -76,6 +77,14 @@ fun SettingsDestination(
                 override fun openSheet(sheet: SettingsSheet) = viewModel.openSheet(sheet)
 
                 override fun closeSheet() = viewModel.closeSheet()
+
+                override fun openCelebration() = navigator.open(Destination.Celebration)
+
+                override fun buyMeACoffee() {
+                    if (!CoffeeLink.open(context)) {
+                        scope.launch { snackbarHostState.show(ShellMessage(CoffeeLink.PLACEHOLDER)) }
+                    }
+                }
 
                 override fun sendProblemReport() {
                     scope.launch {

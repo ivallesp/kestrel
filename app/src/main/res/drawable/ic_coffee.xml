@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A cup with a handle, a saucer and two wisps of steam, drawn in the 24 dp grid and stroke weight of the
+     Material Symbols Rounded glyphs the app vendors. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M5,9.5 L16,9.5 L16,13.5 C16,16 14,18 11.5,18 L9.5,18 C7,18 5,16 5,13.5 Z"
+        android:strokeWidth="2"
+        android:strokeColor="#FF000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M16,11 L17.25,11 C18.77,11 20,12.23 20,13.75 C20,15.27 18.77,16.5 17.25,16.5 L16,16.5"
+        android:strokeWidth="2"
+        android:strokeColor="#FF000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M4,21 L18,21"
+        android:strokeWidth="2"
+        android:strokeColor="#FF000000"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M8.5,3 C7.75,4 9.25,5 8.5,6.5 M12.5,3 C11.75,4 13.25,5 12.5,6.5"
+        android:strokeWidth="1.6"
+        android:strokeColor="#FF000000"
+        android:strokeLineCap="round" />
+</vector>

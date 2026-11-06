@@ -59,6 +59,10 @@ sealed interface Destination : NavKey {
     @Serializable
     data object Settings : Destination
 
+    /** The win celebration as a preview, from Settings: nothing is bid and no snipe changes. */
+    @Serializable
+    data object Celebration : Destination
+
     /** Every finished snipe. */
     @Serializable
     data object History : Destination

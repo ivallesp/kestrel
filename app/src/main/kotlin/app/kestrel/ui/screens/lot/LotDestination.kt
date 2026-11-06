@@ -38,6 +38,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.kestrel.ui.celebration.CelebratedResult
 import app.kestrel.ui.model.DryRunCause
 import app.kestrel.ui.model.LotAction
 import app.kestrel.ui.model.LotStatus
@@ -141,17 +142,20 @@ fun LotDestination(
                 }
 
                 is LotPage.Finished -> {
-                    ResultScreen(
-                        state = current.state,
-                        windowInsets = windowInsets,
-                        plateKey = null,
-                        onClose = navigator::back,
-                        onShare = { shareReceipt(context, current.state.shareText) },
-                        onOpenOnEbay = { navigator.open(Destination.HandOff(id)) },
-                        onDelete = viewModel::delete,
-                        onAction = onAction,
-                        onSettle = viewModel::settle,
-                    )
+                    CelebratedResult(current.state, windowInsets) { sealHeld ->
+                        ResultScreen(
+                            state = current.state,
+                            windowInsets = windowInsets,
+                            plateKey = null,
+                            onClose = navigator::back,
+                            onShare = { shareReceipt(context, current.state.shareText) },
+                            onOpenOnEbay = { navigator.open(Destination.HandOff(id)) },
+                            onDelete = viewModel::delete,
+                            onAction = onAction,
+                            onSettle = viewModel::settle,
+                            sealHeld = sealHeld,
+                        )
+                    }
                 }
             }
         }

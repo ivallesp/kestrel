@@ -308,6 +308,7 @@ Emphasized variants add 100 weight: serif 400 to 500 and 500 to 600; sans 400 to
 | List insert, remove, reorder | `Modifier.animateItem` | fade-in defaultEffectsSpec, placement defaultSpatialSpec, fade-out fastEffectsSpec |
 | Final-minute wave | amplitude 0 to full at 60 s left; waveSpeed = wavelength / 2 per second; progress steps once a second; amplitude goes to 0 at Bid sent | amplitude slowEffectsSpec, flattening defaultEffectsSpec; progress `ProgressIndicatorDefaults.ProgressAnimationSpec` |
 | WON seal | stamps once: scale 1.15 to 1, rotation -16° to -10°, alpha 0 to 1. Plays on the first open only (persist `sealShown`). | defaultSpatialSpec; alpha fastEffectsSpec |
+| Win celebration (3.21) | one 6 s scene on the first open of a win, then the seal stamps; tap skips to the end; the Settings preview can play again | frame clock, scene drawn per frame; words fade in and rise 16 dp over 600 ms |
 | Lost and failed results | content fades in, nothing moves | defaultEffectsSpec |
 | Split-button chevron | rotates 180° while the menu is open | fastSpatialSpec |
 | Buttons, toggles, segments | built-in shape morphs | defaults |
@@ -329,6 +330,7 @@ Emphasized variants add 100 weight: serif 400 to 500 and 500 to 600; sans 400 to
 - the wave has amplitude 0 and speed 0 (a flat linear track);
 - digits swap without rolling;
 - the seal appears at -10° with no stamp;
+- the win celebration opens on its last frame (the kestrel on the post, every word shown);
 - LoadingIndicator is replaced by a static hourglass_top icon with the same words.
 
 ### 2.11 Iconography
@@ -636,6 +638,27 @@ The Attention row uses the Attention container. The "Bid not sent" row uses the 
 - **Fill:** the Won accent.
 - **Content:** trophy 26 dp, then "WON" in sectionHead. Both are in the card colour in light theme and in #15130F in dark theme.
 - **Placement:** rotated -10°, anchored to the plate's bottom-end corner, offset -14 dp horizontally and +12 dp vertically: it breaks the plate's edge like a stamp but ends above the status line, which keeps its whole width.
+
+### 3.21 Win celebration
+Asked for by the owner on 6 Nov: the one moment where motion is a celebration rather than an explanation (it still plays
+once and never loops, so P5 holds everywhere else).
+- **When:** the first open of a won result (the same moment the WON seal would stamp), over S3 or S4; the seal waits
+  and stamps as the page comes into view. Settings > About > "Watch the win celebration" plays a preview with no lot,
+  no amount and nothing bid.
+- **Scene** (top 47 % of the screen, 38 % at text scale above 1.3; drawn, not a photo): a morning sky (dusk in the
+  dark theme), sun, hills, a fence and a lot tag in the grass. The launcher icon's kestrel hovers with its head
+  perfectly still while its body rides the wingbeats (the bird's own trick and Kestrel's: wait, then strike at the
+  last moment), folds and stoops onto the tag, carries it up, turns and lands on the post, turns round on it and
+  bobs its head once. One haptic tick as the talons close. 6 s in all.
+- **Page** (rises over the scene's lower edge, 28 dp corners): "You won" in displaySmall and the title (lotTitle, two
+  lines) from 0.3 s; "Won for £101.00 · £19.00 under your £120.00 max" and eBay's timing line after the strike; the
+  coffee note at 4.8 s. The preview shows PREVIEW and "This plays the first time you open a win. Nothing was bid."
+- **Coffee note** (card colour, 16 dp): coffee glyph and "NO ADS · NO FEES", then "Kestrel hunts for you alone: no ads,
+  no fees, nothing sold. If it caught you a good one, you can buy me a coffee.", a tonal "Buy me a coffee" and "Link
+  coming soon". There is no link yet (`CoffeeLink.url` is null): the button says "Not set up yet: there's no link to
+  open." and opens nothing.
+- **Actions** (docked, always in reach): "See the receipt" closes it; the preview has "Play again" and "Done". Back and
+  the close button close it; a tap on the scene skips to the end.
 
 ### 3.16 Bottom sheet
 - **Container:** ModalBottomSheet in surfaceContainerLow, 28 dp top corners.
@@ -1245,6 +1268,8 @@ Opened from the S1 account button.
 7. **"HELP":** "How Kestrel bids" (a sheet: one bid at the end, a dry run first, you stay in charge, from this phone) and eBay's own words on sniping as a pull-quote.
 8. **"ABOUT":**
    - "Kestrel 1.0 (1)" / "Kestrel isn't made by or affiliated with eBay.";
+   - "Watch the win celebration" / "What plays the first time you open a win. Nothing is bid." (3.21);
+   - "Buy me a coffee" / "Kestrel has no ads and no fees. Link coming soon." (a snackbar says the link isn't set up);
    - "Licences", listing the fonts (OFL) and the open-source software (Apache 2.0), each licence and holder on its own line. Kestrel ships no photos: listing photos come from eBay. "Read the font licence" shows both fonts' copyright lines, then the shared licence once, its section names in small caps.
 
 **Rows:** SegmentedListItem in the card colour, 16 dp padding.
