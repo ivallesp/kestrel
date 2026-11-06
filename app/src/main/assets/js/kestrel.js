@@ -198,6 +198,9 @@
     guard: null,
     probe: null,
     autoRefresh: { counter: 0, inFlightId: null, results: {} },
+    // Diagnostics only: whether this page gets animation frames and intersection callbacks (a hidden WebView may get
+    // none, which stalls eBay's dialog transitions), and the page's own requests once the observer is armed.
+    diagnostics: { installedAt: Date.now(), animationFrames: 0, intersectionCallbacks: 0, requests: [] },
   };
 
   // ------------------------------------------------------------------------------------------------
@@ -206,6 +209,20 @@
 
   function now() {
     return window.performance && typeof window.performance.now === 'function' ? window.performance.now() : Date.now();
+  }
+
+  // Method, path and status of the page's own requests after the observer is armed; no bodies, at most 15.
+  function noteRequest(via, method, url) {
+    try {
+      var parsed = new URL(String(url), location.href);
+      var entry = { via: via, method: method ? String(method).toUpperCase() : 'GET',
+        path: truncate(parsed.pathname + parsed.search, 200), at: Date.now(), status: null };
+      state.diagnostics.requests.push(entry);
+      if (state.diagnostics.requests.length > 15) state.diagnostics.requests.shift();
+      return entry;
+    } catch (error) {
+      return null;
+    }
   }
 
   function recordError(where, error) {
@@ -1093,8 +1110,19 @@
       var self = this === undefined ? window : this;
       var args = arguments;
       var url = typeof input === 'string' ? input : (input && typeof input.url === 'string' ? input.url : String(input));
-      if (!isPlaceBidUrl(url)) return original.apply(self, args);
       var method = (init && init.method) || (input && typeof input === 'object' && input.method) || 'GET';
+      if (!isPlaceBidUrl(url)) {
+        var noted = noteRequest('fetch', method, url);
+        var passed = original.apply(self, args);
+        if (noted && passed && typeof passed.then === 'function') {
+          passed.then(function (response) {
+            noted.status = response ? response.status : null;
+          }, function () {
+            noted.status = 'error';
+          });
+        }
+        return passed;
+      }
       var isRequest = input && typeof input === 'object' && typeof input.clone === 'function';
       // fetch(Request) sends the Request's own body when the options give none (absent or null): read a copy first.
       if (isRequest && (!init || init.body == null)) {
@@ -1180,7 +1208,15 @@
     var sendWrapper = function (body) {
       var request = this;
       var opened = urls ? urls.get(request) : null;
-      if (!opened || !isPlaceBidUrl(opened.url)) return originalSend.apply(request, arguments);
+      if (!opened || !isPlaceBidUrl(opened.url)) {
+        var noted = opened ? noteRequest('xhr', opened.method, opened.url) : null;
+        if (noted) {
+          request.addEventListener('loadend', function () {
+            noted.status = request.status;
+          });
+        }
+        return originalSend.apply(request, arguments);
+      }
       var verdict = ceilingVerdict(opened.url, typeof body === 'string' ? body : null);
       if (verdict.block) {
         recordBlocked('xhr', opened.url, verdict);
@@ -1826,6 +1862,74 @@
     return { ok: true, closed: false, method: 'escape' };
   }
 
+  // A cleaned copy of the bid area for a problem report: the bid button's surroundings and any layer or dialog,
+  // without scripts, styles, images or SVG paths, capped at 12 KB.
+  function bidAreaSnapshot(bidButton, layer) {
+    var roots = [];
+    if (bidButton && bidButton.element) {
+      roots.push(bidButton.element.closest('[data-testid="x-bid-action"], .x-buybox-cta, .vim') || bidButton.element);
+    }
+    if (layer && layer.element && layer.element !== document.body) roots.push(layer.element);
+    queryAll(document, '[role="dialog"], .lightbox-dialog, .placebid-redesign-wrapper, .place-bid-wrapper-ocv')
+      .slice(0, 3).forEach(function (node) {
+        if (roots.indexOf(node) < 0) roots.push(node);
+      });
+    var parts = roots.map(function (root) {
+      try {
+        var copy = root.cloneNode(true);
+        queryAll(copy, 'script, style, noscript, img, picture, source, path, link').forEach(function (node) {
+          node.remove();
+        });
+        // Addresses are reduced to their host, as everywhere in a report.
+        queryAll(copy, '[src], [href], [action], [data-src], [data-url]').forEach(function (node) {
+          ['src', 'href', 'action', 'data-src', 'data-url'].forEach(function (name) {
+            var value = node.getAttribute(name);
+            if (value === null) return;
+            var host = '';
+            try {
+              host = new URL(value, location.href).host;
+            } catch (error) {
+              host = '';
+            }
+            node.setAttribute(name, host);
+          });
+        });
+        return copy.outerHTML.replace(/\s+/g, ' ');
+      } catch (error) {
+        return 'snapshot failed: ' + (error && error.message);
+      }
+    });
+    return truncate(parts.join('\n---\n'), 12000);
+  }
+
+  // A WebView that is never on screen may get no animation frames: callbacks queued with requestAnimationFrame never
+  // run and CSS transitions never advance, so a dialog that fades in (eBay's bid layer) stays invisible. When this
+  // page has had no frame at all, later requestAnimationFrame calls run on a timer and transitions and animations
+  // take no time. Nothing changes on a page that gets frames.
+  function prepareForHiddenPage() {
+    var diagnostics = state.diagnostics;
+    var elapsed = Date.now() - diagnostics.installedAt;
+    if (diagnostics.hiddenPageMode) return { ok: true, applied: true, already: true, frames: 0, elapsed: elapsed };
+    if (diagnostics.animationFrames > 0 || elapsed < 500) {
+      return { ok: true, applied: false, frames: diagnostics.animationFrames, elapsed: elapsed };
+    }
+    window.requestAnimationFrame = function (callback) {
+      return window.setTimeout(function () {
+        callback(now());
+      }, 16);
+    };
+    window.cancelAnimationFrame = function (handle) {
+      window.clearTimeout(handle);
+    };
+    var style = document.createElement('style');
+    style.id = 'kestrel-hidden-page';
+    style.textContent = '*,*::before,*::after{transition-duration:0s!important;transition-delay:0s!important;' +
+      'animation-duration:0s!important;animation-delay:0s!important}';
+    (document.head || document.documentElement).appendChild(style);
+    diagnostics.hiddenPageMode = true;
+    return { ok: true, applied: true, already: false, frames: 0, elapsed: elapsed };
+  }
+
   function report() {
     var bidButton = findBidButton();
     var layer = findLayer();
@@ -1886,6 +1990,13 @@
         perfTime: state.press.perfTime },
       guard: guardSummary(state.guard) || state.lastGuard || null,
       touchProbe: state.probeResult || null,
+      environment: { animationFrames: state.diagnostics.animationFrames,
+        intersectionCallbacks: state.diagnostics.intersectionCallbacks,
+        secondsSinceInstall: Math.round((Date.now() - state.diagnostics.installedAt) / 1000),
+        hidden: !!document.hidden, hiddenPageMode: !!state.diagnostics.hiddenPageMode,
+        userAgent: truncate(navigator.userAgent, 200) },
+      requests: state.diagnostics.requests.slice(),
+      bidArea: bidAreaSnapshot(bidButton, layer),
       errors: state.errors.slice(-20),
     };
   }
@@ -1937,7 +2048,27 @@
     replyState: safe('replyState', replyState),
     closeLayer: safe('closeLayer', closeLayer),
     report: safe('report', report),
+    prepareForHiddenPage: safe('prepareForHiddenPage', prepareForHiddenPage),
   };
+  (function countFrames() {
+    try {
+      if (typeof window.requestAnimationFrame === 'function') {
+        // Two seconds of counting tell "frames arrive" (about 120 to 240) from "no frames" (0), then it stops.
+        var tick = function () {
+          state.diagnostics.animationFrames += 1;
+          if (Date.now() - state.diagnostics.installedAt < 2000) window.requestAnimationFrame(tick);
+        };
+        window.requestAnimationFrame(tick);
+      }
+      if (typeof window.IntersectionObserver === 'function' && document.documentElement) {
+        new window.IntersectionObserver(function () {
+          state.diagnostics.intersectionCallbacks += 1;
+        }).observe(document.documentElement);
+      }
+    } catch (error) {
+      recordError('diagnostics', error);
+    }
+  })();
   Object.freeze(api);
   try {
     Object.defineProperty(window, '__kestrel', { value: api, configurable: true, enumerable: false, writable: false });

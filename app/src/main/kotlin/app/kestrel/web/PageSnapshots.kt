@@ -106,6 +106,16 @@ internal data class InterstitialSnapshot(
     val text: String = "",
 )
 
+/** Whether kestrel.js switched the page to timer-driven frames and instant transitions (no frames had arrived). */
+@Serializable
+internal data class HiddenPageSnapshot(
+    val ok: Boolean = false,
+    val error: String? = null,
+    val applied: Boolean = false,
+    val frames: Int = 0,
+    val elapsed: Long = 0,
+)
+
 @Serializable
 internal data class OpenSnapshot(
     val ok: Boolean = false,

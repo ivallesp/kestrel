@@ -29,6 +29,7 @@ enum class PageFunction(
     REPLY_STATE("replyState"),
     CLOSE_LAYER("closeLayer"),
     REPORT("report"),
+    PREPARE_FOR_HIDDEN_PAGE("prepareForHiddenPage"),
 }
 
 /** kestrel.js (app/src/main/assets/js/kestrel.js) and the expressions that install and call it. */

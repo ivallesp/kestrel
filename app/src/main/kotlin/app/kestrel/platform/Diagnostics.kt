@@ -10,6 +10,8 @@ import android.os.Looper
 import android.os.SystemClock
 import android.os.UserManager
 import androidx.core.content.FileProvider
+import app.kestrel.web.HeadlessProbe
+import kotlinx.coroutines.flow.first
 import java.io.File
 import java.time.Instant
 import kotlin.math.min
@@ -131,12 +133,15 @@ internal object ProblemReport {
     private const val EXITS_KEPT = 12
     private const val MAXIMUM_TRACE_CHARS = 400_000
 
-    fun write(
+    suspend fun write(
         context: Context,
         versionName: String,
         versionCode: Int,
     ): Uri {
         val log = DiagnosticsLog(context)
+        // Measured before the text is built: it takes about three seconds on the main thread's WebView.
+        val probe = HeadlessProbe.run(context)
+        val snipes = recentSnipes(context)
         val text =
             buildString {
                 appendLine("Kestrel problem report")
@@ -152,6 +157,12 @@ internal object ProblemReport {
                 appendLine()
                 appendLine("== Crashes (Kestrel's record) ==")
                 appendLine(log.read(DiagnosticsLog.CRASHES_FILE).ifEmpty { "none recorded" })
+                appendLine()
+                appendLine("== Hidden-page self-test (a local page, no network) ==")
+                appendLine(probe)
+                appendLine()
+                appendLine("== Recent snipes (timeline, with each step's details) ==")
+                appendLine(snipes)
             }
         val directory = File(context.cacheDir, REPORTS_DIRECTORY).apply { mkdirs() }
         directory.listFiles()?.forEach { it.delete() }
@@ -163,6 +174,35 @@ internal object ProblemReport {
                 .substringBefore('.')
         val file = File(directory, "kestrel-report-$stamp.txt").apply { writeText(text) }
         return FileProvider.getUriForFile(context, context.packageName + AUTHORITY_SUFFIX, file)
+    }
+
+    private const val SNIPES_KEPT = 6
+    private const val EVENTS_KEPT = 20
+    private const val MAXIMUM_DETAIL_CHARS = 15_000
+
+    private suspend fun recentSnipes(context: Context): String {
+        val repository = runCatching { context.kestrelContainer.repository }.getOrNull() ?: return "unavailable"
+        val snipes =
+            runCatching { repository.observeSnipes().first() }
+                .getOrNull()
+                ?.sortedByDescending { it.updatedAtUtcMillis }
+                ?.take(SNIPES_KEPT)
+                .orEmpty()
+        if (snipes.isEmpty()) return "none"
+        val text = StringBuilder()
+        for (snipe in snipes) {
+            val events = runCatching { repository.observeTimeline(snipe.id).first() }.getOrNull().orEmpty()
+            text.appendLine(
+                "# ${snipe.title.take(60)} (item ${snipe.ref.itemId} on ${snipe.ref.site.host}), ${snipe.status}, " +
+                    "ends ${Instant.ofEpochMilli(snipe.endTimeUtcMillis)}",
+            )
+            for (event in events.takeLast(EVENTS_KEPT)) {
+                text.appendLine("${Instant.ofEpochMilli(event.atUtcMillis)} ${event.kind}: ${event.message}")
+                event.detail?.let { text.appendLine("    detail: ${it.take(MAXIMUM_DETAIL_CHARS)}") }
+            }
+            text.appendLine()
+        }
+        return text.toString()
     }
 
     private fun exits(context: Context): String {

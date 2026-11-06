@@ -392,11 +392,22 @@ class WebBidPage internal constructor(
         holdBidRequests("openBidLayer")
         decideLayer(layerState(), timedOut = false)?.let { return it }
         awaitHydratedBidButton()?.let { return it }
+        prepareForHiddenPage()
         ensureNativeTouchChecked()
         pressBidButton()?.let { return it }
         return driver.waitUntil(timing.layerOpenTimeoutMillis, timing.pollMillis) {
             decideLayer(layerState(), timedOut = false)
         } ?: decideLayer(layerState(), timedOut = true) ?: LayerState.Failed("eBay's bid layer did not open", report())
+    }
+
+    /** See kestrel.js prepareForHiddenPage: only acts on a page that has had no animation frame. */
+    private suspend fun prepareForHiddenPage() {
+        val prepared = helper.call(PageFunction.PREPARE_FOR_HIDDEN_PAGE, HiddenPageSnapshot.serializer())
+        when {
+            !prepared.ok -> note("hidden page: ${prepared.error}")
+            prepared.applied -> note("hidden page: no animation frames after ${prepared.elapsed} ms, timer frames on")
+            else -> note("hidden page: ${prepared.frames} animation frames, nothing changed")
+        }
     }
 
     /** Waits until eBay's scripts made the bid button usable. Returns the reason to stop, or null to go on. */
