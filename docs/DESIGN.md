@@ -960,7 +960,15 @@ From font scale 1.3 the dashed plate (decoration) is left out, so "Paste eBay li
    - dark theme at 88 %;
    - a top gradient of black from 45 % to 0 over 96 dp.
    - back and overflow buttons: 48 dp circles at 8 dp from the edges, top = status inset + 8 dp.
-   - **overflow menu:** "Open on eBay"; "Stop sniping" (disabled after Bid sent, with the label "Bid already sent"); a divider, then "Delete" with the delete glyph while no bid window runs (its snackbar offers Undo).
+   - **overflow menu:** "Open on eBay"; "Test bidding now" while a dry run fits; the group items (below); "Stop sniping" (disabled after Bid sent, with the label "Bid already sent"); a divider, then "Delete" with the delete glyph while no bid window runs (its snackbar offers Undo).
+   - **group items** (added 6 Nov), only while the lot may change group (not finished, bid window not open, the
+     data layer's own rule): "Add to a group" (add glyph) for an armed lot outside any group; "Move to another
+     group" (edit glyph) and "Remove from <group>" (close glyph) for a lot in one; a watching lot in a group can only
+     leave it. Adding or moving opens the **group sheet**: one line on the rule ("Once one lot of a group is won,
+     Kestrel cancels the rest. This lot keeps its max and bid time." or "Now in <group>…"), the other groups as
+     segmented rows ("2 lots"; "Already won one" disabled; "Ends close to a lot in it" when within 3 minutes), then
+     NEW GROUP with a name field and "Start the group". Every change keeps the max, lead time, schedule and
+     timeline (the timeline says "Moved from the group "A" to "B".") and its snackbar offers Undo.
    - **once the sheet is scrolled up** a page-coloured bar takes over, with a 1 dp rule, the short title and the countdown ("Canon AE-1" over "36 s left").
 2. **Sheet** from y = 204 dp: page colour, 28 dp top corners, 16 dp side padding, 16 dp top padding.
    1. StateChip "Final minute" (Bidding).

@@ -1,7 +1,9 @@
 package app.kestrel.ui.screens.lot
 
+import app.kestrel.model.SnipeStatus
 import app.kestrel.ui.components.TimelineMoment
 import app.kestrel.ui.fixture.CatalogueFixture
+import app.kestrel.ui.model.GroupContext
 import app.kestrel.ui.model.LotAction
 import app.kestrel.ui.model.chipText
 import app.kestrel.ui.screens.lot.LotFixtures.lotState
@@ -303,6 +305,43 @@ class LotStateBuilderTest {
             fixture.canonBidSent
                 .lotState()
                 .menu.testBidding,
+        )
+    }
+
+    @Test
+    fun groupItemsFollowWhetherTheLotMayStillChangeGroup() {
+        // Armed, outside any group: it may join one.
+        assertEquals(
+            GroupMenu(currentGroup = null, canChoose = true),
+            LotFixtures.canonArmedToday
+                .lotState()
+                .menu.group,
+        )
+        // Armed, in a group: it may move to another or leave.
+        val walkman = fixture.walkmanArmed.copy(group = GroupContext("Portable audio", wonTitle = null))
+        assertEquals(GroupMenu(currentGroup = "Portable audio", canChoose = true), walkman.lotState().menu.group)
+        // Watching, outside any group: nothing to group until it has a max.
+        assertNull(
+            fixture.polaroidWatching
+                .lotState()
+                .menu.group,
+        )
+        // Watching, in a group: it may still leave.
+        val watchingInGroup = walkman.copy(snipe = walkman.snipe.copy(maxBid = null, status = SnipeStatus.WATCHING))
+        assertEquals(
+            GroupMenu(currentGroup = "Portable audio", canChoose = false),
+            watchingInGroup.lotState().menu.group,
+        )
+        // The bid window and a sent bid own the page; a finished lot never changes.
+        assertNull(
+            fixture.canonFinalMinute
+                .lotState()
+                .menu.group,
+        )
+        assertNull(
+            fixture.canonBidSent
+                .lotState()
+                .menu.group,
         )
     }
 

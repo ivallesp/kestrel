@@ -27,6 +27,8 @@ import app.kestrel.ui.harness.PhoneInsets
 import app.kestrel.ui.harness.ScreenshotSurface
 import app.kestrel.ui.harness.ScreenshotTest
 import app.kestrel.ui.model.Connectivity
+import app.kestrel.ui.model.GroupContext
+import app.kestrel.ui.screens.add.SheetPreview
 import app.kestrel.ui.screens.lot.LotFixtures.lotState
 import app.kestrel.ui.theme.SheetShape
 import com.github.takahirom.roborazzi.captureScreenRoboImage
@@ -208,6 +210,47 @@ class LotScreenshots : ScreenshotTest() {
             "src/test/screenshots/${fileName("S3-menu-bid-sent", darkTheme = false, fontScale = 1f)}.png",
         )
     }
+
+    /** A lot in a group: the menu offers moving it to another group and taking it out. */
+    @Test
+    fun menuInAGroupLight() {
+        val walkman = fixture.walkmanArmed.copy(group = GroupContext("Portable audio", wonTitle = null))
+        composeRule.setContent {
+            ScreenshotSurface(darkTheme = false, time = "18:08", lightIcons = true) {
+                LotScreen(walkman.lotState(), windowInsets = PhoneInsets)
+            }
+        }
+        composeRule.onNodeWithContentDescription("More options").performClick()
+        composeRule.waitForIdle()
+        captureScreenRoboImage(
+            "src/test/screenshots/${fileName("S3-menu-in-group", darkTheme = false, fontScale = 1f)}.png",
+        )
+    }
+
+    /** "Add to a group": the groups it may join (one already won), then a new group by name. */
+    @Test
+    fun groupSheetLight() =
+        capture("S3-group-sheet", darkTheme = false, time = "18:08") {
+            SheetPreview(
+                title = "Add to a group",
+                backdrop = { LotScreen(LotFixtures.canonArmedToday.lotState(), windowInsets = PhoneInsets) },
+            ) {
+                GroupSheetBody(
+                    state =
+                        GroupSheetState(
+                            currentGroup = null,
+                            choices =
+                                listOf(
+                                    GroupChoice(1, "Film cameras", lots = 2, endsClose = true),
+                                    GroupChoice(2, "Portable audio", lots = 3, blocked = "Already won one"),
+                                ),
+                        ),
+                    newName = remember { TextFieldState() },
+                    onChoose = {},
+                    onCreate = {},
+                )
+            }
+        }
 
     // The edit sheets, drawn over S3 without a window so the phone's bars stay on top.
 

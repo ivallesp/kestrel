@@ -138,6 +138,8 @@ fun LotDestination(
                         onStopSniping = viewModel::stopSniping,
                         onDelete = viewModel::delete,
                         onTestBidding = viewModel::testBidding,
+                        onChooseGroup = viewModel::openGroupSheet,
+                        onLeaveGroup = viewModel::leaveGroup,
                     )
                 }
 
@@ -158,6 +160,16 @@ fun LotDestination(
                     }
                 }
             }
+        }
+        val groupSheet by viewModel.groupSheet.collectAsStateWithLifecycle()
+        groupSheet?.let { sheet ->
+            GroupSheet(
+                state = sheet,
+                newName = viewModel.groupName,
+                onChoose = viewModel::moveToGroup,
+                onCreate = viewModel::startGroup,
+                onDismiss = viewModel::closeGroupSheet,
+            )
         }
         // One polite live region for the whole destination, so the move from S3 to S4 announces the result.
         Box(

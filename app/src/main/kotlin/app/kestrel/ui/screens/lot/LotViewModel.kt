@@ -42,6 +42,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
@@ -138,6 +139,24 @@ class LotViewModel(
 
     private val group: Flow<GroupContext?> =
         snipe.map { it?.groupId }.distinctUntilChanged().flatMapLatest { data.group(it, snipeId) }
+
+    /** The group sheet's new-group name. */
+    val groupName = TextFieldState()
+
+    private val groupSheetOpen = MutableStateFlow(false)
+
+    /** The group sheet while it is open: the groups this lot may join and the one it is in. */
+    val groupSheet: StateFlow<GroupSheetState?> =
+        groupSheetOpen
+            .flatMapLatest { open ->
+                if (!open) {
+                    flowOf(null)
+                } else {
+                    combine(snipe, group, data.groupChoices(snipeId)) { snipe, group, choices ->
+                        snipe?.let { GroupSheetState(it.groupId?.let { group?.name ?: GROUP_FALLBACK }, choices) }
+                    }
+                }
+            }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_AFTER_MILLIS), null)
 
     private val clock: Flow<Instant> =
         snipe
@@ -408,6 +427,74 @@ class LotViewModel(
         }
     }
 
+    // Groups.
+
+    /** "Add to a group" or "Move to another group": opens the sheet with an empty new-group name. */
+    fun openGroupSheet() {
+        groupName.clearText()
+        groupSheetOpen.value = true
+    }
+
+    fun closeGroupSheet() {
+        groupSheetOpen.value = false
+    }
+
+    /** Moves the lot into [groupId] from the sheet, with Undo back to where it was. */
+    fun moveToGroup(groupId: Long) {
+        val from = latest?.groupId
+        val name =
+            groupSheet.value
+                ?.choices
+                ?.firstOrNull { it.groupId == groupId }
+                ?.name ?: return
+        val text = if (from == null) "Added to $name" else "Moved to $name"
+        changeGroup(text, from) { data.setGroup(snipeId, groupId) }
+    }
+
+    /** "Start the group": a new group with this lot in it, from the name typed in the sheet. */
+    fun startGroup() {
+        val name = groupName.text.trim().toString()
+        if (name.isEmpty()) return
+        val from = latest?.groupId
+        changeGroup("Started the group $name", from) { data.moveToNewGroup(snipeId, name) }
+    }
+
+    /** "Remove from …": the lot leaves its group and bids on its own, with Undo. */
+    fun leaveGroup() {
+        val from = latest?.groupId ?: return
+        val name =
+            (state.value as? LotPage.Live)
+                ?.state
+                ?.menu
+                ?.group
+                ?.currentGroup ?: GROUP_FALLBACK
+        changeGroup("Removed from $name", from) { data.setGroup(snipeId, null) }
+    }
+
+    private fun changeGroup(
+        text: String,
+        from: Long?,
+        change: suspend () -> EditResult,
+    ) {
+        viewModelScope.launch {
+            when (val result = change()) {
+                is EditResult.Done -> {
+                    groupSheetOpen.value = false
+                    val undo: () -> Unit = { data.runDetached { data.setGroup(snipeId, from) } }
+                    effectChannel.send(LotEffect.Show(ShellMessage(text, UNDO, ShellMessage.UNDO_MILLIS, undo)))
+                }
+
+                is EditResult.NotAllowed -> {
+                    effectChannel.send(LotEffect.Show(ShellMessage(result.reason.withCurlyQuotes())))
+                }
+
+                EditResult.NotFound -> {
+                    Unit
+                }
+            }
+        }
+    }
+
     /** "Stopped sniping …" with Undo for as long as the snipe can still come back, or without it after that. */
     private fun cancelledMessage(
         text: String,
@@ -509,5 +596,6 @@ class LotViewModel(
     }
 }
 
+private const val GROUP_FALLBACK = "its group"
 private const val TEST_STARTED = "Testing on eBay’s bid panel. Nothing is bid; the result shows in the timeline."
 private const val TEST_NOT_STARTED = "Kestrel couldn’t start the test."

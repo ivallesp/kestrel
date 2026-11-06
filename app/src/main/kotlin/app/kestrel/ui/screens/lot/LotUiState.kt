@@ -147,6 +147,17 @@ data class LotMenuState(
     val stopSniping: MenuEntry?,
     val canDelete: Boolean,
     val testBidding: Boolean = false,
+    val group: GroupMenu? = null,
+)
+
+/**
+ * The lot's group items, while its group may still change (not finished, bid window not open): "Add to a group" for
+ * an armed lot outside any group; "Move to another group" and "Remove from [currentGroup]" for a lot in one.
+ */
+@Immutable
+data class GroupMenu(
+    val currentGroup: String?,
+    val canChoose: Boolean,
 )
 
 @Immutable

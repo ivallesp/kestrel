@@ -259,6 +259,70 @@ class LotViewModelTest {
         }
 
     @Test
+    fun aLotJoinsAGroupFromItsSheetWithUndo() =
+        runTest(dispatcher) {
+            val data = FakeLotData(LotFixtures.canonArmedToday, testScheduler::currentTime)
+            data.choices.value = listOf(GroupChoice(groupId = 7, name = "Cameras", lots = 2))
+            val viewModel = viewModelFor(data)
+            backgroundScope.launch { viewModel.groupSheet.collect {} }
+            viewModel.openGroupSheet()
+            runCurrent()
+            assertEquals(GroupSheetState(currentGroup = null, choices = data.choices.value), viewModel.groupSheet.value)
+
+            viewModel.moveToGroup(7)
+            runCurrent()
+            assertEquals(listOf<Long?>(7), data.groupMoves)
+            assertEquals(null, viewModel.groupSheet.value)
+            val message = (data.effects.last() as LotEffect.Show).message
+            assertEquals("Added to Cameras", message.text)
+            message.onAction?.invoke()
+            data.runDetached()
+            runCurrent()
+            assertEquals("Undo puts it back where it was", listOf<Long?>(7, null), data.groupMoves)
+        }
+
+    @Test
+    fun aLotStartsANewGroupOrLeavesItsGroup() =
+        runTest(dispatcher) {
+            val data = FakeLotData(LotFixtures.canonArmedToday, testScheduler::currentTime)
+            val viewModel = viewModelFor(data)
+            viewModel.openGroupSheet()
+            viewModel.startGroup()
+            runCurrent()
+            assertTrue("a blank name starts nothing", data.newGroups.isEmpty())
+            viewModel.groupName.setTextAndPlaceCursorAtEnd("  Film cameras ")
+            viewModel.startGroup()
+            runCurrent()
+            assertEquals(listOf("Film cameras"), data.newGroups)
+            assertEquals("Started the group Film cameras", (data.effects.last() as LotEffect.Show).message.text)
+
+            data.snipe.value = data.snipe.value!!.copy(groupId = 9)
+            runCurrent()
+            viewModel.leaveGroup()
+            runCurrent()
+            assertEquals(listOf<Long?>(null), data.groupMoves)
+            assertTrue((data.effects.last() as LotEffect.Show).message.text.startsWith("Removed from "))
+        }
+
+    @Test
+    fun aRefusedGroupChangeSaysWhy() =
+        runTest(dispatcher) {
+            val data = FakeLotData(LotFixtures.canonArmedToday, testScheduler::currentTime)
+            data.choices.value = listOf(GroupChoice(groupId = 7, name = "Cameras", lots = 2))
+            data.groupResult = { EditResult.NotAllowed("The bid window is open, so this can't change now.") }
+            val viewModel = viewModelFor(data)
+            backgroundScope.launch { viewModel.groupSheet.collect {} }
+            viewModel.openGroupSheet()
+            runCurrent()
+            viewModel.moveToGroup(7)
+            runCurrent()
+            assertEquals(
+                "The bid window is open, so this can’t change now.",
+                (data.effects.last() as LotEffect.Show).message.text,
+            )
+        }
+
+    @Test
     fun stoppingSnipingGoesBackToWatchingWithUndo() =
         runTest(dispatcher) {
             val data = FakeLotData(LotFixtures.canonArmedToday, testScheduler::currentTime)
@@ -448,6 +512,23 @@ private class FakeLotData(
         undoCancels++
         return EditResult.Done(snipe.value!!.copy(id = id + 100, status = SnipeStatus.ARMED, groupId = null))
     }
+
+    val choices = MutableStateFlow<List<GroupChoice>>(emptyList())
+    val groupMoves = mutableListOf<Long?>()
+    val newGroups = mutableListOf<String>()
+    var groupResult: () -> EditResult = { EditResult.Done(snipe.value!!) }
+
+    override fun groupChoices(id: Long): Flow<List<GroupChoice>> = choices
+
+    override suspend fun setGroup(
+        id: Long,
+        groupId: Long?,
+    ): EditResult = groupResult().also { if (it is EditResult.Done) groupMoves += groupId }
+
+    override suspend fun moveToNewGroup(
+        id: Long,
+        name: String,
+    ): EditResult = groupResult().also { if (it is EditResult.Done) newGroups += name.trim() }
 
     override suspend fun sealStamped(id: Long): Boolean = id in stamped
 

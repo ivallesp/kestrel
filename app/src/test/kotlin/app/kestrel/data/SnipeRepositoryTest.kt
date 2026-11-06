@@ -367,6 +367,58 @@ class SnipeRepositoryTest {
             assertNull((repository.setGroup(snipe.id, null) as EditResult.Done).snipe.groupId)
         }
 
+    @Test
+    fun aSnipeMovesBetweenGroupsAndLeavesKeepingItsMaxLeadAndTimeline() =
+        runTest {
+            val snipe = addArmed(max = gbp("48.00"))
+            val cameras = repository.createGroup("Cameras")
+            val lenses = repository.createGroup("Lenses")
+            repository.setGroup(snipe.id, cameras.id)
+            val before = repository.observeTimeline(snipe.id).first().size
+
+            val moved = (repository.setGroup(snipe.id, lenses.id) as EditResult.Done).snipe
+            assertEquals(lenses.id, moved.groupId)
+            assertEquals(gbp("48.00"), moved.maxBid)
+            assertEquals(6, moved.leadSeconds)
+            assertEquals(SnipeStatus.ARMED, moved.status)
+            assertEquals("Moved from the group \"Cameras\" to \"Lenses\".", lastMessage(snipe.id))
+
+            val left = (repository.setGroup(snipe.id, null) as EditResult.Done).snipe
+            assertNull(left.groupId)
+            assertEquals("Removed from the group \"Lenses\".", lastMessage(snipe.id))
+            assertEquals("the history only grows", before + 2, repository.observeTimeline(snipe.id).first().size)
+        }
+
+    @Test
+    fun aSnipeStartsANewGroupInOneStep() =
+        runTest {
+            val snipe = addArmed()
+            val moved = (repository.moveToNewGroup(snipe.id, "  Watches ") as EditResult.Done).snipe
+            val group = repository.observeGroups().first().single()
+            assertEquals("Watches", group.name)
+            assertEquals(1, group.targetWins)
+            assertEquals(group.id, moved.groupId)
+            assertEquals("Added to the new group \"Watches\".", lastMessage(snipe.id))
+        }
+
+    @Test
+    fun aFinishedSnipeNeverChangesGroupAndLeavesNoEmptyGroupBehind() =
+        runTest {
+            val snipe = addArmed()
+            finish(snipe.id, SnipeStatus.WON, gbp("40.00"))
+            val group = repository.createGroup("Cameras")
+            assertEquals(
+                EditResult.NotAllowed("This snipe has already finished."),
+                repository.setGroup(snipe.id, group.id),
+            )
+            assertEquals(
+                EditResult.NotAllowed("This snipe has already finished."),
+                repository.moveToNewGroup(snipe.id, "Watches"),
+            )
+            assertEquals(listOf("Cameras"), repository.observeGroups().first().map { it.name })
+            assertTrue(repository.moveToNewGroup(addArmed(testListing(itemId = "9")).id, "  ") is EditResult.NotAllowed)
+        }
+
     // Cancel and delete.
 
     @Test

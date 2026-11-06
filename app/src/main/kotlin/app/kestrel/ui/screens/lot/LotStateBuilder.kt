@@ -184,7 +184,7 @@ object LotStateBuilder {
                         figures.copy(startLabel = lastRead(readAt, snipe.lastBidCount ?: 0, now, zone))
                     } ?: figures
                 },
-            menu = menu(snipe, status, evidence, now),
+            menu = menu(snipe, status, evidence, now).copy(group = groupMenu(snipe, inputs.group)),
             offline = offline(inputs.connectivity, status, zone),
             scale = scale(status, evidence, now, end, bidAt),
             card = card(status, evidence, now, bidAt, zone),
@@ -386,6 +386,21 @@ object LotStateBuilder {
         val before =
             if (latest.price == current) sorted.dropLast(1).lastOrNull { it.price != current }?.price else latest.price
         return before?.takeIf { it.currency == current.currency && it < current }
+    }
+
+    /**
+     * Group changes follow the data layer's rule (SnipeRules.editRefusal): never once finished or while the bid
+     * window is open. Joining needs a max, as in the group's own picker; leaving does not.
+     */
+    private fun groupMenu(
+        snipe: Snipe,
+        group: GroupContext?,
+    ): GroupMenu? {
+        if (SnipeRules.editRefusal(snipe.status) != null) return null
+        val current = snipe.groupId?.let { group?.name ?: "its group" }
+        val canChoose = snipe.maxBid != null
+        if (current == null && !canChoose) return null
+        return GroupMenu(currentGroup = current, canChoose = canChoose)
     }
 
     private fun menu(

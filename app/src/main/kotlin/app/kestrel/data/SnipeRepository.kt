@@ -180,7 +180,11 @@ class SnipeRepository(
             write(updated, event(snipe.id, now, TimelineKind.EDITED, "Kestrel now bids $leadSeconds s before the end."))
         }
 
-    /** Moves the snipe into a group, or out of any group with null. */
+    /**
+     * Moves the snipe into a group, from one group to another, or out of any group with null. Its max, lead time and
+     * timeline stay; only finished snipes and an open bid window refuse ([SnipeRules.editRefusal]), and a group that
+     * already has its win takes no one.
+     */
     suspend fun setGroup(
         snipeId: Long,
         groupId: Long?,
@@ -191,10 +195,47 @@ class SnipeRepository(
             val group = groupId?.let { groups.find(it) }
             if (groupId != null && group == null) return@edit EditResult.NotAllowed("That group no longer exists.")
             group?.let { completeGroupRefusal(it) }?.let { return@edit EditResult.NotAllowed(it) }
-            val message = if (group == null) "Removed from its group." else "Added to the group \"${group.name}\"."
+            val previous = snipe.groupId?.let { groups.find(it) }
+            val message =
+                when {
+                    group == null && previous != null -> "Removed from the group \"${previous.name}\"."
+                    group == null -> "Removed from its group."
+                    previous != null -> "Moved from the group \"${previous.name}\" to \"${group.name}\"."
+                    else -> "Added to the group \"${group.name}\"."
+                }
             val updated = snipe.copy(groupId = groupId, updatedAtUtcMillis = now)
             write(updated, event(snipe.id, now, TimelineKind.EDITED, message))
         }
+
+    /**
+     * Starts a new "win 1" group named [name] with this snipe in it, in one step: nothing is created when the snipe
+     * cannot move (finished, or its bid window open) or the name is not usable.
+     */
+    suspend fun moveToNewGroup(
+        snipeId: Long,
+        name: String,
+    ): EditResult {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return EditResult.NotAllowed("A group needs a name.")
+        if (trimmed.length > GROUP_NAME_MAXIMUM_LENGTH) {
+            return EditResult.NotAllowed("Keep the name to $GROUP_NAME_MAXIMUM_LENGTH characters.")
+        }
+        return edit(snipeId) { snipe, now ->
+            SnipeRules.editRefusal(snipe.status)?.let { return@edit EditResult.NotAllowed(it) }
+            val previous = snipe.groupId?.let { groups.find(it) }
+            val groupId = groups.insert(GroupEntity(name = trimmed, targetWins = 1, createdAtUtcMillis = now))
+            val message =
+                if (previous != null) {
+                    "Moved from the group \"${previous.name}\" to the new group \"$trimmed\"."
+                } else {
+                    "Added to the new group \"$trimmed\"."
+                }
+            write(
+                snipe.copy(groupId = groupId, updatedAtUtcMillis = now),
+                event(snipe.id, now, TimelineKind.EDITED, message),
+            )
+        }
+    }
 
     /** Stops the snipe for good. Refused once eBay has the bid, because a placed bid cannot be taken back here. */
     suspend fun cancel(snipeId: Long): EditResult =

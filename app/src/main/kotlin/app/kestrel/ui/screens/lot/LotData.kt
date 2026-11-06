@@ -89,6 +89,21 @@ interface LotData {
     /** Starts a dry run of the snipe now (it never bids). False when the snipe is gone. */
     suspend fun startDryRun(id: Long): Boolean = false
 
+    /** The groups snipe [id] could move into (LotGroupChoices). */
+    fun groupChoices(id: Long): Flow<List<GroupChoice>> = flowOf(emptyList())
+
+    /** Moves snipe [id] into [groupId], or out of its group with null (SnipeActions.setGroup). */
+    suspend fun setGroup(
+        id: Long,
+        groupId: Long?,
+    ): EditResult = EditResult.NotFound
+
+    /** Starts a new group named [name] with snipe [id] in it (SnipeActions.moveToNewGroup). */
+    suspend fun moveToNewGroup(
+        id: Long,
+        name: String,
+    ): EditResult = EditResult.NotFound
+
     /**
      * Runs [action] in the app's own scope. An Undo tapped on the next screen still reaches the data after this screen
      * and its ViewModel are gone.
@@ -112,6 +127,26 @@ class ContainerLotData(
     }
 
     override fun timeline(id: Long): Flow<List<TimelineEvent>> = repository.observeTimeline(id)
+
+    override fun groupChoices(id: Long): Flow<List<GroupChoice>> =
+        combine(
+            repository.observeSnipe(id),
+            repository.observeGroups(),
+            repository.observeSnipes(),
+            repository.observeGroupWins(),
+        ) { snipe, groups, snipes, wins ->
+            snipe?.let { LotGroupChoices.of(it, groups, snipes, wins) }.orEmpty()
+        }.distinctUntilChanged()
+
+    override suspend fun setGroup(
+        id: Long,
+        groupId: Long?,
+    ): EditResult = actions.setGroup(id, groupId)
+
+    override suspend fun moveToNewGroup(
+        id: Long,
+        name: String,
+    ): EditResult = actions.moveToNewGroup(id, name)
 
     override fun prices(id: Long): Flow<List<PricePoint>> = repository.observePricePoints(id)
 

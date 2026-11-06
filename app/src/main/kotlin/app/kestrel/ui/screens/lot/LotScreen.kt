@@ -100,6 +100,8 @@ fun LotScreen(
     onStopSniping: () -> Unit = {},
     onDelete: () -> Unit = {},
     onTestBidding: () -> Unit = {},
+    onChooseGroup: () -> Unit = {},
+    onLeaveGroup: () -> Unit = {},
 ) {
     val page = MaterialTheme.colorScheme.background
     val density = LocalDensity.current
@@ -155,6 +157,8 @@ fun LotScreen(
                 onStopSniping = onStopSniping,
                 onDelete = onDelete,
                 onTestBidding = onTestBidding,
+                onChooseGroup = onChooseGroup,
+                onLeaveGroup = onLeaveGroup,
             )
             BottomFade(windowInsets = windowInsets)
         }
@@ -255,6 +259,8 @@ private fun PhotoButtons(
     onStopSniping: () -> Unit,
     onDelete: () -> Unit,
     onTestBidding: () -> Unit,
+    onChooseGroup: () -> Unit,
+    onLeaveGroup: () -> Unit,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     Row(
@@ -285,6 +291,38 @@ private fun PhotoButtons(
                             onTestBidding()
                         },
                     )
+                }
+                menu.group?.let { group ->
+                    if (group.canChoose) {
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    if (group.currentGroup ==
+                                        null
+                                    ) {
+                                        "Add to a group"
+                                    } else {
+                                        "Move to another group"
+                                    },
+                                )
+                            },
+                            leadingIcon = { SymbolIcon(if (group.currentGroup == null) Symbols.Add else Symbols.Edit) },
+                            onClick = {
+                                expanded = false
+                                onChooseGroup()
+                            },
+                        )
+                    }
+                    group.currentGroup?.let { name ->
+                        DropdownMenuItem(
+                            text = { Text("Remove from $name") },
+                            leadingIcon = { SymbolIcon(Symbols.Close) },
+                            onClick = {
+                                expanded = false
+                                onLeaveGroup()
+                            },
+                        )
+                    }
                 }
                 menu.stopSniping?.let { stop ->
                     DropdownMenuItem(

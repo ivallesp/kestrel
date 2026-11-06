@@ -61,6 +61,11 @@ class SnipeActions internal constructor(
         groupId: Long?,
     ): EditResult = repository.setGroup(snipeId, groupId).rescheduled()
 
+    suspend fun moveToNewGroup(
+        snipeId: Long,
+        name: String,
+    ): EditResult = repository.moveToNewGroup(snipeId, name).rescheduled()
+
     /** Stored before anything else, so an engine that re-reads the snipe already sees it cancelled. */
     suspend fun cancel(snipeId: Long): EditResult = repository.cancel(snipeId).alsoWhenDone { stopEverything(snipeId) }
 
