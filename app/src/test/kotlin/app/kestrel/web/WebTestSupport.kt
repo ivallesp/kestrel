@@ -360,6 +360,21 @@ internal class SimulatedEbayPage(
     var submitAnswerNull = false
     var bidButtonPresses = 0
 
+    /** eBay UK's two-step layer (2026-11-06): the field and "Review bid", then a confirm screen with "Confirm bid". */
+    var twoStep = false
+
+    /** eBay shows its confirm screen (after a press or a tap on "Review bid"). */
+    var reviewRendered = false
+
+    /** kestrel.js recorded the review for [reviewedValue]. */
+    var reviewRecorded = false
+    var reviewedValue: String? = null
+    var reviewPresses = 0
+
+    /** The amount eBay's confirm screen shows for the reviewed field value. */
+    var confirmShows: (String) -> String = { it }
+    var closes = 0
+
     init {
         driver.loadResult =
             { requested ->
@@ -435,8 +450,13 @@ internal class SimulatedEbayPage(
         driver.on("replyState") { replyState() }
         driver.on("closeLayer") {
             layerOpen = false
+            reviewRendered = false
+            reviewRecorded = false
+            reviewedValue = null
+            closes += 1
             json(mapOf("ok" to true, "closed" to true, "method" to "closeButton"))
         }
+        driver.on("pressReview") { arguments -> pressReview(arguments.firstOrNull()) }
         driver.on("report") {
             json(
                 mapOf(
@@ -522,6 +542,38 @@ internal class SimulatedEbayPage(
             )
         }
         val inlineError = if (fieldValue.isNotEmpty() && !valid) "Enter £5.57 or more" else null
+        if (twoStep && reviewRendered) {
+            val reviewed = reviewRecorded
+            return json(
+                mapOf(
+                    "ok" to true,
+                    "url" to url,
+                    "title" to title,
+                    "open" to true,
+                    "ready" to true,
+                    "submit" to mapOf("found" to true, "label" to "Confirm bid", "enabled" to true),
+                    "reviewed" to reviewed,
+                    "amountShown" to if (reviewed) confirmShows(fieldValue) == reviewedValue else null,
+                ),
+            )
+        }
+        if (twoStep) {
+            return json(
+                mapOf(
+                    "ok" to true,
+                    "url" to url,
+                    "title" to title,
+                    "open" to true,
+                    "ready" to true,
+                    "input" to mapOf("type" to "tel", "value" to fieldValue),
+                    "submit" to mapOf("found" to false, "rejected" to listOf(mapOf("label" to "Review bid"))),
+                    "review" to mapOf("found" to true, "label" to "Review bid", "enabled" to valid),
+                    "minimumAmountText" to minimumAmountText,
+                    "lowestPowerBidAmountText" to lowestPowerBidAmountText,
+                    "inlineError" to inlineError,
+                ),
+            )
+        }
         return json(
             mapOf(
                 "ok" to true,
@@ -593,7 +645,24 @@ internal class SimulatedEbayPage(
         which: String?,
         expectValue: String?,
     ): String {
+        if (which == "review") {
+            if (fieldValue != expectValue) return json(mapOf("ok" to false, "reason" to "amountChanged"))
+            guardTarget = "review"
+            return json(
+                mapOf(
+                    "ok" to true,
+                    "x" to 206.0,
+                    "y" to 700.0,
+                    "hit" to true,
+                    "devicePixelRatio" to 2.625,
+                    "label" to "Review bid",
+                ),
+            )
+        }
         if (which == "submit") {
+            if (twoStep && (!reviewRecorded || confirmShows(fieldValue) != reviewedValue)) {
+                return json(mapOf("ok" to false, "reason" to "amountNotShown"))
+            }
             applyLateFieldChange()
             if (pressMethod != null) return json(mapOf("ok" to false, "reason" to "alreadySubmitted"))
             if (fieldValue != expectValue) return json(mapOf("ok" to false, "reason" to "amountChanged"))
@@ -639,6 +708,11 @@ internal class SimulatedEbayPage(
                 showLayer()
             }
 
+            guardTarget == "review" && nativeTapReachesTarget -> {
+                guardReached = true
+                reviewRendered = true
+            }
+
             guardTarget == "submit" && nativeTapReachesTarget -> {
                 guardReached = true
                 pressMethod = "native"
@@ -659,6 +733,28 @@ internal class SimulatedEbayPage(
         if (hold) pressesWhileHeld += 1
     }
 
+    private fun pressReview(options: JsonElement?): String {
+        val expectValue = options?.objectField("expectValue")?.text()
+        val nativeReached = options?.objectField("nativeReached")?.jsonPrimitive?.booleanOrNull == true
+        if (nativeReached) {
+            if (!(guardTarget == "review" && guardReached)) {
+                return json(
+                    mapOf(
+                        "ok" to false,
+                        "reason" to "nativeTapNotSeen",
+                    ),
+                )
+            }
+        } else {
+            if (fieldValue != expectValue) return json(mapOf("ok" to false, "reason" to "amountChanged"))
+            reviewPresses += 1
+            reviewRendered = true
+        }
+        reviewRecorded = true
+        reviewedValue = expectValue
+        return json(mapOf("ok" to true, "method" to if (nativeReached) "native" else "dom"))
+    }
+
     private fun refused(reason: String) = json(mapOf("ok" to false, "dispatched" to false, "reason" to reason))
 
     private fun submit(
@@ -675,6 +771,7 @@ internal class SimulatedEbayPage(
                 !layerOpen -> "bidLayerClosed"
                 expectValue == null -> "expectedValueMissing"
                 fieldValue != expectValue -> "amountChanged"
+                twoStep && (!reviewRecorded || confirmShows(fieldValue) != reviewedValue) -> "amountNotShown"
                 else -> null
             }
         if (refusal != null) return refused(refusal)

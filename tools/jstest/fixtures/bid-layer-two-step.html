@@ -1,0 +1,57 @@
+<!doctype html>
+<!-- SYNTHETIC two-step bid layer, modelled on the signed-in ebay.co.uk mobile layer captured on a Pixel 9a on
+     2026-11-06: a "Place your bid" dialog with "Your max bid", a type=tel textbox__control field, power bids, and a
+     "Review bid" button that is disabled until an amount is typed. The confirm screen after "Review bid" was not
+     captured: it is imagined here as eBay's usual summary plus a "Confirm bid" button. -->
+<html><head><title>Item | eBay</title></head><body>
+<div class="vim x-bid-action" data-testid="x-bid-action"><button id="bidBtn_btn" class="ux-call-to-action btn btn--fluid btn--primary" type="button"><span class="ux-call-to-action__text">Submit bid</span></button></div>
+<div id="dialog-root"></div>
+<script>
+(function () {
+  var scenario = window.__fixtureScenario || 'normal';
+  window.__fixtureCounts = { reviewClicks: 0, confirmClicks: 0 };
+  function entryView() {
+    return '<div aria-label="Place your bid" aria-modal="true" role="dialog" class="lightbox-dialog">' +
+      '<div class="lightbox-dialog__window"><div class="lightbox-dialog__main"><div data-testid="placebid-page">' +
+      '<h2>Place bid</h2><p><span>£11.12 current bid</span><span> + £2.94 eBay delivery</span></p>' +
+      '<div class="BidInputStack-module__maximumBidLabel" id="bid-input-react-stack__label">Your max bid</div>' +
+      '<label id="bid-input-react-stack__currency-label">£</label>' +
+      '<span class="textbox"><input id="BidInputStack-module__bidInputTextbox" class="textbox__control" inputmode="decimal" ' +
+      'aria-labelledby="bid-input-react-stack__label bid-input-react-stack__currency-label" placeholder="0" type="tel" value=""></span>' +
+      '<div class="powerbids-container"><ul class="Powerbids-module__ul" aria-label="Powerbids">' +
+      '<li><button class="btn btn--secondary"><span>£12</span></button></li>' +
+      '<li><button class="btn btn--secondary"><span>£13</span></button></li></ul></div>' +
+      '<div data-testid="bid-input-react--submit-button"><button disabled class="btn btn--primary btn--fluid" ' +
+      'aria-label="Review bid" id="review">Review bid</button></div></div></div></div></div>';
+  }
+  function confirmView(amount) {
+    return '<div aria-label="Place your bid" aria-modal="true" role="dialog" class="lightbox-dialog">' +
+      '<div class="lightbox-dialog__window"><div class="lightbox-dialog__main"><div data-testid="placebid-page">' +
+      '<h2>Review your bid</h2><p>Your max bid <strong>£' + amount + '</strong></p>' +
+      '<p>By selecting Confirm bid, you commit to buy this item if you win.</p>' +
+      '<button class="btn btn--primary btn--fluid" id="confirm">Confirm bid</button>' +
+      '<button class="btn btn--secondary" id="edit">Edit bid</button></div></div></div></div>';
+  }
+  var root = document.getElementById('dialog-root');
+  document.getElementById('bidBtn_btn').addEventListener('click', function () {
+    root.innerHTML = entryView();
+    var input = root.querySelector('input');
+    var review = root.querySelector('#review');
+    input.addEventListener('input', function () {
+      if (input.value) review.removeAttribute('disabled'); else review.setAttribute('disabled', '');
+    });
+    review.addEventListener('click', function () {
+      window.__fixtureCounts.reviewClicks += 1;
+      var amount = scenario === 'confirmShowsAnotherAmount' ? '99.00' : input.value;
+      root.innerHTML = confirmView(amount);
+      root.querySelector('#confirm').addEventListener('click', function () {
+        window.__fixtureCounts.confirmClicks += 1;
+        window.fetch('https://www.ebay.co.uk/bfl/placebid?action=confirmbid&modules=POWER_BID_LAYER', {
+          method: 'POST', body: JSON.stringify({ price: { currency: 'GBP', value: amount } }) })
+          .catch(function () { window.__fixtureCounts.failedRequests = (window.__fixtureCounts.failedRequests || 0) + 1; });
+      });
+    });
+  });
+})();
+</script>
+</body></html>

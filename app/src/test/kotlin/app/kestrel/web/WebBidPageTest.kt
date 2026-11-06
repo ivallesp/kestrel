@@ -1071,4 +1071,84 @@ class WebBidPageTest {
             page().close()
             assertTrue(driver.destroyed)
         }
+
+    // -------------------------------------------------------------------------------------------- two-step layer
+
+    @Test
+    fun `a two-step layer is reviewed, verified on the confirm screen, and the confirm is the one press`() =
+        runTest {
+            ebay.twoStep = true
+            val page = page()
+            page.openItem(ukItem)
+            val layer = page.openBidLayer()
+            assertTrue(layer is LayerState.Ready)
+            assertEquals("Review bid", (layer as LayerState.Ready).submitLabel)
+            val typed = page.typeMax(max)
+            assertNull(typed.inlineError)
+            assertTrue(typed.verified)
+            assertTrue(ebay.reviewRecorded)
+            assertEquals(0, ebay.presses)
+            page.armReplyObserver()
+            val sent = page.submit()
+            assertEquals(InputMethod.NATIVE_TOUCH, sent.method)
+            assertEquals(1, ebay.presses)
+        }
+
+    @Test
+    fun `without trusted touch Review bid is pressed with DOM events`() =
+        runTest {
+            ebay.twoStep = true
+            ebay.touchReachesPage = false
+            val page = page()
+            page.openItem(ukItem)
+            page.openBidLayer()
+            assertTrue(page.typeMax(max).verified)
+            assertEquals(1, ebay.reviewPresses)
+        }
+
+    @Test
+    fun `a confirm screen that shows another amount is never submitted`() =
+        runTest {
+            ebay.twoStep = true
+            ebay.confirmShows = { "99.00" }
+            val page = page()
+            page.openItem(ukItem)
+            page.openBidLayer()
+            val typed = page.typeMax(max)
+            assertFalse(typed.verified)
+            assertTrue(typed.inlineError!!.contains("does not show"))
+            page.armReplyObserver()
+            assertTrue(runCatching { page.submit() }.exceptionOrNull() is SubmitNotDispatchedException)
+            assertEquals(0, ebay.presses)
+        }
+
+    @Test
+    fun `a new amount after the review reopens the layer and reviews again`() =
+        runTest {
+            ebay.twoStep = true
+            val page = page()
+            page.openItem(ukItem)
+            page.openBidLayer()
+            assertTrue(page.typeMax(max).verified)
+            val raised = Money.of("13.00", "GBP")
+            val typed = page.typeMax(raised)
+            assertTrue(typed.verified)
+            assertEquals(1, ebay.closes)
+            // A whole maximum is typed without decimals.
+            assertEquals("13", ebay.reviewedValue)
+        }
+
+    @Test
+    fun `the same amount after the review is checked without typing again`() =
+        runTest {
+            ebay.twoStep = true
+            val page = page()
+            page.openItem(ukItem)
+            page.openBidLayer()
+            assertTrue(page.typeMax(max).verified)
+            val typings = driver.callsOf("typeMax").size
+            assertTrue(page.typeMax(max).verified)
+            assertEquals(typings, driver.callsOf("typeMax").size)
+            assertTrue(page.checkTyped().verified)
+        }
 }

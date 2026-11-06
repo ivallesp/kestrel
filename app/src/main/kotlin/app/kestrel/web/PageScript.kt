@@ -30,6 +30,7 @@ enum class PageFunction(
     CLOSE_LAYER("closeLayer"),
     REPORT("report"),
     PREPARE_FOR_HIDDEN_PAGE("prepareForHiddenPage"),
+    PRESS_REVIEW("pressReview"),
 }
 
 /** kestrel.js (app/src/main/assets/js/kestrel.js) and the expressions that install and call it. */

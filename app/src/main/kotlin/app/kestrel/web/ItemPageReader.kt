@@ -19,6 +19,8 @@ internal data class PageTiming(
     val layerOpenTimeoutMillis: Long = 8_000,
     val pollMillis: Long = 150,
     val typingSettleMillis: Long = 1_200,
+    // eBay's confirm screen after "Review bid" (a render, maybe a request).
+    val reviewTimeoutMillis: Long = 8_000,
     val pressMillis: Long = PageDriver.DEFAULT_PRESS_MILLIS,
     val tapConfirmMillis: Long = 400,
     val tapConfirmPollMillis: Long = 40,

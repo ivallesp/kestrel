@@ -104,7 +104,9 @@ internal object WindowTimings {
     // Longer than the page's own waits for eBay's scripts and the layer (web PageTiming), so its reason and report
     // arrive instead of a bare timeout. A layer that opens in a few seconds is not slowed by it.
     const val OPEN_LAYER_TIMEOUT = 26_000L
-    const val TYPE_TIMEOUT = 8_000L
+
+    // Typing, eBay's check of the amount, and on a two-step layer "Review bid" and its confirm screen.
+    const val TYPE_TIMEOUT = 18_000L
     const val TYPE_MINIMUM_BUDGET = 300L
     const val ARM_OBSERVER_TIMEOUT = 3_000L
     const val SUBMIT_TIMEOUT = 3_000L

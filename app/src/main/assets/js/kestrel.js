@@ -131,6 +131,9 @@
       submitLabel: [/\bbid\b|\bbieten\b|\bgebot\b|\bench[e\u00e9]rir\b|\bench\u00e8re\b|\bpujar?\b|\bbieden\b|\blicytuj\b/i, 'labels Bid, Submit bid, Place bid, Increase bid, Increase max bid (2025-09 to 2026-10); German, French, Spanish, Dutch and Polish inferred'],
       // Amounts mean a power-bid button; the words mean another action (buy, offer, a review or verification step,
       // retract, cancel), in the same languages.
+      // A first step before the bid: "Review bid" leads to eBay's confirm screen, whose plain bid button ("Confirm bid")
+      // is the one press. Exact labels only.
+      reviewLabel: [/^\s*review( your)? bid\s*$/i, 'Review bid (signed-in ebay.co.uk mobile bid layer, 2026-11-06 capture)'],
       submitLabelDeny: [/\d|buy|kaufen|pay\b|checkout|offer|angebot|preisvorschlag|review|retract|zur[u\u00fc]ck|cancel|abbrechen|close|history|watch|verif|code|send|acheter|offre|annuler|historique|comprar|ofert|cancelar|historial|kopen|annuleren|\bkup\b|anuluj/i, 'safety rule'],
       // An input for a verification code or a phone number (id, name, autocomplete, label or placeholder).
       checkField: [/one-time-code|\botp\b|passcode|verif|captcha|\bpin\b|\bcode\b|phone|mobile|\btel\b|\bage\b|birth|\bdob\b|bday/i, 'verification code fields #code, 2025-09; age checks; autocomplete tokens'],
@@ -197,6 +200,8 @@
     press: { phase: 'idle', method: null, label: null, perfTime: null, epochTime: null, baseline: null },
     guard: null,
     probe: null,
+    // Set once "Review bid" was pressed: the amount it was pressed for, in which document.
+    review: null,
     autoRefresh: { counter: 0, inFlightId: null, results: {} },
     // Diagnostics only: whether this page gets animation frames and intersection callbacks (a hidden WebView may get
     // none, which stalls eBay's dialog transitions), and the page's own requests once the observer is armed.
@@ -573,6 +578,45 @@
     return { element: null, selector: null, label: null, enabled: false, rejected: rejected };
   }
 
+  // The "Review bid" button of a two-step layer (not a power bid, rendered), or null.
+  function findReview(container) {
+    var nodes = queryAll(container, 'button, [role="button"]');
+    for (var i = 0; i < nodes.length; i++) {
+      var node = nodes[i];
+      if (!isRendered(node) || isInsidePowerBids(node)) continue;
+      var label = labelOf(node);
+      if (label && TABLE.texts.reviewLabel[0].test(label)) {
+        return { element: node, selector: 'button (review)', label: label, enabled: isEnabled(node) };
+      }
+    }
+    return null;
+  }
+
+  // True once "Review bid" was pressed in this document for the amount the press expects.
+  function reviewedHere(expected) {
+    var review = state.review;
+    if (!review || review.documentToken !== DOCUMENT_TOKEN) return false;
+    return expected === undefined || review.expectValue === expected;
+  }
+
+  // Whether [container]'s visible text shows the amount [expected] (the field's text, "12.50" or "12,50"): eBay's
+  // confirm screen has no field, so the amount it will bid is checked in its words.
+  function amountShownIn(container, expected) {
+    var wanted = minorUnits(String(expected).replace(/\s/g, '').replace(',', '.'));
+    if (wanted === null) return false;
+    var text = visibleText(container, 6000) || '';
+    var pattern = /\d{1,3}(?:[.,\u00a0\u202f ]\d{3})*(?:[.,]\d{2})?|\d+(?:[.,]\d{2})?/g;
+    var match;
+    while ((match = pattern.exec(text)) !== null) {
+      var token = match[0].replace(/[\u00a0\u202f ]/g, '');
+      var decimal = /[.,]\d{2}$/.test(token) ? token.slice(-3, -2) : null;
+      var whole = decimal ? token.slice(0, -3).replace(/[.,]/g, '') : token.replace(/[.,]/g, '');
+      var normalized = decimal ? whole + '.' + token.slice(-2) : whole;
+      if (minorUnits(normalized) === wanted) return true;
+    }
+    return false;
+  }
+
   function findPowerBids(container) {
     var seen = [];
     var bids = [];
@@ -787,6 +831,10 @@
       var submit = findSubmit(layer.element);
       return submit.element ? { element: submit.element, selector: submit.selector, label: submit.label } : null;
     }
+    if (which === 'review') {
+      var review = findReview(layer.element);
+      return review ? { element: review.element, selector: review.selector, label: review.label } : null;
+    }
     return null;
   }
 
@@ -876,6 +924,13 @@
       steps[i]();
     }
     return 'complete';
+  }
+
+  // The review button still says "Review bid", outside the power bids, in this document.
+  function reviewStill(element) {
+    return function () {
+      return element.isConnected && !isInsidePowerBids(element) && TABLE.texts.reviewLabel[0].test(labelOf(element) || '');
+    };
   }
 
   // The armed button still says bid and nothing else, outside the power bids, in this document.
@@ -986,12 +1041,19 @@
     if (options && typeof options.documentToken === 'string' && options.documentToken !== DOCUMENT_TOKEN) {
       return 'documentChanged';
     }
-    if (!layer || !layer.input) return 'bidLayerClosed';
+    var expected = options && typeof options.expectValue === 'string' ? options.expectValue : null;
+    var reviewed = expected !== null && reviewedHere(expected);
+    if (!layer || (!layer.input && !reviewed)) return 'bidLayerClosed';
     if (!submit.element) return 'submitNotFound';
     if (!submit.enabled) return 'submitDisabled';
-    var expected = options && typeof options.expectValue === 'string' ? options.expectValue : null;
     if (expected === null) return 'expectedValueMissing';
-    if (layer.input.element.value !== expected) return 'amountChanged';
+    if (reviewed) {
+      // eBay's confirm screen: the amount it will bid must be in its words, and a field still there must hold it.
+      if (layer.input && layer.input.element.value !== expected) return 'amountChanged';
+      if (!amountShownIn(layer.element, expected)) return 'amountNotShown';
+    } else if (layer.input.element.value !== expected) {
+      return 'amountChanged';
+    }
     if (inlineErrorText(layer)) return 'inlineError';
     if (detectInterstitial(layer)) return 'interstitial';
     if (blockingCover(submit.element)) return 'covered';
@@ -1504,6 +1566,8 @@
       var submit = findSubmit(layer.element);
       result.submit = { selector: submit.selector, label: submit.label, enabled: submit.enabled,
         found: !!submit.element, rejected: submit.rejected };
+      var review = findReview(layer.element);
+      result.review = review ? { label: review.label, enabled: review.enabled, found: true } : null;
       var bids = findPowerBids(layer.element);
       result.powerBids = bids.map(function (bid) {
         return bid.label;
@@ -1514,9 +1578,26 @@
       result.minimumText = minimum ? minimum.text : null;
       result.minimumAmountText = minimum ? minimum.amountText : null;
       result.inlineError = inlineErrorText(layer);
-      var cover = submit.element && !interstitial ? blockingCover(submit.element) : null;
+      var pressable = submit.element || (review && review.element);
+      var cover = pressable && !interstitial ? blockingCover(pressable) : null;
       if (cover) result.interstitial = { kind: 'unknown', text: truncate(textOf(cover, 600), 600) };
-      result.ready = !!submit.element && !result.interstitial;
+      result.ready = !!pressable && !result.interstitial;
+      if (reviewedHere()) {
+        result.reviewed = true;
+        result.amountShown = amountShownIn(layer.element, state.review.expectValue);
+      }
+    } else if (reviewedHere() && !interstitial) {
+      // eBay's confirm screen after "Review bid": no field, the amount in its words, and the plain bid button.
+      var confirm = findSubmit(layer.element);
+      result.reviewed = true;
+      result.amountShown = amountShownIn(layer.element, state.review.expectValue);
+      result.submit = { selector: confirm.selector, label: confirm.label, enabled: confirm.enabled,
+        found: !!confirm.element, rejected: confirm.rejected };
+      result.inlineError = inlineErrorText(layer);
+      var confirmCover = confirm.element ? blockingCover(confirm.element) : null;
+      if (confirmCover) result.interstitial = { kind: 'unknown', text: truncate(textOf(confirmCover, 600), 600) };
+      result.ready = !!confirm.element && !result.interstitial;
+      if (!confirm.element) result.pendingDialogText = truncate(textOf(layer.element, 300), 300) || null;
     } else if (!interstitial) {
       var text = textOf(layer.element, 300);
       if (TABLE.texts.layerError[0].test(text)) {
@@ -1676,11 +1757,22 @@
   // Prepares a native tap on the bid button or the submit: checks the element, arms the guard and returns where
   // to tap. For the submit it also marks the one press of this document as taken.
   function armTap(which, options) {
-    if (which !== 'bidButton' && which !== 'submit') return { ok: false, reason: 'unknownTarget' };
+    if (which !== 'bidButton' && which !== 'submit' && which !== 'review') return { ok: false, reason: 'unknownTarget' };
+    if (which === 'review') {
+      var reviewLayer = findLayer();
+      var reviewProblem = reviewPressProblem(reviewLayer, options);
+      if (reviewProblem) return { ok: false, reason: reviewProblem };
+      var reviewButton = findReview(reviewLayer.element);
+      var reviewCenter = centerOf(reviewButton.element);
+      if (!reviewCenter.inViewport) return { ok: false, reason: 'notInViewport' };
+      armGuard('target', reviewButton.element, 'review');
+      return { ok: true, which: which, x: reviewCenter.x, y: reviewCenter.y, hit: reviewCenter.hit,
+        devicePixelRatio: reviewCenter.devicePixelRatio, label: reviewButton.label, perfTime: now() };
+    }
     if (which === 'submit') {
       if (state.press.phase !== 'idle') return { ok: false, reason: 'alreadySubmitted' };
       var layer = findLayer();
-      var submit = layer && layer.input ? findSubmit(layer.element) : { element: null };
+      var submit = layer && (layer.input || reviewedHere()) ? findSubmit(layer.element) : { element: null };
       var problem = submitProblem(layer, submit, options);
       if (problem) return { ok: false, reason: problem };
       var center = centerOf(submit.element);
@@ -1762,6 +1854,47 @@
     return result;
   }
 
+  // What must hold before "Review bid" is pressed: the typed amount in the field of this document, nothing in the way.
+  function reviewPressProblem(layer, options) {
+    if (options && typeof options.documentToken === 'string' && options.documentToken !== DOCUMENT_TOKEN) {
+      return 'documentChanged';
+    }
+    if (!layer || !layer.input) return 'bidLayerClosed';
+    var review = findReview(layer.element);
+    if (!review) return 'reviewNotFound';
+    if (!review.enabled) return 'reviewDisabled';
+    var expected = options && typeof options.expectValue === 'string' ? options.expectValue : null;
+    if (expected === null) return 'expectedValueMissing';
+    if (layer.input.element.value !== expected) return 'amountChanged';
+    if (inlineErrorText(layer)) return 'inlineError';
+    if (detectInterstitial(layer)) return 'interstitial';
+    if (blockingCover(review.element)) return 'covered';
+    return null;
+  }
+
+  // Presses "Review bid" (the step before the bid, never the bid itself), or records that Kestrel's guarded native tap
+  // reached it. Bid requests stay held either way: only the confirm screen's button, through submit(), can bid.
+  function pressReview(options) {
+    var nativeReached = !!(options && options.nativeReached === true);
+    var expected = options && typeof options.expectValue === 'string' ? options.expectValue : null;
+    if (nativeReached) {
+      var seen = state.guard && state.guard.which === 'review' ? state.guard : state.lastGuard;
+      if (!seen || seen.which !== 'review' || !seen.reached) return { ok: false, reason: 'nativeTapNotSeen' };
+      if (options.documentToken && options.documentToken !== DOCUMENT_TOKEN) return { ok: false, reason: 'documentChanged' };
+    } else {
+      var layer = findLayer();
+      var problem = reviewPressProblem(layer, options);
+      if (problem) return { ok: false, reason: problem };
+      var review = findReview(layer.element);
+      centerOf(review.element);
+      var outcome = domPress(review.element, reviewStill(review.element));
+      if (outcome === 'notStarted') return { ok: false, reason: 'labelChanged' };
+    }
+    state.review = { expectValue: expected, documentToken: DOCUMENT_TOKEN, at: Date.now(),
+      method: nativeReached ? 'native' : 'dom' };
+    return { ok: true, method: state.review.method };
+  }
+
   function submitPress(options) {
     var press = state.press;
     if (press.phase === 'pressed') {
@@ -1769,7 +1902,7 @@
     }
     if (press.phase === 'abandoned') return { ok: false, dispatched: false, reason: 'nativeTapUnknown' };
     var layer = findLayer();
-    var submit = layer && layer.input ? findSubmit(layer.element) : { element: null };
+    var submit = layer && (layer.input || reviewedHere()) ? findSubmit(layer.element) : { element: null };
     if (press.phase === 'nativeArmed') {
       // The native tap never reached the button: swallow any late trusted tap, then press once with DOM events.
       // Without the guard there is no way to know that no tap landed, so nothing is pressed.
@@ -1840,6 +1973,8 @@
   }
 
   function closeLayer() {
+    // A reopened layer starts at its entry step: the review is redone for whatever amount is typed next.
+    state.review = null;
     var layer = findLayer();
     if (!layer) return { ok: true, closed: true, method: 'none' };
     var dialog = layer.element.closest('[role="dialog"], .lightbox-dialog, .drawer-dialog, .fullscreen-dialog') || layer.element;
@@ -2042,6 +2177,7 @@
         perfTime: state.press.perfTime },
       guard: guardSummary(state.guard) || state.lastGuard || null,
       touchProbe: state.probeResult || null,
+      review: state.review,
       environment: { animationFrames: state.diagnostics.animationFrames,
         intersectionCallbacks: state.diagnostics.intersectionCallbacks,
         secondsSinceInstall: Math.round((Date.now() - state.diagnostics.installedAt) / 1000),
@@ -2103,6 +2239,7 @@
     closeLayer: safe('closeLayer', closeLayer),
     report: safe('report', report),
     prepareForHiddenPage: safe('prepareForHiddenPage', prepareForHiddenPage),
+    pressReview: safe('pressReview', pressReview),
   };
   (function countFrames() {
     try {

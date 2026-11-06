@@ -51,6 +51,13 @@ internal data class TypingAttempt(
     val navigation: Long,
 )
 
+/** A two-step layer after "Review bid": what was typed, the field's value then, and eBay's minimum then. */
+internal data class ReviewedTyping(
+    val attempt: TypingAttempt,
+    val fieldValue: String,
+    val minimum: Money?,
+)
+
 /** What became of a native tap. */
 internal enum class TapOutcome {
     /** The finger went down and up: a click may have followed. */
@@ -97,6 +104,9 @@ class WebBidPage internal constructor(
     private var autoRefreshUrl: String? = null
     private var verifiedTyping: VerifiedTyping? = null
     private var lastTyping: TypingAttempt? = null
+
+    /** Set once "Review bid" was pressed for [ReviewedTyping.attempt]: the layer is on eBay's confirm screen. */
+    private var reviewedTyping: ReviewedTyping? = null
     private var nativeTouch: NativeTouchCheck? = null
     private var dispatch: SubmitDispatch? = null
     private var submittedTyping: VerifiedTyping? = null
@@ -159,6 +169,8 @@ class WebBidPage internal constructor(
     override suspend fun typeMax(amount: Money): TypedAmount {
         // After the press the layer is eBay's: typing again could change what its own requests still send.
         if (submitAttempted.get()) return notTyped("this page's one press was already used")
+        // Already on eBay's confirm screen for this amount: look again, nothing to type.
+        if (reviewedTyping?.attempt?.amount == amount) return checkTyped()
         verifiedTyping = null
         lastTyping = null
         val site = ref?.site ?: return notTyped("open the item before typing the maximum")
@@ -169,7 +181,22 @@ class WebBidPage internal constructor(
         }
         if (driver.failure != null) return notTyped(driver.failure?.description ?: "the page stopped")
         return try {
-            typeVerified(amount, site)
+            when {
+                // A new amount after "Review bid": only a fresh layer has a field to type it into.
+                reviewedTyping != null -> {
+                    closeLayer()
+                    val reopened = openLayer()
+                    if (reopened !is LayerState.Ready) {
+                        notTyped("eBay's bid layer did not open again for the new amount")
+                    } else {
+                        typeVerified(amount, site)
+                    }
+                }
+
+                else -> {
+                    typeVerified(amount, site)
+                }
+            }
         } catch (problem: WebPageException) {
             note("typeMax: ${problem.message}")
             notTyped(problem.message ?: "the page did not answer")
@@ -179,6 +206,7 @@ class WebBidPage internal constructor(
     override suspend fun closeLayer() {
         verifiedTyping = null
         lastTyping = null
+        reviewedTyping = null
         if (driver.failure != null) return
         quietly {
             val closed = helper.call(PageFunction.CLOSE_LAYER, CloseSnapshot.serializer())
@@ -506,6 +534,15 @@ class WebBidPage internal constructor(
                 report(),
             )
         }
+        // A two-step layer (2026-11-06, ebay.co.uk): the field and "Review bid"; the bid button comes after review.
+        val review = state.review
+        if (state.ready && state.input != null && review != null && review.found) {
+            return LayerState.Ready(
+                minimumOf(state.minimumAmountText, state.lowestPowerBidAmountText),
+                review.label,
+                report(),
+            )
+        }
         state.layerError?.let { return LayerState.Failed("eBay could not open the bid layer: $it", report()) }
         if (!timedOut) return null
         val pending = state.pendingDialogText
@@ -584,9 +621,161 @@ class WebBidPage internal constructor(
         // eBay may validate after a short delay: wait for its error or for the button to enable.
         val settled =
             driver.waitUntil(timing.typingSettleMillis, timing.pollMillis) {
-                layerState().takeIf { it.inlineError != null || it.submit?.enabled == true || it.interstitial != null }
+                layerState().takeIf {
+                    it.inlineError != null || it.submit?.enabled == true || it.review?.enabled == true ||
+                        it.interstitial != null
+                }
             } ?: layerState()
+        // A two-step layer: "Review bid" first, then eBay's confirm screen holds the bid button.
+        if (settled.review?.found == true &&
+            settled.submit?.found != true
+        ) {
+            return reviewThenVerify(attempt, settled, text)
+        }
         return verify(attempt, settled, "typed $text")
+    }
+
+    /**
+     * The entry step of a two-step layer: checks the typed amount as for a one-step layer (with "Review bid" as the
+     * button), presses "Review bid" (bid requests stay held: it is not the bid), then checks eBay's confirm screen. Only
+     * a confirm screen that shows exactly the typed amount next to a plain bid button may be pressed by [submit].
+     */
+    private suspend fun reviewThenVerify(
+        attempt: TypingAttempt,
+        settled: LayerSnapshot,
+        text: String,
+    ): TypedAmount {
+        val review = settled.review ?: return notTyped("eBay's Review bid button is gone")
+        val asButton = SubmitSnapshot(label = review.label, enabled = review.enabled, found = true)
+        val entry = verify(attempt, settled.copy(submit = asButton), "typed $text", markVerified = false)
+        if (!entry.verified) return entry
+        val fieldValue = entry.fieldValue
+        val expectation =
+            buildJsonObject {
+                put("expectValue", fieldValue)
+                attempt.documentToken?.let { put("documentToken", it) }
+            }
+        pressReviewButton(expectation)?.let { return notTyped(it) }
+        reviewedTyping = ReviewedTyping(attempt, fieldValue, entry.minimum)
+        val confirm =
+            driver.waitUntil(timing.reviewTimeoutMillis, timing.pollMillis) {
+                layerState().takeIf {
+                    (it.reviewed && it.submit?.found == true && it.amountShown != null) || it.inlineError != null ||
+                        it.interstitial != null || dialogSince(layerDialogBaseline) != null
+                }
+            } ?: layerState()
+        return verifyConfirm(reviewedTyping ?: return notTyped("the review step was reset"), confirm, "reviewed")
+    }
+
+    /** Presses "Review bid": a guarded native tap when touch works, else DOM events. Null when it was pressed. */
+    private suspend fun pressReviewButton(expectation: JsonObject): String? {
+        if (nativeTouch?.works == true) {
+            val navigation = driver.navigationCount
+            val target =
+                helper.call(
+                    PageFunction.ARM_TAP,
+                    TapTargetSnapshot.serializer(),
+                    JsonPrimitive("review"),
+                    expectation,
+                )
+            if (!target.ok && target.reason != NOT_IN_VIEWPORT) {
+                return "Kestrel could not press eBay's Review bid button (${target.reason ?: target.error})"
+            }
+            val outcome = if (target.ok && target.hit == true) tapAt(target, navigation) else TapOutcome.NOT_TAPPED
+            if (outcome == TapOutcome.TOUCHED_ONLY) {
+                quietly { helper.call(PageFunction.DISARM_TAP) }
+                return "the tap on eBay's Review bid button was interrupted"
+            }
+            if (outcome == TapOutcome.TAPPED) {
+                val reached =
+                    driver.waitUntil(timing.tapConfirmMillis, timing.tapConfirmPollMillis) {
+                        tapResult().takeIf { it.reached }
+                    }
+                if (reached != null) {
+                    val native =
+                        buildJsonObject {
+                            expectation.forEach { (key, value) -> put(key, value) }
+                            put("nativeReached", true)
+                        }
+                    val recorded = helper.call(PageFunction.PRESS_REVIEW, ReviewPressSnapshot.serializer(), native)
+                    quietly { helper.call(PageFunction.DISARM_TAP) }
+                    if (recorded.ok) {
+                        note("review: native tap")
+                        return null
+                    }
+                    return "eBay's Review bid tap was not recorded (${recorded.reason ?: recorded.error})"
+                }
+            }
+            quietly { helper.call(PageFunction.DISARM_TAP) }
+            note("review: the native tap did not reach it (${target.reason ?: "hit ${target.hit}"}), using DOM events")
+        }
+        val pressed = helper.call(PageFunction.PRESS_REVIEW, ReviewPressSnapshot.serializer(), expectation)
+        if (!pressed.ok) return "Kestrel could not press eBay's Review bid button (${pressed.reason ?: pressed.error})"
+        note("review: DOM press")
+        return null
+    }
+
+    /** The verdict on eBay's confirm screen after "Review bid"; only a verdict without a problem may bid. */
+    private fun verifyConfirm(
+        reviewed: ReviewedTyping,
+        confirm: LayerSnapshot,
+        what: String,
+    ): TypedAmount {
+        val amount = reviewed.attempt.amount
+        val submit = confirm.submit
+        val dialog = dialogSince(layerDialogBaseline)
+        val (problem, kind) =
+            when {
+                dialog != null -> {
+                    kestrel("eBay showed a message that needs you: $dialog") to TypingProblem.NEEDS_USER
+                }
+
+                confirm.interstitial != null -> {
+                    kestrel(
+                        "eBay is asking for something first (${confirm.interstitial.kind}): ${confirm.interstitial.text}",
+                    ) to
+                        TypingProblem.NEEDS_USER
+                }
+
+                confirm.inlineError != null -> {
+                    confirm.inlineError to TypingProblem.OTHER
+                }
+
+                !confirm.reviewed -> {
+                    kestrel("eBay's review step did not show") to TypingProblem.OTHER
+                }
+
+                submit == null || !submit.found -> {
+                    val seen = submit?.rejected.orEmpty().mapNotNull { it.label }
+                    kestrel("eBay's confirm screen has no bid button Kestrel recognises (seen: $seen)") to
+                        TypingProblem.OTHER
+                }
+
+                confirm.amountShown != true -> {
+                    kestrel("eBay's confirm screen does not show ${describe(amount)}") to TypingProblem.OTHER
+                }
+
+                !submit.enabled -> {
+                    kestrel("eBay's confirm button is disabled") to TypingProblem.BUTTON_DISABLED
+                }
+
+                else -> {
+                    null to null
+                }
+            }
+        if (problem == null) {
+            verifiedTyping =
+                VerifiedTyping(
+                    amount,
+                    reviewed.fieldValue,
+                    driver.javaScriptDialogCount,
+                    reviewed.attempt.documentToken,
+                )
+        }
+        note(
+            "$what: confirm screen for \"${reviewed.fieldValue}\", ${problem ?: "verified"} (button '${submit?.label}')",
+        )
+        return TypedAmount(reviewed.fieldValue, problem, reviewed.minimum, verified = problem == null, problem = kind)
     }
 
     override suspend fun checkTyped(): TypedAmount {
@@ -601,7 +790,14 @@ class WebBidPage internal constructor(
             return notTyped("the page moved on since the amount was typed")
         }
         return try {
-            verify(attempt, layerState(), "checked")
+            val reviewed = reviewedTyping
+            if (reviewed !=
+                null
+            ) {
+                verifyConfirm(reviewed, layerState(), "checked")
+            } else {
+                verify(attempt, layerState(), "checked")
+            }
         } catch (problem: WebPageException) {
             note("checkTyped: ${problem.message}")
             notTyped(problem.message ?: "the page did not answer")
@@ -613,6 +809,7 @@ class WebBidPage internal constructor(
         attempt: TypingAttempt,
         settled: LayerSnapshot,
         what: String,
+        markVerified: Boolean = true,
     ): TypedAmount {
         val amount = attempt.amount
         val fieldValue = settled.input?.value ?: attempt.typedValue
@@ -665,7 +862,7 @@ class WebBidPage internal constructor(
                     null to null
                 }
             }
-        if (problem == null) {
+        if (problem == null && markVerified) {
             verifiedTyping = VerifiedTyping(amount, fieldValue, driver.javaScriptDialogCount, attempt.documentToken)
         }
         note("$what: field shows \"$fieldValue\", ${problem ?: "verified"}")

@@ -185,9 +185,13 @@ test('submit labels in the supported languages are recognised, other actions in 
     '<div class="place-bid-actions__submit"><button class="btn btn--fluid btn--primary" type="button">' + label + '</button></div></div>';
   ['Bid', 'Submit bid', 'Place bid', 'Increase max bid', 'Bieten', 'Gebot bestätigen', 'Enchérir', 'Pujar', 'Bieden', 'Licytuj']
     .forEach((label) => assert.equal(call(openPage(ITEM, layerWith(label)).window, 'layerState').ready, true, label));
-  ['Verify and bid', 'Send code', 'Review bid', 'Retract bid', 'Cancel bid', 'Bid history', 'Acheter', 'Comprar', 'Kup teraz',
+  ['Verify and bid', 'Send code', 'Retract bid', 'Cancel bid', 'Bid history', 'Acheter', 'Comprar', 'Kup teraz',
     'Sofort-Kaufen', 'Make offer', 'Bid £5.57']
     .forEach((label) => assert.equal(call(openPage(ITEM, layerWith(label)).window, 'layerState').ready, false, label));
+  // "Review bid" is never the bid button, but it is the first step of a two-step layer (2026-11-06 capture).
+  const reviewState = call(openPage(ITEM, layerWith('Review bid')).window, 'layerState');
+  assert.equal(reviewState.submit.found, false);
+  assert.equal(reviewState.review.found, true);
 });
 
 test('a press is refused on any document but the one the amount was typed in', async () => {

@@ -66,6 +66,27 @@ internal data class LayerSnapshot(
     val pendingDialogText: String? = null,
     val layerError: String? = null,
     val signInRequired: Boolean = false,
+    /** A two-step layer's "Review bid" button (entry step). */
+    val review: ReviewSnapshot? = null,
+    /** "Review bid" was pressed in this document for the typed amount: eBay's confirm screen follows. */
+    val reviewed: Boolean = false,
+    /** On the confirm screen: whether eBay's text shows the reviewed amount. */
+    val amountShown: Boolean? = null,
+)
+
+@Serializable
+internal data class ReviewSnapshot(
+    val label: String? = null,
+    val enabled: Boolean = false,
+    val found: Boolean = false,
+)
+
+@Serializable
+internal data class ReviewPressSnapshot(
+    val ok: Boolean = false,
+    val error: String? = null,
+    val reason: String? = null,
+    val method: String? = null,
 )
 
 @Serializable

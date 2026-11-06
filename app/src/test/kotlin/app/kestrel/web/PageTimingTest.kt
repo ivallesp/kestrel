@@ -28,4 +28,13 @@ class PageTimingTest {
         val pageCalls = 1_000L
         assertTrue("$worstCase", worstCase + pageCalls <= WindowTimings.OPEN_LAYER_TIMEOUT)
     }
+
+    @Test
+    fun `typing with the review step answers before the engine cuts typeMax off`() {
+        // Type, wait for eBay's check, press "Review bid" (a tap and its confirmation), wait for the confirm screen.
+        val worstCase =
+            timing.typingSettleMillis + timing.tapConfirmMillis + timing.pressMillis + timing.reviewTimeoutMillis
+        val pageCalls = 2_000L
+        assertTrue("$worstCase", worstCase + pageCalls <= WindowTimings.TYPE_TIMEOUT)
+    }
 }
