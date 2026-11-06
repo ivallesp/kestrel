@@ -1,5 +1,7 @@
 package app.kestrel.ui.celebration
 
+import android.app.Application
+import android.content.Intent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
@@ -20,6 +22,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.kestrel.ui.fixture.CatalogueFixture
 import app.kestrel.ui.harness.PhoneInsets
@@ -32,6 +35,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
@@ -69,16 +73,18 @@ class WinCelebrationTest {
     }
 
     @Test
-    fun theCoffeeButtonIsAPlaceholderThatSaysSo() {
-        assertEquals(null, CoffeeLink.url)
+    fun theCoffeeButtonOpensTheKoFiPageInTheBrowser() {
+        assertEquals("https://ko-fi.com/ivallesp", CoffeeLink.url)
         composeRule.setContent {
             ScreenshotSurface(darkTheme = false, time = "18:22", reduceMotion = true) {
                 WinCelebration(CelebrationContent.Preview, onDone = {}, windowInsets = PhoneInsets)
             }
         }
-        composeRule.onNodeWithText("Link coming soon").performScrollTo().assertExists()
+        composeRule.onNodeWithText("Opens ko-fi.com/ivallesp").performScrollTo().assertExists()
         composeRule.onNodeWithText("Buy me a coffee").performScrollTo().performClick()
-        composeRule.onNodeWithText("Not set up yet: there’s no link to open.").assertExists()
+        val opened = shadowOf(ApplicationProvider.getApplicationContext<Application>()).nextStartedActivity
+        assertEquals(Intent.ACTION_VIEW, opened.action)
+        assertEquals("https://ko-fi.com/ivallesp", opened.dataString)
     }
 
     @Test
@@ -238,7 +244,7 @@ class WinCelebrationTest {
                 fontScale = scale
                 composeRule.waitForIdle()
                 // The serif headline wraps rather than cuts; the labels in buttons and rows must stay whole.
-                for (label in listOf("See the receipt", "Buy me a coffee", "Link coming soon")) {
+                for (label in listOf("See the receipt", "Buy me a coffee", "Opens ko-fi.com/ivallesp")) {
                     assertWhole(label, "width $rowWidth, text x$scale")
                 }
             }

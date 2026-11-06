@@ -84,7 +84,7 @@ fun SettingsDestination(
 
                 override fun buyMeACoffee() {
                     if (!CoffeeLink.open(context)) {
-                        scope.launch { snackbarHostState.show(ShellMessage(CoffeeLink.PLACEHOLDER)) }
+                        scope.launch { snackbarHostState.show(ShellMessage(CoffeeLink.NOT_OPENED)) }
                     }
                 }
 

@@ -51,7 +51,7 @@ class SettingsAboutTest {
         }
         composeRule.onNodeWithText("What plays the first time you open a win. Nothing is bid.").performScrollTo()
         composeRule.onNodeWithText("Watch the win celebration").performClick()
-        composeRule.onNodeWithText("Kestrel has no ads and no fees. Link coming soon.").performScrollTo()
+        composeRule.onNodeWithText("Kestrel has no ads and no fees. Opens ko-fi.com/ivallesp.").performScrollTo()
         composeRule.onNodeWithText("Buy me a coffee").performClick()
         assertEquals(1, celebrations)
         assertEquals(1, coffees)

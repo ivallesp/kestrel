@@ -669,9 +669,9 @@ once and never loops, so P5 holds everywhere else).
   plays at media volume and ducks other audio; reduced motion, skipping and closing silence it. Settings >
   Appearance > "Sound for a win" turns it off. The preview shows PREVIEW and "This plays the first time you open a win. Nothing was bid."
 - **Coffee note** (card colour, 16 dp): coffee glyph and "NO ADS · NO FEES", then "Kestrel hunts for you alone: no ads,
-  no fees, nothing sold. If it caught you a good one, you can buy me a coffee.", a tonal "Buy me a coffee" and "Link
-  coming soon". There is no link yet (`CoffeeLink.url` is null): the button says "Not set up yet: there's no link to
-  open." and opens nothing.
+  no fees, nothing sold. If it caught you a good one, you can buy me a coffee.", a tonal "Buy me a coffee" and "Opens
+  ko-fi.com/ivallesp". The button opens the owner's Ko-fi page (`CoffeeLink.url`, set on 6 Nov) in the browser; if
+  nothing can open it, the line says so. No payment happens in Kestrel.
 - **Actions** (docked, always in reach): "See the receipt" closes it; the preview has "Play again" and "Done". Back and
   the close button close it; a tap on the scene skips to the end.
 
@@ -1285,7 +1285,8 @@ Opened from the S1 account button.
 8. **"ABOUT":**
    - "Kestrel 1.0 (1)" / "Kestrel isn't made by or affiliated with eBay.";
    - "Watch the win celebration" / "What plays the first time you open a win. Nothing is bid." (3.21);
-   - "Buy me a coffee" / "Kestrel has no ads and no fees. Link coming soon." (a snackbar says the link isn't set up);
+   - "Buy me a coffee" / "Kestrel has no ads and no fees. Opens ko-fi.com/ivallesp." (opens the Ko-fi page in the
+     browser; a snackbar explains if nothing can open it);
    - "Licences", listing the fonts (OFL) and the open-source software (Apache 2.0), each licence and holder on its own line. Kestrel ships no photos: listing photos come from eBay. "Read the font licence" shows both fonts' copyright lines, then the shared licence once, its section names in small caps.
 
 **Rows:** SegmentedListItem in the card colour, 16 dp padding.

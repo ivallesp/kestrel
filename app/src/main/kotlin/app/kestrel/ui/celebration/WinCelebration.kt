@@ -136,15 +136,19 @@ data class CelebrationContent(
 }
 
 /**
- * Where "Buy me a coffee" leads. It is not set up yet, so [url] is null and the button explains that instead of
- * opening anything: Kestrel invents no payment page, account or donation set-up.
+ * Where "Buy me a coffee" leads: the owner's own Ko-fi page, which he chose. It opens in the browser; any payment
+ * happens there, never inside Kestrel.
  */
 object CoffeeLink {
-    val url: String? = null
+    val url: String? = "https://ko-fi.com/ivallesp"
 
-    const val PLACEHOLDER = "The coffee link isn’t set up yet."
+    /** The address as people read it, under the button and in Settings. */
+    const val SHOWN = "ko-fi.com/ivallesp"
 
-    /** Opens the link in the browser; false while there is none (or no browser), so the caller says why. */
+    /** Said when the phone has nothing that can open the page. */
+    const val NOT_OPENED = "No app on this phone can open $SHOWN."
+
+    /** Opens the link in the browser; false when there is none or nothing can open it, so the caller says why. */
     fun open(context: Context): Boolean {
         val address = url ?: return false
         return runCatching {
@@ -403,7 +407,7 @@ private fun CelebrationActions(
 
 /**
  * The coffee note at the end of the celebration: Kestrel has no ads and earns nothing, and a coffee is the only way to
- * say thanks. The link is a placeholder until one is set ([CoffeeLink]).
+ * say thanks. The button opens [CoffeeLink] in the browser.
  */
 @Composable
 fun CoffeeNote(modifier: Modifier = Modifier) {
@@ -435,7 +439,7 @@ fun CoffeeNote(modifier: Modifier = Modifier) {
                 onClick = { if (!CoffeeLink.open(context)) explained = true },
             )
             Text(
-                if (explained) "Not set up yet: there’s no link to open." else "Link coming soon",
+                if (explained) CoffeeLink.NOT_OPENED else "Opens ${CoffeeLink.SHOWN}",
                 style = MaterialTheme.typography.bodySmall,
                 color = inkSoft,
             )

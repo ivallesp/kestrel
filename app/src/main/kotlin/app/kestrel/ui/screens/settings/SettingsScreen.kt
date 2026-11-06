@@ -45,6 +45,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.unit.dp
 import app.kestrel.data.ThemeMode
+import app.kestrel.ui.celebration.CoffeeLink
 import app.kestrel.ui.components.BottomFade
 import app.kestrel.ui.components.ConnectedToggleRow
 import app.kestrel.ui.components.SectionHead
@@ -225,7 +226,7 @@ fun SettingsScreen(
                         Gap()
                         LinkRow(
                             title = "Buy me a coffee",
-                            detail = "Kestrel has no ads and no fees. Link coming soon.",
+                            detail = "Kestrel has no ads and no fees. Opens ${CoffeeLink.SHOWN}.",
                             onClick = actions::buyMeACoffee,
                             index = 2,
                             count = ABOUT_ROWS,
