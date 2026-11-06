@@ -8,3 +8,13 @@ local.properties
 .idea/
 captures/
 .claude/
+# Build products, local secrets and diagnostics stay out of git.
+*.aab
+*.apks
+*.hprof
+*.log
+signing.properties
+kestrel-report-*.txt
+.DS_Store
+.cxx/
+.externalNativeBuild/
