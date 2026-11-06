@@ -484,7 +484,7 @@ Semantics: one merged node, for example "Current bid £88.00, 14 bids. Your max 
   - description example: "Omega Speedmaster Pre-moon 1960s. Needs attention: £250.00 over your £1,900.00 max. Current bid £2,150.00, 31 bids, postage £12.95. Ends today at 21:02, in 2 hours 53 minutes."
 
 ### 3.6 Group header (in the list)
-- **Position:** the first segment of a group block. It is used only when the group's lots sit next to each other in end-time order. Otherwise each row carries the group flag instead.
+- **Position:** the first segment of a group block. It is used only when the group's lots sit next to each other in end-time order and none is the hero. Otherwise each row carries the group flag instead, and so does the hero card (under its time block, link glyph 16 dp and bodySmall in ink soft; fixed 6 Nov, when only the row had it).
 - **Container:** secondaryContainer. Padding 16 dp on the sides, 10 dp top and bottom.
 - **Content:**
   - link 20 dp;
@@ -674,6 +674,11 @@ once and never loops, so P5 holds everywhere else).
   nothing can open it, the line says so. No payment happens in Kestrel.
 - **Actions** (docked, always in reach): "See the receipt" closes it; the preview has "Play again" and "Done". Back and
   the close button close it; a tap on the scene skips to the end.
+- **Easter egg** (asked for on 6 Nov): once the scene has ended (or at once with reduced motion), a tap on the perched
+  kestrel makes it call: beak up, a flick of the wings off its back, a fanned tail and a small hop (0.76 s), "kee!",
+  "kee-kee!" or "kee-kee-kee!" in turn rising from the beak, a light haptic tick, and the kestrel_chirp sound
+  (two synthesised "kee" notes) when the celebration's sound is on. With reduced motion the word shows still for
+  1.2 s. TalkBack: the scene's action reads "Make the kestrel call". It works in the About preview too.
 
 ### 3.16 Bottom sheet
 - **Container:** ModalBottomSheet in surfaceContainerLow, 28 dp top corners.

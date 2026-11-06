@@ -246,6 +246,40 @@ internal object CelebrationTimeline {
         }
     }
 
+    /** The Easter egg's call: how long one tap's head bob, wing flick and word last. */
+    const val CHIRP_MILLIS = 760L
+
+    /**
+     * The perched kestrel calling when tapped after the celebration ([progress] 0 to 1): beak up, a flick of the
+     * wings off its back, a fan of the tail and a small hop, then back exactly as it was.
+     */
+    fun chirping(
+        perched: BirdPose,
+        progress: Float,
+    ): BirdPose {
+        val lift = sin(PI.toFloat() * progress)
+        // The wings flick early and are back on the back well before the head comes down.
+        val flick = sin(PI.toFloat() * (progress * 1.6f).coerceAtMost(1f))
+        return perched.copy(
+            headTurn = perched.headTurn - 24f * lift,
+            wingAngle = perched.wingAngle + 24f * flick,
+            fold = perched.fold - 0.55f * flick,
+            tailFan = perched.tailFan + 0.6f * lift,
+            bob = perched.bob - 1.6f * lift,
+        )
+    }
+
+    /** Where the perched kestrel can be tapped: a generous box round its body, head and tail. */
+    fun perchedBird(size: Size): androidx.compose.ui.geometry.Rect {
+        val pose = bird(END, size)
+        val centre = pose.toScene(Offset(2f, -6f))
+        val unit = SceneLayout(size).unit
+        return androidx.compose.ui.geometry.Rect(
+            centre - Offset(34f * unit, 46f * unit),
+            centre + Offset(34f * unit, 56f * unit),
+        )
+    }
+
     /** How far each call ("kee", "kee", "kee!") has risen from the beak (0 to 1), or null when it is not showing. */
     fun calls(timeMillis: Long): List<Float?> =
         CALLS.map { at ->
@@ -473,6 +507,7 @@ internal data class ScenePalette(
 internal class SceneWords(
     val tag: TextLayoutResult,
     val calls: List<TextLayoutResult>,
+    val chirps: List<TextLayoutResult> = emptyList(),
 )
 
 /**
@@ -483,6 +518,7 @@ internal fun DrawScope.drawCelebrationScene(
     timeMillis: Long,
     palette: ScenePalette,
     words: SceneWords,
+    chirp: ChirpFrame? = null,
 ) {
     val tagText = words.tag
     val t = timeMillis.coerceIn(0L, CelebrationTimeline.END)
@@ -510,13 +546,43 @@ internal fun DrawScope.drawCelebrationScene(
     val tag = CelebrationTimeline.tag(t, size)
     if (tag.lying) drawTag(tag, layout, palette, tagText)
     drawSpeedLines(layout, t)
-    drawKestrel(CelebrationTimeline.bird(t, size))
+    val perched = CelebrationTimeline.bird(t, size)
+    val calling = chirp?.takeIf { t >= CelebrationTimeline.END && !it.still }
+    drawKestrel(calling?.let { CelebrationTimeline.chirping(perched, it.progress) } ?: perched)
     if (!tag.lying) drawTag(tag, layout, palette, tagText)
     translate(0f, rise) { drawGrass(layout, palette, t) }
     drawFlowers(layout, palette, t)
     drawStrikePuff(layout, palette, t)
     drawFeathers(layout, t)
     drawCalls(t, words.calls, palette)
+    if (t >= CelebrationTimeline.END) chirp?.let { drawChirp(it, words, palette) }
+}
+
+/** One tap's call: which word, how far it has gone (0 to 1), and [still] for reduced motion (no bob, a still word). */
+data class ChirpFrame(
+    val progress: Float,
+    val word: Int,
+    val still: Boolean = false,
+)
+
+/** The tapped kestrel's word, popping out by the beak and rising as it fades, like the celebration's calls. */
+private fun DrawScope.drawChirp(
+    chirp: ChirpFrame,
+    words: SceneWords,
+    palette: ScenePalette,
+) {
+    val text = words.chirps.getOrNull(chirp.word % words.chirps.size.coerceAtLeast(1)) ?: return
+    val layout = SceneLayout(size)
+    val p = if (chirp.still) 0.3f else chirp.progress
+    val bird = CelebrationTimeline.bird(CelebrationTimeline.END, size)
+    val beak = bird.toScene(KestrelShape.Beak.getBounds().topRight)
+    val pop = if (chirp.still) 1f else easeOutBack(CelebrationTimeline.progress(p, 0f, 0.3f))
+    val alpha = if (chirp.still || p < 0.65f) 1f else 1f - (p - 0.65f) / 0.35f
+    val centre = beak + Offset(18f * layout.unit, -(12f + 18f * easeOut(p)) * layout.unit)
+    val topLeft = centre - Offset(text.size.width / 2f, text.size.height / 2f)
+    withTransformScale(0.6f + 0.4f * pop, centre) {
+        drawText(text, color = palette.call.copy(alpha = alpha), topLeft = topLeft)
+    }
 }
 
 /** Rays breaking from the sun as the kestrel mantles: they grow, turn a few degrees once, and soften but stay. */

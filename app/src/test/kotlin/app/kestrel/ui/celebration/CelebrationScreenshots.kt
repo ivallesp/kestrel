@@ -44,6 +44,19 @@ class CelebrationScreenshots : ScreenshotTest() {
     @Test
     fun endLargeText() = frame("celebration-end", CelebrationTimeline.END, fontScale = 1.3f)
 
+    /** The Easter egg: tapped after the celebration, the kestrel calls "kee-kee!" with its beak up. */
+    @Test
+    fun chirpLight() =
+        capture("celebration-chirp", darkTheme = false, time = "18:22") {
+            WinCelebration(
+                won,
+                onDone = {},
+                windowInsets = PhoneInsets,
+                frameMillis = CelebrationTimeline.END,
+                chirpFrame = ChirpFrame(progress = 0.35f, word = 1),
+            )
+        }
+
     @Test
     fun previewLight() = frame("celebration-preview", CelebrationTimeline.END, content = CelebrationContent.Preview)
 

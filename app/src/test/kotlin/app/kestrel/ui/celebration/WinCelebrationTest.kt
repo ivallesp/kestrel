@@ -13,6 +13,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -20,8 +21,10 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.toSize
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.kestrel.ui.fixture.CatalogueFixture
@@ -139,11 +142,32 @@ class WinCelebrationTest {
     }
 
     @Test
-    fun playAgainStartsAFreshSoundFromTheTop() {
-        val sounds = mutableListOf<RecordingSound>()
+    fun aSkipStaysAtTheEndInsteadOfCarryingOn() {
+        composeRule.mainClock.autoAdvance = false
         composeRule.setContent {
             ScreenshotSurface(darkTheme = false, time = "18:22") {
-                CompositionLocalProvider(LocalCelebrationSound provides { RecordingSound().also { sounds += it } }) {
+                WinCelebration(CelebrationContent.Preview, onDone = {}, windowInsets = PhoneInsets)
+            }
+        }
+        composeRule.mainClock.advanceTimeBy(600L)
+        composeRule.onNodeWithContentDescription(SCENE_WORDS, substring = true).performClick()
+        composeRule.mainClock.advanceTimeBy(500L)
+        // At the end, the kestrel can be tapped: the scene now offers its call, not a skip.
+        val label =
+            composeRule
+                .onNodeWithContentDescription(SCENE_WORDS, substring = true)
+                .fetchSemanticsNode()
+                .config[SemanticsActions.OnClick]
+                .label
+        assertEquals("Make the kestrel call", label)
+    }
+
+    @Test
+    fun playAgainStartsTheTrackFromTheTopAgain() {
+        val sound = RecordingSound()
+        composeRule.setContent {
+            ScreenshotSurface(darkTheme = false, time = "18:22") {
+                CompositionLocalProvider(LocalCelebrationSound provides { sound }) {
                     WinCelebration(CelebrationContent.Preview, onDone = {}, windowInsets = PhoneInsets)
                 }
             }
@@ -151,28 +175,97 @@ class WinCelebrationTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Play again").performClick()
         composeRule.waitForIdle()
-        assertEquals(2, sounds.size)
-        assertEquals(listOf(1, 1), sounds.map { it.plays })
-        assertTrue("the first run's sound is stopped", sounds.first().stops >= 1)
+        assertEquals(2, sound.plays)
     }
 
     @Test
-    fun reducedMotionAndFixedFramesAreSilent() {
-        var made = 0
+    fun onceItHasEndedATapOnTheKestrelMakesItCallAgainAndAgain() {
+        val sound = RecordingSound()
         composeRule.setContent {
             ScreenshotSurface(darkTheme = false, time = "18:22", reduceMotion = true) {
-                CompositionLocalProvider(
-                    LocalCelebrationSound provides {
-                        made++
-                        RecordingSound()
-                    },
-                ) {
+                CompositionLocalProvider(LocalCelebrationSound provides { sound }) {
                     WinCelebration(CelebrationContent.Preview, onDone = {}, windowInsets = PhoneInsets)
                 }
             }
         }
+        val scene = composeRule.onNodeWithContentDescription(SCENE_WORDS, substring = true)
+        val box = CelebrationTimeline.perchedBird(scene.fetchSemanticsNode().size.toSize())
+        scene.performTouchInput { click(box.center) }
+        scene.performTouchInput { click(box.center) }
         composeRule.waitForIdle()
-        assertEquals(0, made)
+        assertEquals(2, sound.chirps)
+        // The sky is not the bird.
+        scene.performTouchInput {
+            click(
+                androidx.compose.ui.geometry
+                    .Offset(width * 0.92f, height * 0.08f),
+            )
+        }
+        composeRule.waitForIdle()
+        assertEquals(2, sound.chirps)
+        assertEquals("the track never played with reduced motion", 0, sound.plays)
+    }
+
+    @Test
+    fun whileItPlaysATapSkipsToTheEndAndOnlyThenTheKestrelCalls() {
+        val sound = RecordingSound()
+        composeRule.mainClock.autoAdvance = false
+        composeRule.setContent {
+            ScreenshotSurface(darkTheme = false, time = "18:22") {
+                CompositionLocalProvider(LocalCelebrationSound provides { sound }) {
+                    WinCelebration(CelebrationContent.Preview, onDone = {}, windowInsets = PhoneInsets)
+                }
+            }
+        }
+        composeRule.mainClock.advanceTimeBy(800L)
+        val scene = composeRule.onNodeWithContentDescription(SCENE_WORDS, substring = true)
+        val box = CelebrationTimeline.perchedBird(scene.fetchSemanticsNode().size.toSize())
+        scene.performTouchInput { click(box.center) }
+        composeRule.mainClock.advanceTimeBy(200L)
+        assertEquals("the first tap skipped", 0, sound.chirps)
+        assertTrue(sound.stops >= 1)
+        scene.performTouchInput { click(box.center) }
+        composeRule.mainClock.advanceTimeBy(200L)
+        assertEquals(1, sound.chirps)
+    }
+
+    @Test
+    fun leavingTheCelebrationLetsGoOfItsSound() {
+        val sound = RecordingSound()
+        var shown by mutableStateOf(true)
+        composeRule.setContent {
+            ScreenshotSurface(darkTheme = false, time = "18:22", reduceMotion = true) {
+                CompositionLocalProvider(LocalCelebrationSound provides { sound }) {
+                    if (shown) WinCelebration(CelebrationContent.Preview, onDone = {}, windowInsets = PhoneInsets)
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        shown = false
+        composeRule.waitForIdle()
+        assertEquals(1, sound.releases)
+    }
+
+    @Test
+    fun reducedMotionNeverPlaysTheTrackAndAFixedFrameMakesNoSound() {
+        val sounds = mutableListOf<RecordingSound>()
+        composeRule.setContent {
+            ScreenshotSurface(darkTheme = false, time = "18:22", reduceMotion = true) {
+                CompositionLocalProvider(LocalCelebrationSound provides { RecordingSound().also { sounds += it } }) {
+                    WinCelebration(CelebrationContent.Preview, onDone = {}, windowInsets = PhoneInsets)
+                    WinCelebration(
+                        CelebrationContent.Preview,
+                        onDone = {},
+                        windowInsets = PhoneInsets,
+                        frameMillis = 0L,
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        // One sound, for the reduced-motion celebration's chirp; its track stays silent. The fixed frame has none.
+        assertEquals(1, sounds.size)
+        assertEquals(0, sounds.single().plays)
     }
 
     @Test
@@ -279,6 +372,8 @@ class WinCelebrationTest {
     private class RecordingSound : CelebrationSound {
         var plays = 0
         var stops = 0
+        var chirps = 0
+        var releases = 0
 
         override fun play() {
             plays++
@@ -286,6 +381,15 @@ class WinCelebrationTest {
 
         override fun stop() {
             stops++
+        }
+
+        override fun chirp() {
+            chirps++
+        }
+
+        override fun release() {
+            releases++
+            stop()
         }
     }
 

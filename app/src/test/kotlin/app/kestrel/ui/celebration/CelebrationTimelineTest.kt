@@ -119,6 +119,33 @@ class CelebrationTimelineTest {
     }
 
     @Test
+    fun aChirpBobsTheHeadAndFlicksTheWingsThenLeavesTheBirdAsItWas() {
+        val perched = CelebrationTimeline.bird(CelebrationTimeline.END, size)
+        assertEquals(perched.headTurn, CelebrationTimeline.chirping(perched, 0f).headTurn, 0.001f)
+        val middle = CelebrationTimeline.chirping(perched, 0.5f)
+        assertTrue("beak up to call", middle.headTurn < perched.headTurn - 10f)
+        assertTrue("wings off the back", middle.fold < perched.fold)
+        val after = CelebrationTimeline.chirping(perched, 1f)
+        assertEquals(perched.headTurn, after.headTurn, 0.001f)
+        assertEquals(perched.fold, after.fold, 0.001f)
+        assertEquals(perched.position, after.position)
+        // The feet never leave the post while it calls.
+        assertTrue((middle.talons - layout.postTop).getDistance() < 2f * unit)
+    }
+
+    @Test
+    fun theTapAreaCoversThePerchedKestrelAndNotTheSky() {
+        val box = CelebrationTimeline.perchedBird(size)
+        val bird = CelebrationTimeline.bird(CelebrationTimeline.END, size)
+        assertTrue(bird.toScene(KestrelShape.HeadCentre) in box)
+        assertTrue(bird.talons in box)
+        assertFalse(
+            androidx.compose.ui.geometry
+                .Offset(size.width * 0.9f, size.height * 0.1f) in box,
+        )
+    }
+
+    @Test
     fun theWordsComeAfterTheirMoments() {
         assertTrue(CelebrationTimeline.TITLE_FROM < CelebrationTimeline.STRIKE)
         assertTrue(CelebrationTimeline.LABEL_FROM > CelebrationTimeline.STRIKE)

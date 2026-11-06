@@ -230,7 +230,8 @@ internal object HomeStateBuilder {
         val blocks = mutableListOf<HomeBlock>()
         val singles = mutableListOf<HomeLot>()
         var heroPending = hero != null
-        if (hero != null) singles += hero
+        // The hero is never inside its group's block, so it carries the group flag like any lone row.
+        if (hero != null) singles += hero.copy(groupFlag = groupFlagOf(hero, input))
 
         fun flush() {
             if (singles.isEmpty()) return
@@ -256,6 +257,16 @@ internal object HomeStateBuilder {
         }
         flush()
         return blocks
+    }
+
+    /** "Keyboard: win 1 of 2" for a lot in a group, or null. */
+    private fun groupFlagOf(
+        lot: HomeLot,
+        input: HomeInput,
+    ): String? {
+        val groupId = lot.snipe.groupId ?: return null
+        val group = input.groups.firstOrNull { it.id == groupId } ?: return null
+        return HomeText.groupTitle(headerOf(group, input))
     }
 
     /** A group joins into a block when it has two or more open lots, all here, next to each other. */

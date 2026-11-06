@@ -57,6 +57,18 @@ class HomeScreenshots : ScreenshotTest() {
     @Test
     fun homeDark() = capture("S1-home", darkTheme = true, time = "18:08") { Home(HomeFixtures.home) }
 
+    /** The hero in a group carries the group's line like its groupmates (reported 6 Nov: only the row had it). */
+    @Test
+    fun heroInAGroupLight() =
+        capture("S1-hero-in-group", darkTheme = false, time = "18:08") {
+            val canonInGroup = CatalogueFixture.canon.copy(groupId = CatalogueFixture.portableAudio.id)
+            val moments =
+                HomeFixtures.listMoments.map {
+                    if (it.snipe.id == CatalogueFixture.canon.id) it.copy(snipe = canonInGroup) else it
+                }
+            Home(HomeFixtures.build(HomeFixtures.input(moments)))
+        }
+
     @Test
     fun homeLargeTextLight() =
         capture("S1-home", darkTheme = false, time = "18:08", fontScale = 1.3f) { Home(HomeFixtures.home) }

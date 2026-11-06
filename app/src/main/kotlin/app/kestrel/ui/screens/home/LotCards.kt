@@ -153,6 +153,16 @@ internal fun HeroCard(
                 MoneyBlock(heroMoney(lot, now))
                 Spacer(Modifier.height(12.dp))
                 HeroTimeBlock(lot, now)
+                // A hero in a group says so, with the same line its group's rows carry.
+                lot.groupFlag?.let { flag ->
+                    val inkSoft = MaterialTheme.colorScheme.onSurfaceVariant
+                    Spacer(Modifier.height(10.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        SymbolIcon(Symbols.Link, tint = inkSoft, size = 16.dp)
+                        Spacer(Modifier.width(6.dp))
+                        Text(flag, style = MaterialTheme.typography.bodySmall, color = inkSoft)
+                    }
+                }
                 lot.action?.let { action ->
                     Spacer(Modifier.height(AboveInlineButton + 4.dp))
                     LotActionButton(lot, action, actions)

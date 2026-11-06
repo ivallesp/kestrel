@@ -5,6 +5,7 @@ import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -34,6 +35,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -51,12 +54,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
@@ -64,6 +69,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.toSize
 import androidx.core.net.toUri
 import app.kestrel.ui.components.PrimaryButton
 import app.kestrel.ui.components.SmallCaps
@@ -170,6 +176,7 @@ fun WinCelebration(
     modifier: Modifier = Modifier,
     windowInsets: WindowInsets = WindowInsets.safeDrawing,
     frameMillis: Long? = null,
+    chirpFrame: ChirpFrame? = null,
 ) {
     val reduceMotion = KestrelTheme.reduceMotion
     var run by remember { mutableIntStateOf(0) }
@@ -177,16 +184,20 @@ fun WinCelebration(
     val playing = frameMillis == null && !reduceMotion
     val haptics = LocalHapticFeedback.current
     val makeSound = LocalCelebrationSound.current
-    // One track per run, timed to the scene: it starts on the first frame and stops when the scene is skipped,
-    // closed or played again.
-    val sound = remember(run) { if (playing) makeSound() else null }
-    DisposableEffect(sound) { onDispose { sound?.stop() } }
+    // One sound for the screen: the track starts on each run's first frame and stops when the scene is skipped,
+    // closed or played again; the Easter egg's chirp comes from it too. A fixed frame is always silent.
+    val sound = remember { if (frameMillis == null) makeSound() else null }
+    DisposableEffect(sound) { onDispose { sound?.release() } }
+    val chirp = rememberChirp(reduceMotion)
     if (playing) {
         LaunchedEffect(run) {
             val start = withFrameMillis { it }
             sound?.play()
             while (clock.longValue < CelebrationTimeline.END) {
-                withFrameMillis { frame -> clock.longValue = (frame - start).coerceAtMost(CelebrationTimeline.END) }
+                // Never backwards: a skip has already moved the clock to the end, and the frame must not undo it.
+                withFrameMillis { frame ->
+                    clock.longValue = maxOf(clock.longValue, (frame - start).coerceAtMost(CelebrationTimeline.END))
+                }
             }
         }
         LaunchedEffect(run) {
@@ -204,6 +215,15 @@ fun WinCelebration(
     }
     // A fixed frame is read as it is; a playing one from the clock, in the draw and layer phases only.
     val time: () -> Long = if (frameMillis != null) ({ frameMillis }) else ({ clock.longValue })
+    val ended by remember { derivedStateOf { time() >= CelebrationTimeline.END } }
+    val chirpNow: () -> ChirpFrame? = if (chirpFrame != null) ({ chirpFrame }) else chirp::frame
+    val call = {
+        if (frameMillis == null) {
+            chirp.start()
+            sound?.chirp()
+            haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+        }
+    }
     BackHandler(onBack = onDone)
     Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -214,13 +234,37 @@ fun WinCelebration(
                     Box(Modifier.fillMaxWidth().height(bandHeight)) {
                         CelebrationBand(
                             time = time,
+                            chirp = chirpNow,
                             modifier =
                                 Modifier
                                     .fillMaxSize()
-                                    .clickable(enabled = playing, onClickLabel = "Skip to the end") {
-                                        clock.longValue = CelebrationTimeline.END
-                                        sound?.stop()
-                                    }.semantics { contentDescription = SCENE_DESCRIPTION },
+                                    // While it plays, a tap anywhere skips to the end. Once it has ended, a tap on
+                                    // the kestrel makes it call: the Easter egg.
+                                    // Keyed on the run, so a replay's clock is the one a tap moves.
+                                    .pointerInput(run) {
+                                        detectTapGestures { at ->
+                                            if (time() < CelebrationTimeline.END) {
+                                                clock.longValue = CelebrationTimeline.END
+                                                sound?.stop()
+                                            } else if (at in CelebrationTimeline.perchedBird(size.toSize())) {
+                                                call()
+                                            }
+                                        }
+                                    }.semantics {
+                                        contentDescription = SCENE_DESCRIPTION
+                                        if (!ended) {
+                                            onClick(label = "Skip to the end") {
+                                                clock.longValue = CelebrationTimeline.END
+                                                sound?.stop()
+                                                true
+                                            }
+                                        } else {
+                                            onClick(label = "Make the kestrel call") {
+                                                call()
+                                                true
+                                            }
+                                        }
+                                    },
                         )
                         IconButton(
                             onClick = onDone,
@@ -256,6 +300,7 @@ fun WinCelebration(
 internal fun CelebrationBand(
     time: () -> Long,
     modifier: Modifier = Modifier,
+    chirp: () -> ChirpFrame? = { null },
 ) {
     val palette = if (KestrelTheme.isDark) ScenePalette.Dusk else ScenePalette.Morning
     val measurer = rememberTextMeasurer()
@@ -280,7 +325,8 @@ internal fun CelebrationBand(
                     fontSize = (11f * unit).toSp(),
                 )
             val calls = CALL_WORDS.map { measurer.measure(it, call) }
-            onDrawBehind { drawCelebrationScene(time(), palette, SceneWords(word, calls)) }
+            val chirps = CHIRP_WORDS.map { measurer.measure(it, call) }
+            onDrawBehind { drawCelebrationScene(time(), palette, SceneWords(word, calls, chirps), chirp()) }
         },
     )
 }
@@ -505,6 +551,12 @@ private const val APPEAR_FROM_MILLIS = 150L
 private const val APPEAR_TO_MILLIS = 330L
 private val CALL_WORDS = listOf("kee", "kee", "kee!")
 
+/** The Easter egg's words, one per tap, round and round. */
+private val CHIRP_WORDS = listOf("kee!", "kee-kee!", "kee-kee-kee!")
+
+/** How long a still chirp's word stays with reduced motion. */
+private const val STILL_CHIRP_MILLIS = 1_200L
+
 private const val SCENE_DESCRIPTION =
     "A kestrel hovers in the wind, dives onto your lot’s tag in the grass and carries it to a fence post. There it " +
         "spreads its wings and calls, the sun breaks into rays and the meadow blooms."
@@ -546,4 +598,47 @@ fun CelebrationPreviewDestination(
         modifier = modifier,
         windowInsets = windowInsets,
     )
+}
+
+/**
+ * The Easter egg's state: every tap starts one call ([CelebrationTimeline.CHIRP_MILLIS] long, or a still word for
+ * [STILL_CHIRP_MILLIS] with reduced motion) and moves to the next word; a tap during a call starts it again.
+ */
+@Stable
+internal class ChirpState(
+    private val still: Boolean,
+) {
+    private var taps by mutableIntStateOf(0)
+    private var elapsed by mutableLongStateOf(-1L)
+
+    /** The frame to draw now, or null between calls. */
+    fun frame(): ChirpFrame? {
+        if (taps == 0 || elapsed < 0L) return null
+        val length = if (still) STILL_CHIRP_MILLIS else CelebrationTimeline.CHIRP_MILLIS
+        return ChirpFrame((elapsed.toFloat() / length).coerceIn(0f, 1f), word = taps - 1, still = still)
+    }
+
+    fun start() {
+        taps++
+    }
+
+    /** Runs one call on the frame clock; started again by the next tap. */
+    suspend fun run() {
+        val length = if (still) STILL_CHIRP_MILLIS else CelebrationTimeline.CHIRP_MILLIS
+        val start = withFrameMillis { it }
+        elapsed = 0L
+        while (elapsed < length) {
+            withFrameMillis { frame -> elapsed = (frame - start).coerceAtMost(length) }
+        }
+        elapsed = -1L
+    }
+
+    val tapCount: Int get() = taps
+}
+
+@Composable
+private fun rememberChirp(still: Boolean): ChirpState {
+    val chirp = remember(still) { ChirpState(still) }
+    LaunchedEffect(chirp, chirp.tapCount) { if (chirp.tapCount > 0) chirp.run() }
+    return chirp
 }

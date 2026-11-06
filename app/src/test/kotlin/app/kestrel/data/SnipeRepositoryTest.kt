@@ -1,5 +1,7 @@
 package app.kestrel.data
 
+import android.content.Context
+import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.cash.turbine.test
@@ -417,6 +419,31 @@ class SnipeRepositoryTest {
             )
             assertEquals(listOf("Cameras"), repository.observeGroups().first().map { it.name })
             assertTrue(repository.moveToNewGroup(addArmed(testListing(itemId = "9")).id, "  ") is EditResult.NotAllowed)
+        }
+
+    @Test
+    fun twoExistingSnipesStayInTheirGroupWhenTheDatabaseIsOpenedAgain() =
+        runTest {
+            val context = ApplicationProvider.getApplicationContext<Context>()
+            val file = "regroup-test.db"
+            context.deleteDatabase(file)
+            val first = Room.databaseBuilder(context, KestrelDatabase::class.java, file).build()
+            val store = SnipeRepository(first, armedCopy, nowUtcMillis = { now }, formatMoney = ::testFormatMoney)
+            val keyboard = (store.addFromListing(testListing(itemId = "21"), gbp("11.42"), 6) as AddResult.Added).snipe
+            val spares = (store.addFromListing(testListing(itemId = "22"), gbp("6.37"), 6) as AddResult.Added).snipe
+            val grouped = (store.moveToNewGroup(keyboard.id, "Keyboard") as EditResult.Done).snipe
+            store.setGroup(spares.id, grouped.groupId)
+            first.close()
+
+            val again = Room.databaseBuilder(context, KestrelDatabase::class.java, file).build()
+            val reopened = SnipeRepository(again, armedCopy, nowUtcMillis = { now }, formatMoney = ::testFormatMoney)
+            val group = reopened.observeGroups().first().single()
+            assertEquals("Keyboard", group.name)
+            assertEquals(setOf(keyboard.id, spares.id), reopened.groupMembers(group.id).map { it.id }.toSet())
+            assertEquals(gbp("11.42"), reopened.snipe(keyboard.id)?.maxBid)
+            assertEquals(gbp("6.37"), reopened.snipe(spares.id)?.maxBid)
+            again.close()
+            context.deleteDatabase(file)
         }
 
     // Cancel and delete.

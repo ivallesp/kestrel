@@ -88,6 +88,31 @@ class HomeStateBuilderTest {
     }
 
     @Test
+    fun aHeroInAGroupCarriesTheGroupFlagLikeItsGroupmates() {
+        // Reported on the phone: two lots in one group, the earlier one is the hero, and only the other had the label.
+        val canonInGroup = fixture.canon.copy(groupId = fixture.portableAudio.id)
+        val moments =
+            HomeFixtures.listMoments.map { if (it.snipe.id == fixture.canon.id) it.copy(snipe = canonInGroup) else it }
+        val state = HomeFixtures.build(HomeFixtures.input(moments))
+        val hero =
+            state.sections
+                .first()
+                .blocks
+                .first()
+        assertTrue(hero.opensWithHero)
+        assertEquals(fixture.canon.id, hero.lots.first().id)
+        assertEquals("Portable audio: win 1 of 3", hero.lots.first().groupFlag)
+        // With a member up in the hero the group cannot be one block, so its other lots carry the same flag.
+        assertEquals("Portable audio: win 1 of 3", state.lot(fixture.miniDisc.id).groupFlag)
+        assertEquals("Portable audio: win 1 of 3", state.lot(fixture.walkman.id).groupFlag)
+    }
+
+    @Test
+    fun aHeroOutsideAnyGroupHasNoGroupFlag() {
+        assertNull(home.lot(fixture.canon.id).groupFlag)
+    }
+
+    @Test
     fun anUngroupedExtendedLotKeepsItsExtendedFlag() {
         val ungrouped = fixture.walkman.copy(groupId = null)
         val moments =
