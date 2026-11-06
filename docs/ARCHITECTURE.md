@@ -74,8 +74,9 @@ hand to user), RATE_WALL (title "Error Page | eBay", back off at least 8 s with 
 
 ## 4. Placing the bid (2025-2026 flow, one in-page layer, no confirm page)
 
-1. Load `https://www.<site>/itm/<itemId>` in a fresh headless WebView (never attached to a window, so Chromium keeps the
-   page "visible" and timers unthrottled). Give it a phone-sized layout with `measure`/`layout`.
+1. Load `https://www.ebay.co.uk/itm/<itemId>` (the home site, whatever site the link came from: item numbers are
+   global) in a fresh headless WebView (never attached to a window, so Chromium keeps the page "visible" and timers
+   unthrottled). Give it a phone-sized layout with `measure`/`layout`.
 2. Wait for hydration: `#bidBtn_btn` (fallback `[data-testid=x-bid-action] a, [data-testid=x-bid-action] button`)
    present, not `disabled`, its container without the `loading` class. A sign-in `href` means the session is gone.
 3. Open the layer (T-45 s): click the bid button. Wait for a layer container (`.placebid-redesign-wrapper`,

@@ -14,10 +14,12 @@ data class PricePoint(
     val bidCount: Int,
 )
 
+// Snipes added before 1.0.6 kept the site of their link (ebay.com, ebay.de...). Kestrel now opens every listing on the
+// home site, where it is signed in, so a stored row is always read as the home site's.
 internal fun SnipeEntity.toSnipe(): Snipe =
     Snipe(
         id = id,
-        ref = ItemRef(site, itemId),
+        ref = ItemRef(site, itemId).onHomeSite(),
         title = title,
         imageUrl = imageUrl,
         sellerName = sellerName,

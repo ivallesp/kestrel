@@ -1,8 +1,9 @@
 package app.kestrel.model
 
 /**
- * An eBay marketplace Kestrel can bid on. The bid is always placed on the site the listing was added from,
- * because prices, fees and minimum bids are shown per site.
+ * An eBay marketplace. Kestrel signs in to one site, [HOME], and opens every listing there, whichever site its link
+ * came from: eBay item numbers are global, and eBay shows a listing from another site in the listing's own currency
+ * with an estimate in the home currency. The bid is made in the listing's currency, as eBay requires.
  */
 enum class EbaySite(
     val host: String,
@@ -31,6 +32,9 @@ enum class EbaySite(
     fun itemUrl(itemId: String): String = "$origin/itm/$itemId"
 
     companion object {
+        /** The site Kestrel signs in to and opens every listing on. */
+        val HOME: EbaySite = UK
+
         /** Matches `ebay.co.uk`, `www.ebay.co.uk`, `m.ebay.co.uk` and similar host variants. */
         fun fromHost(host: String): EbaySite? {
             val bare =
@@ -50,10 +54,13 @@ enum class EbaySite(
     }
 }
 
-/** A listing on a specific site. [itemId] is eBay's legacy item number (digits). */
+/** A listing on a specific site. [itemId] is eBay's legacy item number (digits), the same on every site. */
 data class ItemRef(
     val site: EbaySite,
     val itemId: String,
 ) {
     val url: String get() = site.itemUrl(itemId)
+
+    /** The same listing on the site Kestrel is signed in to. */
+    fun onHomeSite(): ItemRef = if (site == EbaySite.HOME) this else copy(site = EbaySite.HOME)
 }

@@ -1,12 +1,15 @@
 package app.kestrel.web
 
+import app.kestrel.model.EbaySite
 import app.kestrel.model.ItemRef
 import app.kestrel.model.PageKind
 import app.kestrel.model.ParsedLink
 
 /**
- * Loads a listing for the add-snipe preview in a fresh headless page. Short links are resolved by letting the
- * WebView follow eBay's redirect and reading the item from the page it lands on.
+ * Loads a listing for the add-snipe preview in a fresh headless page, always on the home site where Kestrel is signed
+ * in ([EbaySite.HOME]): a link from ebay.com or ebay.es opens as the same item number on ebay.co.uk. Short links are
+ * resolved by letting the WebView follow eBay's redirect; when it lands on another site, the item is opened again on
+ * the home site.
  */
 internal class ListingFetch(
     private val newDriver: suspend () -> PageDriver,
@@ -18,17 +21,33 @@ internal class ListingFetch(
     suspend fun fetch(link: ParsedLink): FetchResult =
         when (link) {
             is ParsedLink.Item -> {
-                open(link.ref.url) { view, reader -> read(reader, link.ref, view) }
+                openOnHomeSite(link.ref)
             }
 
             is ParsedLink.ShortLink -> {
-                open(link.url) { view, reader ->
-                    when (val target = parsers.parseLink(view.url)) {
-                        is ParsedLink.Item -> read(reader, target.ref, view)
-                        is ParsedLink.NotAListing -> FetchResult.NotAnAuction(null)
-                        else -> FetchResult.Failed("The link did not lead to an eBay listing (${view.url})")
+                var elsewhere: ItemRef? = null
+                val landed =
+                    open(link.url) { view, reader ->
+                        when (val target = parsers.parseLink(view.url)) {
+                            is ParsedLink.Item -> {
+                                if (target.ref.site == EbaySite.HOME) {
+                                    read(reader, target.ref, view)
+                                } else {
+                                    elsewhere = target.ref
+                                    FetchResult.Failed("The link led to another eBay site")
+                                }
+                            }
+
+                            is ParsedLink.NotAListing -> {
+                                FetchResult.NotAnAuction(null)
+                            }
+
+                            else -> {
+                                FetchResult.Failed("The link did not lead to an eBay listing (${view.url})")
+                            }
+                        }
                     }
-                }
+                elsewhere?.let { openOnHomeSite(it) } ?: landed
             }
 
             is ParsedLink.NotAListing -> {
@@ -39,6 +58,11 @@ internal class ListingFetch(
                 FetchResult.Failed("This is not an eBay link")
             }
         }
+
+    private suspend fun openOnHomeSite(ref: ItemRef): FetchResult {
+        val home = ref.onHomeSite()
+        return open(home.url) { view, reader -> read(reader, home, view) }
+    }
 
     private suspend fun open(
         url: String,

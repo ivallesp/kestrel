@@ -201,11 +201,13 @@ class HomeViewModel(
             settings,
             connectivity,
             ->
-            HomeData(list, events, groups, settings, connectivity)
+            HomeData(list, events, groups, settings, connectivity, readAtMillis = sources.nowUtcMillis())
         }
 
     val state: StateFlow<HomeUiState> =
-        combine(data, readiness, pendingRefresh, ticks) { data, readiness, refresh, now ->
+        combine(data, readiness, pendingRefresh, ticks) { data, readiness, refresh, tick ->
+            // The last tick can be up to a minute old: a step written since then is not in the future.
+            val now = maxOf(tick, Instant.ofEpochMilli(data.readAtMillis))
             HomeStateBuilder.build(
                 HomeInput(
                     now = now,
@@ -392,6 +394,7 @@ class HomeViewModel(
         val groups: List<SnipeGroup>,
         val settings: Settings,
         val connectivity: Connectivity,
+        val readAtMillis: Long,
     )
 
     private data class ShownTimeline(

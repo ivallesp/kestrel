@@ -127,21 +127,19 @@ object MaxRules {
         }
 
     /**
-     * Why a listing on [site] cannot be armed, or null when it can. Kestrel signs in to ebay.co.uk only (S6) and eBay
-     * keeps a session per site, so a bid on another site would meet a sign-in page Kestrel cannot get past. Such a
-     * listing can still be watched.
+     * Why a listing priced in [currency] cannot be armed, or null when it can. Kestrel opens every listing on the home
+     * site and bids in the listing's own currency, as eBay requires; it reads amounts and eBay's bid steps in these
+     * currencies only. Such a listing can still be watched.
      */
-    fun siteRefusal(site: EbaySite): String? =
-        if (site == EbaySite.UK) {
+    fun currencyRefusal(currency: String): String? =
+        if (currency in BIDDABLE_CURRENCIES) {
             null
         } else {
-            "Kestrel can sign in to ${domainOf(
-                EbaySite.UK,
-            )} only, so it can’t bid on this ${domainOf(site)} listing. " +
-                "You can still watch it without a max."
+            "Kestrel can’t bid in $currency yet. You can still watch this listing without a max."
         }
 
-    private fun domainOf(site: EbaySite): String = site.host.removePrefix("www.")
+    /** The currencies of the 13 sites Kestrel knows (amount text, bid steps): eBay bids in the listing's currency. */
+    val BIDDABLE_CURRENCIES: Set<String> = EbaySite.entries.map { it.currency }.toSet()
 
     /** The field text for an amount: "90.37". */
     fun fieldText(amount: Money): String = amount.major.toPlainString()

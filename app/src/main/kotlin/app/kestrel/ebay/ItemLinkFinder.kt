@@ -42,7 +42,10 @@ internal object ItemLinkFinder {
                 ParsedLink.NotAListing(withoutTracking(parts))
             }
         }
-        val site = EbayDomains.siteForHost(parts.host)
+        // A country site without an entry (ebay.be, ebay.com.hk...) still names a global item number.
+        val site =
+            EbayDomains.siteForHost(parts.host)
+                ?: EbaySite.HOME.takeIf { EbayDomains.isOtherMarketplaceHost(parts.host) }
         if (site == null) {
             // Link wrappers (Facebook, Google, mail redirectors) carry the eBay URL as a parameter.
             return if (allowNested) nestedEbayLink(parts) ?: ParsedLink.NotEbay else ParsedLink.NotEbay
@@ -110,7 +113,8 @@ internal object ItemLinkFinder {
     private val SCHEMELESS_EBAY_URL =
         Regex(
             "(?i)(?<![\\w.@/-])(?:[a-z0-9-]+\\.)*ebay\\." +
-                "(?:us|io|co\\.uk|com\\.au|com|de|at|ch|fr|it|es|nl|ie|ca|pl)/[^\\s<>\"'`]*",
+                "(?:us|io|co\\.uk|com\\.au|com\\.hk|com\\.sg|com\\.my|com|de|at|ch|fr|it|es|nl|ie|ca|pl|be|ph)" +
+                "/[^\\s<>\"'`]*",
         )
 
     // bidflow UR5 as corrected by its adversarial check, which keeps "rt".

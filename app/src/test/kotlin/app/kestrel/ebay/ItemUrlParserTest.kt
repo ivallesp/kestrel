@@ -174,11 +174,33 @@ class ItemUrlParserTest {
                 "https://www.ebay.co.uk.example.com/itm/127820098965" to ParsedLink.NotEbay,
                 "https://www.ebay.co.uk@example.com/itm/127820098965" to ParsedLink.NotEbay,
                 "https://notebay.co.uk/itm/127820098965" to ParsedLink.NotEbay,
-                "https://www.ebay.be/itm/127820098965" to ParsedLink.NotEbay,
                 "ftp://www.ebay.co.uk/itm/127820098965" to ParsedLink.NotEbay,
                 "https://www.etsy.com/listing/1234567890/a-lamp" to ParsedLink.NotEbay,
             ),
         )
+    }
+
+    @Test
+    fun eBaysOtherCountrySitesNameAListingOnTheHomeSite() {
+        // No site entry for these, but the item number is global: the listing opens on the home site.
+        val home = item(EbaySite.HOME, "127820098965")
+        for (
+        url in
+        listOf(
+            "https://www.ebay.be/itm/127820098965",
+            "https://www.benl.ebay.be/itm/127820098965",
+            "https://www.befr.ebay.be/itm/a-title/127820098965?_trksid=p1",
+            "https://www.ebay.com.hk/itm/127820098965",
+            "https://www.ebay.com.sg/itm/127820098965",
+            "https://m.ebay.com.my/itm/127820098965",
+            "https://www.ebay.ph/itm/127820098965",
+            "Look at this ebay.com.hk/itm/127820098965",
+        )
+        ) {
+            assertEquals(url, home, ItemUrlParser.parse(url))
+        }
+        assertEquals(ParsedLink.NotEbay, ItemUrlParser.parse("https://www.ebay.com.hk.example.com/itm/127820098965"))
+        assertEquals(ParsedLink.NotEbay, ItemUrlParser.parse("https://notebay.ph/itm/127820098965"))
     }
 
     @Test

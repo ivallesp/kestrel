@@ -25,14 +25,21 @@ class ListingFetchTest {
             utcClock = { TestClock(testScheduler).nowUtcMillis() },
         )
 
+    /** Where a load lands instead of [landingUrl]: a short link's redirect, or an item page that is its own address. */
+    private var landsAt: (String) -> String? = { null }
+
     private fun newDriver(): FakePageDriver {
         val driver = FakePageDriver()
-        driver.loadResult = { url -> LoadResult(url, landingUrl, landingTitle, emptyList(), loadOutcome) }
+        var landed = landingUrl
+        driver.loadResult = { url ->
+            landed = landsAt(url) ?: landingUrl
+            LoadResult(url, landed, landingTitle, emptyList(), loadOutcome)
+        }
         driver.on("probe") {
             json(
                 mapOf(
                     "ok" to true,
-                    "url" to landingUrl,
+                    "url" to landed,
                     "title" to landingTitle,
                     "readyState" to "complete",
                 ),
@@ -69,6 +76,33 @@ class ListingFetchTest {
             val result = fetcher().fetch(ParsedLink.ShortLink("https://ebay.us/m/100axl")) as FetchResult.Loaded
             assertEquals(ItemRef(EbaySite.UK, "317437438212"), result.listing.ref)
             assertEquals(listOf("https://ebay.us/m/100axl"), drivers.single().loads)
+        }
+
+    @Test
+    fun `a listing from another eBay site opens on the home site`() =
+        runTest {
+            val spanish = ItemRef(EbaySite.ES, "127820098965")
+            val result = fetcher().fetch(ParsedLink.Item(spanish)) as FetchResult.Loaded
+            assertEquals(ItemRef(EbaySite.UK, "127820098965"), result.listing.ref)
+            assertEquals(listOf("https://www.ebay.co.uk/itm/127820098965"), drivers.single().loads)
+        }
+
+    @Test
+    fun `a short link that lands on another site opens the item again on the home site`() =
+        runTest {
+            landsAt = { url ->
+                when (url) {
+                    "https://ebay.us/m/100axl" -> "https://www.ebay.com/itm/317437438212?mkcid=16"
+                    else -> url
+                }
+            }
+            val result = fetcher().fetch(ParsedLink.ShortLink("https://ebay.us/m/100axl")) as FetchResult.Loaded
+            assertEquals(ItemRef(EbaySite.UK, "317437438212"), result.listing.ref)
+            assertEquals(
+                listOf(listOf("https://ebay.us/m/100axl"), listOf("https://www.ebay.co.uk/itm/317437438212")),
+                drivers.map { it.loads },
+            )
+            assertTrue(drivers.all { it.destroyed })
         }
 
     @Test

@@ -3,7 +3,6 @@ package app.kestrel.data
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.cash.turbine.test
-import app.kestrel.model.EbaySite
 import app.kestrel.model.SnipeStatus
 import app.kestrel.model.TimelineKind
 import kotlinx.coroutines.flow.first
@@ -76,8 +75,8 @@ class KestrelDatabaseTest {
                 dao.observeWithStatuses(SnipeRules.FINAL_STATUS_NAMES).first().map { it.itemId },
             )
             assertEquals(listOf("armed"), dao.withoutStatuses(SnipeRules.FINAL_STATUS_NAMES).map { it.itemId })
-            assertEquals("armed", dao.findOpen(EbaySite.UK, "armed", SnipeRules.FINAL_STATUS_NAMES)?.itemId)
-            assertNull(dao.findOpen(EbaySite.UK, "won", SnipeRules.FINAL_STATUS_NAMES))
+            assertEquals("armed", dao.findOpen("armed", SnipeRules.FINAL_STATUS_NAMES)?.itemId)
+            assertNull(dao.findOpen("won", SnipeRules.FINAL_STATUS_NAMES))
         }
 
     @Test

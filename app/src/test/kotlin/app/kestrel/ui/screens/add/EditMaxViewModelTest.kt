@@ -142,23 +142,29 @@ class EditMaxViewModelTest {
         }
 
     @Test
-    fun aWatchedListingOnAnotherSiteCannotBeArmed() =
+    fun aWatchedListingInEurosIsArmedInEuros() =
         runTest(dispatcher) {
             val polaroid = CatalogueFixture.polaroid
-            val german =
-                polaroid.copy(
-                    ref = ItemRef(EbaySite.DE, polaroid.ref.itemId),
-                    lastPrice = Money.of("60.00", "EUR"),
-                    postage = null,
-                )
+            val german = polaroid.copy(lastPrice = Money.of("60.00", "EUR"), postage = null)
             val subject = subject(german, at("2025-11-09T18:09:10Z"))
             assertEquals(EditMaxMode.Set, subject.state.mode)
             subject.type("90.00")
             subject.viewModel.save()
+            assertEquals(EditCall.Max(german.id, Money.of("90.00", "EUR")), subject.services.calls.last())
+        }
+
+    @Test
+    fun aWatchedListingInACurrencyKestrelCannotBidInStaysWatched() =
+        runTest(dispatcher) {
+            val polaroid = CatalogueFixture.polaroid
+            val hongKong = polaroid.copy(lastPrice = Money.of("600.00", "HKD"), postage = null)
+            val subject = subject(hongKong, at("2025-11-09T18:09:10Z"))
+            subject.type("700")
+            subject.viewModel.save()
             assertTrue(subject.services.calls.isEmpty())
             assertEquals(SheetLineKind.Refused, subject.state.line.kind)
             assertEquals(
-                "Kestrel can sign in to ebay.co.uk only, so it can’t bid on this ebay.de listing. You can still watch it without a max.",
+                "Kestrel can’t bid in HKD yet. You can still watch this listing without a max.",
                 subject.state.line.text,
             )
         }

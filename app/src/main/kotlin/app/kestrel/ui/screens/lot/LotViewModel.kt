@@ -147,7 +147,7 @@ class LotViewModel(
 
     private val records: Flow<Records> =
         combine(snipe, data.timeline(snipeId), data.prices(snipeId), group) { snipe, events, prices, group ->
-            Records(snipe, events, prices, group)
+            Records(snipe, events, prices, group, readAtMillis = data.nowUtcMillis())
         }
 
     private val surroundings: Flow<Surroundings> =
@@ -169,12 +169,15 @@ class LotViewModel(
         now: Instant,
     ): LotPage {
         val snipe = records.snipe ?: return LotPage.Gone
+        // The last tick can be up to a minute old: a step written since then (a dry run that just passed) is not in the
+        // future, so the page never reads it at a time before the records arrived.
+        val current = maxOf(now, Instant.ofEpochMilli(records.readAtMillis))
         return LotPageBuilder.page(
             LotInputs(
                 snipe = snipe,
                 events = records.events,
                 prices = records.prices,
-                now = now,
+                now = current,
                 connectivity = surroundings.connectivity,
                 group = records.group,
                 accountName = surroundings.accountName,
@@ -258,10 +261,10 @@ class LotViewModel(
         val currency = snipe.maxBid?.currency ?: snipe.lastPrice?.currency ?: snipe.ref.site.currency
         val max = MoneyText.parseUserInput(maxInput.text.toString(), currency) ?: return
         val previous = snipe.maxBid
-        // Arming a watched listing on another site would only lead to a sign-in Kestrel cannot do there.
-        val siteRefusal = if (previous == null) MaxRules.siteRefusal(snipe.ref.site) else null
-        if (siteRefusal != null) {
-            sheet.value = request.copy(error = siteRefusal)
+        // Arming a watched listing priced in a currency Kestrel can't bid in would only fail at the bid.
+        val currencyRefusal = if (previous == null) MaxRules.currencyRefusal(max.currency) else null
+        if (currencyRefusal != null) {
+            sheet.value = request.copy(error = currencyRefusal)
             return
         }
         // An extra digit is the easy slip: a max far above the price is spelt out first, as S2 and Home's sheet do.
@@ -477,11 +480,13 @@ class LotViewModel(
         }
     }
 
+    /** [readAtMillis]: when these records arrived, on the same clock the engine stamps its steps with. */
     private class Records(
         val snipe: Snipe?,
         val events: List<TimelineEvent>,
         val prices: List<PricePoint>,
         val group: GroupContext?,
+        val readAtMillis: Long,
     )
 
     private class Surroundings(

@@ -9,6 +9,7 @@ import app.kestrel.model.Money
 import app.kestrel.model.Snipe
 import app.kestrel.model.SnipeStatus
 import app.kestrel.model.TimelineEvent
+import app.kestrel.model.TimelineKind
 import app.kestrel.ui.fixture.CatalogueFixture
 import app.kestrel.ui.fixture.LotMoment
 import app.kestrel.ui.model.Connectivity
@@ -59,6 +60,29 @@ class LotViewModelTest {
         runCurrent()
         return viewModel
     }
+
+    @Test
+    fun aDryRunThatPassesBetweenTicksShowsAtOnce() =
+        runTest(dispatcher) {
+            // Far from the end the page ticks once a minute; the dry run passes 20 s after the last tick.
+            val data = FakeLotData(fixture.gameBoyArmed, testScheduler::currentTime)
+            val viewModel = viewModelFor(data)
+            advanceTimeBy(20_000)
+            val passedAt = data.nowUtcMillis()
+            data.snipe.value = data.snipe.value!!.copy(dryRunAtUtcMillis = passedAt, dryRunPassed = true)
+            data.events.value = data.events.value +
+                TimelineEvent(
+                    id = 900,
+                    snipeId = data.snipeId,
+                    atUtcMillis = passedAt,
+                    kind = TimelineKind.DRY_RUN,
+                    message = "Dry run passed: eBay's bid layer opened and took your max £40.00. No bid was placed.",
+                )
+            runCurrent()
+            val page = (viewModel.state.value as LotPage.Live).state
+            assertTrue(page.timeline.any { it.title == "Dry run passed" })
+            assertTrue(page.checks.any { it.startsWith("Dry run at ") && it.endsWith("nothing was sent") })
+        }
 
     @Test
     fun theLivePageFollowsTheSnipe() =
@@ -202,25 +226,34 @@ class LotViewModelTest {
         }
 
     @Test
-    fun aWatchedListingOnAnotherSiteCannotBeArmed() =
+    fun aWatchedListingInEurosIsArmedInEuros() =
         runTest(dispatcher) {
+            // A listing from ebay.de, opened on ebay.co.uk: its price and the max stay in euros.
             val polaroid = fixture.polaroidWatching
-            val german =
-                polaroid.snipe.copy(
-                    ref = ItemRef(EbaySite.DE, polaroid.snipe.ref.itemId),
-                    lastPrice = Money.of("60.00", "EUR"),
-                    postage = null,
-                )
+            val german = polaroid.snipe.copy(lastPrice = Money.of("60.00", "EUR"), postage = null)
             val data = FakeLotData(polaroid.copy(snipe = german), testScheduler::currentTime)
             val viewModel = viewModelFor(data)
             viewModel.openSheet(SheetKind.Set)
             viewModel.maxInput.setTextAndPlaceCursorAtEnd("70")
             viewModel.save()
             runCurrent()
+            assertEquals(listOf<Money?>(Money.of("70.00", "EUR")), data.maxUpdates)
+        }
+
+    @Test
+    fun aWatchedListingInACurrencyKestrelCannotBidInStaysWatched() =
+        runTest(dispatcher) {
+            val polaroid = fixture.polaroidWatching
+            val hongKong = polaroid.snipe.copy(lastPrice = Money.of("600.00", "HKD"), postage = null)
+            val data = FakeLotData(polaroid.copy(snipe = hongKong), testScheduler::currentTime)
+            val viewModel = viewModelFor(data)
+            viewModel.openSheet(SheetKind.Set)
+            viewModel.maxInput.setTextAndPlaceCursorAtEnd("700")
+            viewModel.save()
+            runCurrent()
             assertTrue(data.maxUpdates.isEmpty())
-            assertTrue(data.leadUpdates.isEmpty())
             assertEquals(
-                "Kestrel can sign in to ebay.co.uk only, so it can’t bid on this ebay.de listing. You can still watch it without a max.",
+                "Kestrel can’t bid in HKD yet. You can still watch this listing without a max.",
                 (viewModel.state.value as LotPage.Live).state.sheet?.error,
             )
         }

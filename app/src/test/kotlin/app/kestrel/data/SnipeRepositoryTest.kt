@@ -770,6 +770,21 @@ class SnipeRepositoryTest {
             assertTrue(repository.groupMembers(group.id).isEmpty())
         }
 
+    // Other eBay sites.
+
+    @Test
+    fun aSnipeStoredWithAnotherSiteIsReadOnTheHomeSiteAndBlocksASecondSnipe() =
+        runTest {
+            // Before 1.0.6 a listing kept the site of its link; the same item number is one listing everywhere.
+            val older = addArmed(testListing(itemId = "1", site = EbaySite.UK))
+            database.snipeDao().update(
+                database.snipeDao().find(older.id)!!.copy(site = EbaySite.US),
+            )
+            assertEquals(ItemRef(EbaySite.HOME, "1"), repository.snipe(older.id)?.ref)
+            val again = repository.addFromListing(testListing(itemId = "1", site = EbaySite.UK), gbp("48.00"), 6)
+            assertEquals(older.id, (again as AddResult.AlreadyAdded).snipe.id)
+        }
+
     // History.
 
     @Test

@@ -109,7 +109,7 @@ class SnipeRepository(
         if (refusal != null) return AddResult.Rejected(refusal)
         val newGroup = newGroupName?.trim()
         if (newGroup != null && newGroup.isEmpty()) return AddResult.Rejected("A group needs a name.")
-        val ref = listing.relistedItemId?.let { ItemRef(listing.ref.site, it) } ?: listing.ref
+        val ref = (listing.relistedItemId?.let { ItemRef(listing.ref.site, it) } ?: listing.ref).onHomeSite()
         val result =
             database.withTransaction {
                 if (groupId != null) {
@@ -118,7 +118,7 @@ class SnipeRepository(
                             ?: return@withTransaction AddResult.Rejected("That group no longer exists.")
                     completeGroupRefusal(group)?.let { return@withTransaction AddResult.Rejected(it) }
                 }
-                val existing = snipes.findOpen(ref.site, ref.itemId, SnipeRules.FINAL_STATUS_NAMES)
+                val existing = snipes.findOpen(ref.itemId, SnipeRules.FINAL_STATUS_NAMES)
                 if (existing != null) return@withTransaction AddResult.AlreadyAdded(existing.toSnipe())
                 val joins =
                     newGroup?.let {

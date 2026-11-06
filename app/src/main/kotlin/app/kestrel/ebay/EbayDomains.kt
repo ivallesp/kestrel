@@ -16,7 +16,17 @@ internal object EbayDomains {
     /** ebay.us and ebay.io serve share links that redirect to an item on the sharer's site. */
     fun isShortLinkHost(host: String): Boolean = normalizeHost(host) in SHORT_LINK_HOSTS
 
-    fun isEbayHost(host: String): Boolean = siteForHost(host) != null || isShortLinkHost(host)
+    /**
+     * eBay's other country sites (Belgium, Hong Kong, Singapore, Malaysia, the Philippines). Kestrel has no site entry
+     * for them; their item numbers are global, so a link from one opens on the home site like any other.
+     */
+    fun isOtherMarketplaceHost(host: String): Boolean {
+        val normalized = normalizeHost(host) ?: return false
+        return OTHER_MARKETPLACE_DOMAINS.any { normalized == it || normalized.endsWith(".$it") }
+    }
+
+    fun isEbayHost(host: String): Boolean =
+        siteForHost(host) != null || isOtherMarketplaceHost(host) || isShortLinkHost(host)
 
     /** Lower case, without a trailing dot; null when it cannot be a host name. */
     fun normalizeHost(host: String): String? {
@@ -43,5 +53,6 @@ internal object EbayDomains {
         }
 
     private val SHORT_LINK_HOSTS = setOf("ebay.us", "www.ebay.us", "ebay.io", "www.ebay.io")
+    private val OTHER_MARKETPLACE_DOMAINS = setOf("ebay.be", "ebay.com.hk", "ebay.com.sg", "ebay.com.my", "ebay.ph")
     private val HOST_NAME = Regex("[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*")
 }

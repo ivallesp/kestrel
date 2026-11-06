@@ -4,7 +4,6 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Update
-import app.kestrel.model.EbaySite
 import app.kestrel.model.TimelineKind
 import kotlinx.coroutines.flow.Flow
 
@@ -36,12 +35,13 @@ interface SnipeDao {
     )
     suspend fun withoutStatuses(statuses: List<String>): List<SnipeEntity>
 
+    // By item number only: it is the same on every eBay site, so a listing added from ebay.com and again from
+    // ebay.co.uk is one listing, and must never get two snipes (two bids).
     @Query(
-        "SELECT * FROM snipes WHERE site = :site AND itemId = :itemId AND status NOT IN (:finalStatuses) " +
+        "SELECT * FROM snipes WHERE itemId = :itemId AND status NOT IN (:finalStatuses) " +
             "AND deletedAtUtcMillis IS NULL ORDER BY id ASC LIMIT 1",
     )
     suspend fun findOpen(
-        site: EbaySite,
         itemId: String,
         finalStatuses: List<String>,
     ): SnipeEntity?

@@ -220,10 +220,10 @@ class AddViewModel(
             is TypedMax.TooLow -> {}
 
             is TypedMax.Valid -> {
-                val siteRefusal = MaxRules.siteRefusal(loaded.listing.ref.site)
+                val currencyRefusal = MaxRules.currencyRefusal(typed.max.currency)
                 when {
-                    // Sign-in could not help here: S6 signs in to ebay.co.uk only.
-                    siteRefusal != null -> eventChannel.trySend(AddEvent.Message(siteRefusal))
+                    // Sign-in could not help here: the amount itself is in a currency Kestrel can't bid in.
+                    currencyRefusal != null -> eventChannel.trySend(AddEvent.Message(currencyRefusal))
 
                     !current.signedIn -> eventChannel.trySend(AddEvent.OpenSignIn)
 
@@ -424,7 +424,7 @@ class AddViewModel(
         }
 
     private suspend fun openSnipeOn(ref: ItemRef): Snipe? =
-        services.snipes().first().firstOrNull { it.ref == ref && !it.status.isFinal }
+        services.snipes().first().firstOrNull { it.ref.itemId == ref.itemId && !it.status.isFinal }
 
     private fun alreadySniped(
         url: String,

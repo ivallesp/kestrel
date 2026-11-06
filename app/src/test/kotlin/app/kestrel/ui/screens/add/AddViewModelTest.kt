@@ -71,28 +71,45 @@ class AddViewModelTest {
     }
 
     @Test
-    fun aListingOnAnotherSiteCanBeWatchedButNeverSendsTheUserToAnUkSignIn() =
+    fun aListingFromAnotherSiteIsArmedInItsOwnCurrency() =
         runTest(dispatcher) {
+            // An ebay.de link: the fetch opens the item on ebay.co.uk, where its price stays in euros.
             val german =
                 AddFixtures.sonyA700.copy(
-                    ref = ItemRef(EbaySite.DE, "127504318862"),
+                    ref = ItemRef(EbaySite.UK, "127504318862"),
                     currentPrice = Money.of("60.00", "EUR"),
-                    currentPriceInSiteCurrency = null,
+                    currentPriceInSiteCurrency = Money.of("52.10", "GBP"),
                     postage = null,
                     buyerProtectionFee = null,
-                    signedIn = false,
                 )
-            val services = FakeAddServices(fetchResult = { FetchResult.Loaded(german) }, signedIn = false)
+            val services = FakeAddServices(fetchResult = { FetchResult.Loaded(german) })
             val subject = subject(services, link = "https://www.ebay.de/itm/127504318862")
 
             subject.type("90.00")
             subject.viewModel.arm()
+            assertEquals(Money.of("90.00", "EUR"), services.added.single().maxBid)
+        }
+
+    @Test
+    fun aListingInACurrencyKestrelCannotBidInCanOnlyBeWatched() =
+        runTest(dispatcher) {
+            val hongKong =
+                AddFixtures.sonyA700.copy(
+                    ref = ItemRef(EbaySite.UK, "127504318862"),
+                    currentPrice = Money.of("600.00", "HKD"),
+                    currentPriceInSiteCurrency = null,
+                    postage = null,
+                    buyerProtectionFee = null,
+                )
+            val services = FakeAddServices(fetchResult = { FetchResult.Loaded(hongKong) })
+            val subject = subject(services, link = "https://www.ebay.com.hk/itm/127504318862")
+
+            subject.type("700")
+            subject.viewModel.arm()
             assertTrue(services.added.isEmpty())
             assertEquals(
                 listOf<AddEvent>(
-                    AddEvent.Message(
-                        "Kestrel can sign in to ebay.co.uk only, so it can’t bid on this ebay.de listing. You can still watch it without a max.",
-                    ),
+                    AddEvent.Message("Kestrel can’t bid in HKD yet. You can still watch this listing without a max."),
                 ),
                 subject.events,
             )
