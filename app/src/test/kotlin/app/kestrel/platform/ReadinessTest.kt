@@ -11,6 +11,7 @@ import androidx.core.content.UnusedAppRestrictionsConstants
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import app.kestrel.Distribution
 import app.kestrel.data.ArmedSnipesCopy
 import app.kestrel.data.KestrelDatabase
 import app.kestrel.data.SettingsStore
@@ -216,6 +217,21 @@ class ReadinessTest {
         assertEquals(Settings.Panel.ACTION_INTERNET_CONNECTIVITY, fixes.intent(ReadinessKey.NETWORK)?.action)
         assertTrue(fixes.intent(ReadinessKey.UNUSED_APP_PAUSE) != null)
     }
+
+    @Test
+    fun thePlayBuildSaysExactAlarmsAreAllowedAndSendsBatteryToAppInfo() =
+        runTest {
+            val play = ReadinessEvaluator(probes, dayAndTime = { "Sun 21:00" }, distribution = Distribution.PLAY)
+            assertEquals("Allowed", play.evaluate().single { it.key == ReadinessKey.EXACT_ALARMS }.detail)
+
+            val battery = ReadinessFixes(context, probes, Distribution.PLAY).intent(ReadinessKey.BATTERY)!!
+            assertEquals(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, battery.action)
+            assertEquals("package:${context.packageName}", battery.dataString)
+            assertEquals(
+                Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                ReadinessFixes(context, probes, Distribution.PLAY).intent(ReadinessKey.EXACT_ALARMS)?.action,
+            )
+        }
 
     @Test
     fun aBlockedChannelFixOpensThatChannel() {

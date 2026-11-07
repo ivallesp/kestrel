@@ -116,8 +116,9 @@ end        result notification, timeline, destroy WebView, release wake lock, st
 ```
 
 Several windows can overlap; each has its own WebView and coroutine. Alarms: `setExactAndAllowWhileIdle`
-(`ELAPSED_REALTIME_WAKEUP`) with `USE_EXACT_ALARM` (granted at install for this sideloaded app); `setAlarmClock` as the
-fallback when battery is not Unrestricted. Foreground service type `specialUse`.
+(`ELAPSED_REALTIME_WAKEUP`) with `USE_EXACT_ALARM` in the GitHub build (granted at install) and `SCHEDULE_EXACT_ALARM`
+in the Google Play build (section 10); `setAlarmClock` as the fallback when battery is not Unrestricted. Foreground
+service type `specialUse`.
 
 ## 6. Time
 
@@ -144,3 +145,19 @@ The UI warns when members end less than 3 minutes apart.
 Watching (no max) -> Armed -> (Attention: price over max | sign-in needed | needs you | dry run failed) ->
 Bidding (window open, bid sent, extended) -> Won | Ended (lost, ended early, cancelled, skipped by group, failed).
 Every transition writes a timeline event with UTC time and details; the result screen shows eBay's own reply text.
+
+## 10. Two builds
+
+One app (`app.kestrel`), one version line, two builds that differ only in `Distribution` and in their manifests:
+
+- **GitHub** (`debug`, `release`): sideloaded from GitHub releases and signed with the release key. Exact alarms come
+  with the install (`USE_EXACT_ALARM`), Ready to snipe asks for Unrestricted battery in one tap
+  (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`), and "Buy me a coffee" opens Ko-fi.
+- **Google Play** (`play` build type, `./gradlew bundlePlay`): Play keeps `USE_EXACT_ALARM` for alarm, timer and
+  calendar apps, so the user allows exact alarms once (`SCHEDULE_EXACT_ALARM`; until then alarms are inexact and Ready
+  to snipe says so). Battery is set from App info, with no direct exemption request. There is no link to a payment
+  page. The bundle is signed with the upload key. Google Play re-signs what it serves with the app signing key; when
+  that is the GitHub build's release key (handed to Play App Signing), either build can update the other. Publishing
+  steps: `docs/play/README.md`.
+
+The JVM tests run on `debug` and cover the Play differences by passing `Distribution.PLAY` in.

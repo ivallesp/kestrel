@@ -16,6 +16,25 @@ val signingProperties =
         if (file.exists()) file.inputStream().use { load(it) }
     }
 
+// The Google Play build is signed with the upload key, from ../kestrel-signing/upload.properties or, in the release
+// workflow, from KESTREL_UPLOAD_* environment variables. Google Play signs what it serves with the app signing key.
+val uploadProperties =
+    Properties().apply {
+        val file = rootProject.file("../kestrel-signing/upload.properties")
+        if (file.exists()) {
+            file.inputStream().use { load(it) }
+        } else {
+            mapOf(
+                "storeFile" to "KESTREL_UPLOAD_STORE_FILE",
+                "storePassword" to "KESTREL_UPLOAD_STORE_PASSWORD",
+                "keyAlias" to "KESTREL_UPLOAD_KEY_ALIAS",
+                "keyPassword" to "KESTREL_UPLOAD_KEY_PASSWORD",
+            ).forEach { (key, variable) ->
+                providers.environmentVariable(variable).orNull?.let { setProperty(key, it) }
+            }
+        }
+    }
+
 android {
     namespace = "app.kestrel"
     compileSdk {
@@ -32,6 +51,7 @@ android {
         targetSdk = 37
         versionCode = 13
         versionName = "1.0.12"
+        buildConfigField("String", "DISTRIBUTION", "\"GITHUB\"")
     }
 
     signingConfigs {
@@ -43,12 +63,29 @@ android {
                 keyPassword = signingProperties.getProperty("keyPassword")
             }
         }
+        if (uploadProperties.size == 4) {
+            create("upload") {
+                storeFile = rootProject.file(uploadProperties.getProperty("storeFile"))
+                storePassword = uploadProperties.getProperty("storePassword")
+                keyAlias = uploadProperties.getProperty("keyAlias")
+                keyPassword = uploadProperties.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
+        // debug and release are the GitHub build, sideloaded from GitHub releases.
         release {
             isMinifyEnabled = false
             if (signingProperties.isNotEmpty()) signingConfig = signingConfigs.getByName("release")
+        }
+        // The Google Play build: the release build under Play's exact-alarm, battery and payment policies
+        // (Distribution.PLAY and app/src/play), signed with the upload key and uploaded as an app bundle.
+        create("play") {
+            initWith(getByName("release"))
+            buildConfigField("String", "DISTRIBUTION", "\"PLAY\"")
+            signingConfig = if (uploadProperties.size == 4) signingConfigs.getByName("upload") else null
+            matchingFallbacks += "release"
         }
     }
 

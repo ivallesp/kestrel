@@ -11,6 +11,7 @@ import app.kestrel.data.Settings
 import app.kestrel.data.ThemeMode
 import app.kestrel.model.EbaySite
 import app.kestrel.model.Snipe
+import app.kestrel.ui.celebration.CoffeeLink
 import app.kestrel.ui.screens.ready.CheckRows
 import app.kestrel.ui.screens.ready.CheckStanding
 import app.kestrel.ui.screens.ready.ContainerReadySources
@@ -74,6 +75,8 @@ data class SettingsUiState(
     val version: String,
     val confirmingSignOut: Boolean,
     val sheet: SettingsSheet?,
+    /** About offers "Buy me a coffee"; the Google Play build has no link to a payment page. */
+    val coffee: Boolean = CoffeeLink.url != null,
 )
 
 /** What Settings reads and changes, behind one seam so the ViewModel runs on fakes in tests. */

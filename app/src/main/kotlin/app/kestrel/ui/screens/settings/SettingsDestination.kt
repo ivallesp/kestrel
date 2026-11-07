@@ -88,6 +88,12 @@ fun SettingsDestination(
                     }
                 }
 
+                override fun openPrivacyPolicy() {
+                    if (!PrivacyPolicy.open(context)) {
+                        scope.launch { snackbarHostState.show(ShellMessage(PrivacyPolicy.NOT_OPENED)) }
+                    }
+                }
+
                 override fun sendProblemReport() {
                     scope.launch {
                         val sent =

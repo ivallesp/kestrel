@@ -101,11 +101,15 @@ interface SettingsActions {
     /** "Buy me a coffee": opens the link, or says it isn't set up yet. */
     fun buyMeACoffee() {}
 
+    /** Opens the privacy policy in the browser. */
+    fun openPrivacyPolicy() {}
+
     /** Turns the win celebration's sound on or off. */
     fun setCelebrationSound(on: Boolean) {}
 }
 
-private const val ABOUT_ROWS = 5
+/** About's rows with "Buy me a coffee"; the build without the link has one fewer. */
+private const val ABOUT_ROWS = 6
 
 /** The lead times on offer (DESIGN 3.17): 3 s, 6 s and 10 s. */
 val LeadTimeChoices: List<Int> = listOf(3, 6, 10)
@@ -209,11 +213,13 @@ fun SettingsScreen(
                         SnipingQuote()
                     }
                     Section("About") {
+                        val coffee = if (state.coffee) 1 else 0
+                        val rows = ABOUT_ROWS - 1 + coffee
                         TextRow(
                             title = "Kestrel ${state.version}",
                             detail = "Kestrel isn’t made by or affiliated with eBay.",
                             index = 0,
-                            count = ABOUT_ROWS,
+                            count = rows,
                         )
                         Gap()
                         LinkRow(
@@ -221,31 +227,43 @@ fun SettingsScreen(
                             detail = "What plays the first time you open a win. Nothing is bid.",
                             onClick = actions::openCelebration,
                             index = 1,
-                            count = ABOUT_ROWS,
+                            count = rows,
                         )
-                        Gap()
-                        LinkRow(
-                            title = "Buy me a coffee",
-                            detail = "Kestrel has no ads and no fees. Opens ${CoffeeLink.SHOWN}.",
-                            onClick = actions::buyMeACoffee,
-                            index = 2,
-                            count = ABOUT_ROWS,
-                        )
+                        if (state.coffee) {
+                            Gap()
+                            LinkRow(
+                                title = "Buy me a coffee",
+                                detail = "Kestrel has no ads and no fees. Opens ${CoffeeLink.SHOWN}.",
+                                onClick = actions::buyMeACoffee,
+                                index = 2,
+                                count = rows,
+                            )
+                        }
                         Gap()
                         LinkRow(
                             title = "Send a problem report",
                             detail = "Recent freezes and crashes, to share in a message",
                             onClick = actions::sendProblemReport,
-                            index = 3,
-                            count = ABOUT_ROWS,
+                            index = 2 + coffee,
+                            count = rows,
+                        )
+                        Gap()
+                        LinkRow(
+                            title = "Privacy policy",
+                            detail =
+                                "Your snipes and your eBay session stay on this phone. " +
+                                    "Opens ${PrivacyPolicy.SHOWN}.",
+                            onClick = actions::openPrivacyPolicy,
+                            index = 3 + coffee,
+                            count = rows,
                         )
                         Gap()
                         LinkRow(
                             title = "Licences",
                             detail = "Fonts and open-source software",
                             onClick = { actions.openSheet(SettingsSheet.Licences) },
-                            index = 4,
-                            count = ABOUT_ROWS,
+                            index = 4 + coffee,
+                            count = rows,
                         )
                     }
                 }

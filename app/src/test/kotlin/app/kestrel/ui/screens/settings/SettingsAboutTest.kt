@@ -25,6 +25,7 @@ class SettingsAboutTest {
 
     private var celebrations = 0
     private var coffees = 0
+    private var privacy = 0
     private val sounds = mutableListOf<Boolean>()
 
     private val actions =
@@ -35,6 +36,10 @@ class SettingsAboutTest {
 
             override fun buyMeACoffee() {
                 coffees++
+            }
+
+            override fun openPrivacyPolicy() {
+                privacy++
             }
 
             override fun setCelebrationSound(on: Boolean) {
@@ -55,6 +60,33 @@ class SettingsAboutTest {
         composeRule.onNodeWithText("Buy me a coffee").performClick()
         assertEquals(1, celebrations)
         assertEquals(1, coffees)
+    }
+
+    @Test
+    fun aboutOpensThePrivacyPolicy() {
+        composeRule.setContent {
+            ScreenshotSurface(darkTheme = false, time = "18:08", reduceMotion = true) {
+                SettingsScreen(SettingsFixtures.signedIn, actions, windowInsets = PhoneInsets)
+            }
+        }
+        composeRule
+            .onNodeWithText("Your snipes and your eBay session stay on this phone. Opens github.com/ivallesp/kestrel.")
+            .performScrollTo()
+        composeRule.onNodeWithText("Privacy policy").performClick()
+        assertEquals(1, privacy)
+        assertEquals("https://github.com/ivallesp/kestrel/blob/main/PRIVACY.md", PrivacyPolicy.URL)
+    }
+
+    @Test
+    fun theBuildWithoutTheCoffeeLinkShowsNoCoffeeRow() {
+        composeRule.setContent {
+            ScreenshotSurface(darkTheme = false, time = "18:08", reduceMotion = true) {
+                SettingsScreen(SettingsFixtures.signedIn.copy(coffee = false), actions, windowInsets = PhoneInsets)
+            }
+        }
+        composeRule.onNodeWithText("Licences").performScrollTo().assertExists()
+        composeRule.onNodeWithText("Privacy policy").assertExists()
+        composeRule.onNodeWithText("Buy me a coffee").assertDoesNotExist()
     }
 
     @Test

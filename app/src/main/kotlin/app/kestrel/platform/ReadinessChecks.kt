@@ -17,6 +17,7 @@ import android.util.Log
 import androidx.core.content.IntentCompat
 import androidx.core.content.PackageManagerCompat
 import androidx.core.content.UnusedAppRestrictionsConstants
+import app.kestrel.Distribution
 import app.kestrel.data.SettingsStore
 import app.kestrel.data.SnipeRepository
 import app.kestrel.engine.ClockSync
@@ -177,6 +178,7 @@ internal const val LIVE_UPDATES_NOT_PROMOTED = "The final countdown can't show i
 internal class ReadinessEvaluator(
     private val probes: ReadinessProbes,
     private val dayAndTime: (Long) -> String,
+    private val distribution: Distribution = Distribution.CURRENT,
 ) {
     suspend fun evaluate(): List<ReadinessItem> =
         listOf(
@@ -227,7 +229,7 @@ internal class ReadinessEvaluator(
 
     private fun exactAlarms(): Pair<Boolean, String> =
         if (probes.canScheduleExactAlarms()) {
-            true to "Granted automatically"
+            true to if (distribution.exactAlarmsAtInstall) "Granted automatically" else "Allowed"
         } else {
             false to "Exact alarms are off, so bids may be late."
         }
@@ -329,6 +331,7 @@ internal class ReadinessEvaluator(
 internal class ReadinessFixes(
     private val context: Context,
     private val probes: ReadinessProbes,
+    private val distribution: Distribution = Distribution.CURRENT,
 ) {
     private val packageUri: Uri get() = Uri.fromParts("package", context.packageName, null)
 
@@ -347,7 +350,12 @@ internal class ReadinessFixes(
             }
 
             ReadinessKey.BATTERY -> {
-                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, packageUri)
+                // The Play build has no direct exemption request: App info holds "App battery usage".
+                if (distribution.directBatteryRequest) {
+                    Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, packageUri)
+                } else {
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri)
+                }
             }
 
             ReadinessKey.BACKGROUND -> {

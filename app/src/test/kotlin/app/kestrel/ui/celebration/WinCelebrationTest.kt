@@ -91,6 +91,18 @@ class WinCelebrationTest {
     }
 
     @Test
+    fun withoutTheCoffeeLinkTheNoteOnlySaysThereAreNoAds() {
+        composeRule.setContent {
+            ScreenshotSurface(darkTheme = false, time = "18:22", reduceMotion = true) {
+                WinCelebration(CelebrationContent.Preview.copy(coffee = false), onDone = {}, windowInsets = PhoneInsets)
+            }
+        }
+        composeRule.onNodeWithText(NO_ADS_NOTE).performScrollTo().assertExists()
+        composeRule.onNodeWithText("Buy me a coffee").assertDoesNotExist()
+        composeRule.onNodeWithText("Opens ko-fi.com/ivallesp").assertDoesNotExist()
+    }
+
+    @Test
     fun aPlayingPreviewCanPlayAgainButTheWinCannot() {
         composeRule.setContent {
             ScreenshotSurface(darkTheme = false, time = "18:22") {

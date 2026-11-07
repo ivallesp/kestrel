@@ -71,6 +71,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
 import androidx.core.net.toUri
+import app.kestrel.Distribution
 import app.kestrel.ui.components.PrimaryButton
 import app.kestrel.ui.components.SmallCaps
 import app.kestrel.ui.components.SymbolIcon
@@ -100,6 +101,8 @@ data class CelebrationContent(
     val under: String?,
     val strikeLine: String?,
     val preview: Boolean,
+    /** The closing note offers "Buy me a coffee"; without the link (the Play build) it only says there are no ads. */
+    val coffee: Boolean = CoffeeLink.url != null,
 ) {
     companion object {
         /** Said with the strike, in the bird's terms. Declared first: the preview below uses it. */
@@ -143,10 +146,10 @@ data class CelebrationContent(
 
 /**
  * Where "Buy me a coffee" leads: the owner's own Ko-fi page, which he chose. It opens in the browser; any payment
- * happens there, never inside Kestrel.
+ * happens there, never inside Kestrel. The Google Play build has no link (Play's payments policy), so [url] is null.
  */
 object CoffeeLink {
-    val url: String? = "https://ko-fi.com/ivallesp"
+    val url: String? = if (Distribution.CURRENT.coffeeLink) "https://ko-fi.com/ivallesp" else null
 
     /** The address as people read it, under the button and in Settings. */
     const val SHOWN = "ko-fi.com/ivallesp"
@@ -410,7 +413,7 @@ private fun CelebrationSheet(
             }
         }
         Spacer(Modifier.height(20.dp))
-        CoffeeNote(Modifier.reveal(time, CelebrationTimeline.COFFEE_FROM))
+        CoffeeNote(Modifier.reveal(time, CelebrationTimeline.COFFEE_FROM), link = content.coffee)
     }
 }
 
@@ -453,10 +456,13 @@ private fun CelebrationActions(
 
 /**
  * The coffee note at the end of the celebration: Kestrel has no ads and earns nothing, and a coffee is the only way to
- * say thanks. The button opens [CoffeeLink] in the browser.
+ * say thanks. The button opens [CoffeeLink] in the browser. Without the [link] the note only says there are no ads.
  */
 @Composable
-fun CoffeeNote(modifier: Modifier = Modifier) {
+fun CoffeeNote(
+    modifier: Modifier = Modifier,
+    link: Boolean = CoffeeLink.url != null,
+) {
     val context = LocalContext.current
     var explained by remember { mutableStateOf(false) }
     val inkSoft = MaterialTheme.colorScheme.onSurfaceVariant
@@ -472,23 +478,29 @@ fun CoffeeNote(modifier: Modifier = Modifier) {
             SmallCaps("No ads · no fees")
         }
         Spacer(Modifier.height(8.dp))
-        Text(COFFEE_NOTE, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-        Spacer(Modifier.height(12.dp))
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-            itemVerticalAlignment = Alignment.CenterVertically,
-        ) {
-            TonalButton(
-                text = "Buy me a coffee",
-                icon = Symbols.Coffee,
-                onClick = { if (!CoffeeLink.open(context)) explained = true },
-            )
-            Text(
-                if (explained) CoffeeLink.NOT_OPENED else "Opens ${CoffeeLink.SHOWN}",
-                style = MaterialTheme.typography.bodySmall,
-                color = inkSoft,
-            )
+        Text(
+            if (link) COFFEE_NOTE else NO_ADS_NOTE,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        if (link) {
+            Spacer(Modifier.height(12.dp))
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                itemVerticalAlignment = Alignment.CenterVertically,
+            ) {
+                TonalButton(
+                    text = "Buy me a coffee",
+                    icon = Symbols.Coffee,
+                    onClick = { if (!CoffeeLink.open(context)) explained = true },
+                )
+                Text(
+                    if (explained) CoffeeLink.NOT_OPENED else "Opens ${CoffeeLink.SHOWN}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = inkSoft,
+                )
+            }
         }
     }
 }
@@ -566,6 +578,9 @@ private const val PREVIEW_NOTE = "This plays the first time you open a win. Noth
 /** No ads and no money made, in the bird's own terms. */
 const val COFFEE_NOTE =
     "Kestrel hunts for you alone: no ads, no fees, nothing sold. If it caught you a good one, you can buy me a coffee."
+
+/** The same promise without the coffee, for the build that has no link. */
+const val NO_ADS_NOTE = "Kestrel hunts for you alone: no ads, no fees, nothing sold."
 
 /**
  * A result page that celebrates a verified win the first time it opens: the celebration covers the page, and the
