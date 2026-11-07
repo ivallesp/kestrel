@@ -1,0 +1,1 @@
+First release on Google Play. Kestrel asks you once to allow exact alarms, so bids leave on the second, and Settings › About links to the privacy policy.
