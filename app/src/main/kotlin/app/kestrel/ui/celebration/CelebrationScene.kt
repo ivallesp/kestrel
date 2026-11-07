@@ -633,12 +633,13 @@ private fun DrawScope.drawSunburst(
 private const val RAYS = 18
 
 /** The meadow blooms in a wave from the post: each flower opens with a little overshoot and stays open. */
-private fun DrawScope.drawFlowers(
+internal fun DrawScope.drawFlowers(
     layout: SceneLayout,
     palette: ScenePalette,
     t: Long,
+    flowers: List<Flower> = layout.flowers,
 ) {
-    for (flower in layout.flowers) {
+    for (flower in flowers) {
         val open =
             easeOutBack(
                 CelebrationTimeline.progress(

@@ -45,9 +45,10 @@ class CelebrationFrames {
         val step = System.getenv("KESTREL_FRAMES_STEP")?.toLongOrNull() ?: 500L
         val preview = System.getenv("KESTREL_FRAMES_PREVIEW") == "true"
         val from = System.getenv("KESTREL_FRAMES_FROM")?.toLongOrNull() ?: 0L
-        val to = System.getenv("KESTREL_FRAMES_TO")?.toLongOrNull() ?: CelebrationTimeline.END
-        val fontScale = System.getenv("KESTREL_FRAMES_FONT")?.toFloatOrNull() ?: 1f
         val loss = System.getenv("KESTREL_FRAMES_SCENE") == "loss"
+        val to =
+            System.getenv("KESTREL_FRAMES_TO")?.toLongOrNull() ?: if (loss) LossTimeline.END else CelebrationTimeline.END
+        val fontScale = System.getenv("KESTREL_FRAMES_FONT")?.toFloatOrNull() ?: 1f
         var frame by mutableLongStateOf(0L)
         composeRule.setContent {
             ScreenshotSurface(darkTheme = dark, time = "18:22", fontScale = fontScale) {

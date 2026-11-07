@@ -10,7 +10,9 @@ import kotlin.math.sin
  * The loss as pure geometry (DESIGN 3.22). The kestrel hovers and stoops exactly as for a win, but a gust snatches the
  * lot's tag out of the grass just before the strike, so the talons close on nothing. It flies back to its post with
  * nothing, turns to watch the tag go, and hunches as clouds close over the sun and the rain comes. It shakes the rain
- * off, one feather drifts down, and it gives one low "kee". Every moment is a function of the time.
+ * off, one feather drifts down, and it gives one low "kee". Then the rain eases, the clouds part, the sun comes back
+ * with a rainbow and a few flowers open; the kestrel lifts its head, stretches a wing, calls "kee-kee!" and looks out
+ * over the meadow, ready for the next one. Every moment is a function of the time.
  */
 internal object LossTimeline {
     // The miss.
@@ -39,12 +41,33 @@ internal object LossTimeline {
     const val CALL_AT = 6_450L
     const val CALL_MILLIS = 900L
 
+    // The hope.
+    const val RAIN_EASE_FROM = 7_100L
+    const val RAIN_EASE_TO = 8_200L
+    const val CLOUDS_PART_FROM = 7_300L
+    const val CLOUDS_PART_TO = 8_900L
+    const val SUN_FROM = 7_700L
+    const val SUN_TO = 9_000L
+    const val RAINBOW_FROM = 8_300L
+    const val RAINBOW_TO = 9_300L
+    const val BLOOM_FROM = 8_500L
+    const val BLOOM_GAP = 110L
+    const val RISE_FROM = 7_900L
+    const val RISE_TO = 8_700L
+    const val STRETCH_FROM = 8_700L
+    const val STRETCH_TO = 9_200L
+    val READY_CALLS = listOf(9_150L, 9_380L)
+    const val READY_CALL_MILLIS = 560L
+    const val LOOK_FROM = 9_350L
+    const val LOOK_TO = 9_850L
+
     // The words under the scene.
     const val TITLE_FROM = 300L
     const val HEADLINE_FROM = 3_150L
     const val MONEY_FROM = 3_700L
     const val COMFORT_FROM = 6_300L
-    const val END = CelebrationTimeline.END
+    const val HOPE_FROM = 8_800L
+    const val END = 10_000L
 
     private fun progress(
         t: Long,
@@ -52,7 +75,10 @@ internal object LossTimeline {
         to: Long,
     ): Float = CelebrationTimeline.progress(t, from, to)
 
-    /** The kestrel at [timeMillis]: the win's flight up to the post, then the turn, the slump, the shiver, the call. */
+    /**
+     * The kestrel at [timeMillis]: the win's flight up to the post, then the turn, the slump, the shiver and the low call,
+     * then the head comes up, a wing stretches, the bright call, and a look out over the meadow.
+     */
     fun bird(
         timeMillis: Long,
         size: Size,
@@ -62,7 +88,8 @@ internal object LossTimeline {
         val layout = SceneLayout(size)
         val fold = easeInOut(progress(t, PERCH, WINGS_FOLDED))
         val facing = lerp(-1f, 1f, easeInOut(progress(t, PERCH, TURNED)))
-        val slump = easeInOut(progress(t, SLUMP_FROM, SLUMP_TO))
+        val rise = easeInOut(progress(t, RISE_FROM, RISE_TO))
+        val slump = easeInOut(progress(t, SLUMP_FROM, SLUMP_TO)) * (1f - rise)
         val shiverProgress = progress(t, SHIVER_FROM, SHIVER_TO)
         val shiver =
             if (t in
@@ -72,24 +99,29 @@ internal object LossTimeline {
             } else {
                 0f
             }
-        // The call lifts the beak a little, and lets it fall again.
+        // The low call lifts the beak a little and lets it fall again; the bright ones throw it up.
         val call = sin(PI.toFloat() * progress(t, CALL_AT, CALL_AT + CALL_MILLIS))
-        // Hunched a little, wings let down, the head sunk towards the grass where the tag was and the eyelids heavy.
-        val pitch = lerp(-76f, -71f, slump)
+        val ready = READY_CALLS.maxOf { at -> sin(PI.toFloat() * progress(t, at, at + READY_CALL_MILLIS)) }
+        // A wing opens halfway and folds again: the stretch of a bird getting ready.
+        val stretch = sin(PI.toFloat() * progress(t, STRETCH_FROM, STRETCH_TO))
+        val look = sin(PI.toFloat() * progress(t, LOOK_FROM, LOOK_TO))
+        // Hunched a little, wings let down, the head sunk towards the grass where the tag was and the eyelids heavy;
+        // then upright again, chest out.
+        val pitch = lerp(-76f, -71f, slump) - 2f * rise
         return BirdPose(
             position = layout.perchOrigin(facing, pitch),
             unit = layout.unit,
             facing = facing,
             pitch = pitch,
-            wingAngle = lerp(-100f, -182f, fold) + shiver + 7f * slump,
-            farWingAngle = lerp(-112f, -184f, fold) - shiver + 5f * slump,
-            wingSpan = lerp(0.8f, 0.74f, fold),
-            wingChord = lerp(1f, 0.72f, fold),
-            tailFan = 1f - fold,
+            wingAngle = lerp(-100f, -182f, fold) + shiver + 7f * slump + 60f * stretch,
+            farWingAngle = lerp(-112f, -184f, fold) - shiver + 5f * slump + 30f * stretch,
+            wingSpan = lerp(lerp(0.8f, 0.74f, fold), 0.95f, stretch),
+            wingChord = lerp(lerp(1f, 0.72f, fold), 1f, stretch),
+            tailFan = maxOf(1f - fold, 0.6f * stretch),
             legs = 1f,
             legAngle = -pitch,
-            headTurn = -pitch + 44f * slump - 16f * call,
-            fold = fold,
+            headTurn = -pitch + 44f * slump - 16f * call - 18f * ready - 8f * rise + 14f * look,
+            fold = fold * (1f - 0.8f * stretch),
             eyelid = (0.9f * slump - 0.35f * call).coerceAtLeast(0f),
         )
     }
@@ -114,14 +146,39 @@ internal object LossTimeline {
         return BlownTag(anchor, spin = 560f * easeOut(p), lying = false)
     }
 
-    /** How grey the day has turned, from 0 (the morning of the win) to 1. */
-    fun dim(timeMillis: Long): Float = easeInOut(progress(timeMillis, DIM_FROM, DIM_TO))
+    /** How grey the day has turned, from 0 (the morning of the win) to 1, and back as the sun returns. */
+    fun dim(timeMillis: Long): Float = easeInOut(progress(timeMillis, DIM_FROM, DIM_TO)) * (1f - sun(timeMillis))
 
     /** How far the rain clouds have come over the sun. */
     fun clouds(timeMillis: Long): Float = easeInOut(progress(timeMillis, CLOUDS_FROM, CLOUDS_TO))
 
-    /** How hard it rains, from 0 to 1. */
-    fun rain(timeMillis: Long): Float = easeIn(progress(timeMillis, RAIN_FROM, RAIN_FULL)).coerceAtMost(1f)
+    /** How far the rain clouds have parted again, from 0 to 1. */
+    fun parting(timeMillis: Long): Float = easeInOut(progress(timeMillis, CLOUDS_PART_FROM, CLOUDS_PART_TO))
+
+    /** How far the sun has come back, from 0 to 1. */
+    fun sun(timeMillis: Long): Float = easeInOut(progress(timeMillis, SUN_FROM, SUN_TO))
+
+    /** How bright the rainbow is, from 0 to 1. */
+    fun rainbow(timeMillis: Long): Float = easeOut(progress(timeMillis, RAINBOW_FROM, RAINBOW_TO))
+
+    /** How hard it rains, from 0 to 1: it sets in, then eases off before the sun comes back. */
+    fun rain(timeMillis: Long): Float =
+        easeIn(progress(timeMillis, RAIN_FROM, RAIN_FULL)).coerceAtMost(1f) *
+            (1f - easeInOut(progress(timeMillis, RAIN_EASE_FROM, RAIN_EASE_TO)))
+
+    /** A few of the win's flowers by the post, opening one after another in the sun. */
+    fun flowers(size: Size): List<Flower> =
+        SceneLayout(size)
+            .flowers
+            .filter { it.at.x < size.width * 0.5f }
+            .take(7)
+            .mapIndexed { index, flower -> flower.copy(bloomAt = BLOOM_FROM + index * BLOOM_GAP) }
+
+    /** How far each bright "kee" has gone (0 to 1), or null outside it. */
+    fun readyCalls(timeMillis: Long): List<Float?> =
+        READY_CALLS.map { at ->
+            progress(timeMillis, at, at + READY_CALL_MILLIS).takeIf { timeMillis >= at && it < 1f }
+        }
 
     /** The one feather the shiver shakes loose: from the bird's shoulder to the grass by the post. */
     fun feather(size: Size): Feather {

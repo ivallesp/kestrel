@@ -81,8 +81,8 @@ import kotlin.math.sin
 
 /**
  * What the loss says under the scene. The plain fact stays plain ("YOU LOST", in the Ended state's colours); the
- * [headline] is the bird's ("It got away."), then the money as S4 tells it, and a [comfort] line with the rain. The
- * preview explains itself instead.
+ * [headline] is the bird's ("It got away."), then the money as S4 tells it, a [comfort] line with the rain and the
+ * [hope] with the sun. The preview explains itself instead.
  */
 @Immutable
 data class LossContent(
@@ -92,6 +92,8 @@ data class LossContent(
     val yourMax: String?,
     val reason: String?,
     val comfort: String,
+    /** Said as the sun comes back. */
+    val hope: String = HOPE,
     val preview: Boolean,
 ) {
     companion object {
@@ -262,7 +264,15 @@ internal fun LossBand(
                         fontSize = (8f * unit).toSp(),
                     ),
                 )
-            onDrawBehind { drawLossScene(time(), palette, dark, tag, call) }
+            val bright =
+                TextStyle(
+                    fontFamily = callStyle.fontFamily,
+                    fontWeight = FontWeight.Medium,
+                    fontStyle = FontStyle.Italic,
+                    fontSize = (10f * unit).toSp(),
+                )
+            val ready = READY_WORDS.map { measurer.measure(it, bright) }
+            onDrawBehind { drawLossScene(time(), palette, dark, tag, call, ready) }
         },
     )
 }
@@ -277,6 +287,7 @@ internal fun DrawScope.drawLossScene(
     dark: Boolean,
     tagText: TextLayoutResult,
     callText: TextLayoutResult,
+    readyTexts: List<TextLayoutResult> = emptyList(),
 ) {
     val t = timeMillis.coerceIn(0L, LossTimeline.END)
     val layout = SceneLayout(size)
@@ -296,6 +307,7 @@ internal fun DrawScope.drawLossScene(
     drawSun(layout, palette, rise)
     drawClouds(layout, palette, t)
     drawRainClouds(layout, palette, dark, t, rise)
+    drawRainbow(layout, t)
     drawWind(layout, palette, t)
     translate(0f, rise * 0.5f) { drawFarHills(layout, palette) }
     translate(0f, rise) {
@@ -303,8 +315,9 @@ internal fun DrawScope.drawLossScene(
         drawFence(layout, palette)
         drawMeadow(layout, palette)
     }
-    // The day greys over the land first; the bird keeps a little more light than the hills.
+    // The day greys over the land first; the bird keeps a little more light than the hills. The sun warms it again.
     drawRect(grey.copy(alpha = (if (dark) 0.42f else 0.36f) * dim))
+    drawRect(palette.sunGlow.copy(alpha = 0.1f * LossTimeline.sun(t)))
     val tag = LossTimeline.tag(t, size)
     if (tag?.lying == true) drawTag(TagState(tag.anchor, swing = 0f, lying = true), layout, palette, tagText)
     drawGust(layout, t)
@@ -316,11 +329,13 @@ internal fun DrawScope.drawLossScene(
         }
     }
     translate(0f, rise) { drawGrass(layout, palette, t) }
+    drawFlowers(layout, palette, t, LossTimeline.flowers(size))
     drawStrikePuff(layout, palette, t)
     drawFeather(LossTimeline.feather(size), t, u)
     drawRect(grey.copy(alpha = 0.14f * dim))
     drawRain(layout, dark, t)
     drawLossCall(t, callText, palette)
+    drawReadyCalls(t, readyTexts, palette)
 }
 
 /** Three heavy clouds come in from the right and close over the sun, which pales behind them. */
@@ -334,17 +349,19 @@ private fun DrawScope.drawRainClouds(
     val p = LossTimeline.clouds(t)
     if (p <= 0f) return
     drawCircle(
-        palette.skyLow.copy(alpha = 0.85f * p),
+        palette.skyLow.copy(alpha = 0.85f * p * (1f - LossTimeline.sun(t))),
         radius = layout.sunRadius * 1.04f,
         center = layout.sunCentre + Offset(0f, rise * 0.3f),
     )
     val w = size.width
     val h = size.height
-    val body = if (dark) Color(0xFF4E5463) else Color(0xFFA2AAB5)
-    val shade = if (dark) Color(0xFF3C414E) else Color(0xFF8E97A3)
-    rainCloud(Offset(lerp(w * 1.25f, w * 0.46f, p), h * 0.22f), w * 0.44f, body, shade)
-    rainCloud(Offset(lerp(w * 1.7f, w * 0.98f, p), h * 0.4f), w * 0.4f, body, shade)
-    rainCloud(Offset(lerp(w * 1.4f, w * 0.72f, p), h * 0.55f), w * 0.5f, body, shade)
+    // Parting, they drift apart and thin out: the left one to the left, the others away to the right.
+    val apart = LossTimeline.parting(t)
+    val body = (if (dark) Color(0xFF4E5463) else Color(0xFFA2AAB5)).copy(alpha = 1f - 0.35f * apart)
+    val shade = (if (dark) Color(0xFF3C414E) else Color(0xFF8E97A3)).copy(alpha = 1f - 0.35f * apart)
+    rainCloud(Offset(lerp(w * 1.25f, w * 0.46f, p) - w * 0.75f * apart, h * 0.22f), w * 0.44f, body, shade)
+    rainCloud(Offset(lerp(w * 1.7f, w * 0.98f, p) + w * 0.5f * apart, h * 0.4f), w * 0.4f, body, shade)
+    rainCloud(Offset(lerp(w * 1.4f, w * 0.72f, p) + w * 0.7f * apart, h * 0.55f), w * 0.5f, body, shade)
 }
 
 /** A heavy, puffy cloud: round tops on a flat, darker underside. */
@@ -383,6 +400,57 @@ private fun DrawScope.rainCloud(
             androidx.compose.ui.geometry
                 .CornerRadius(base / 2f),
     )
+}
+
+/** A soft rainbow over the hills as the sun comes back, its feet hidden behind them. */
+private fun DrawScope.drawRainbow(
+    layout: SceneLayout,
+    t: Long,
+) {
+    val p = LossTimeline.rainbow(t)
+    if (p <= 0f) return
+    // Over the meadow to the right, clear of the bird on its post.
+    val centre = Offset(size.width * 0.8f, size.height * 0.8f)
+    val band = 2.2f * layout.unit
+    val outer = size.width * 0.42f
+    for ((index, colour) in RAINBOW.withIndex()) {
+        val radius = outer - index * band
+        drawArc(
+            colour.copy(alpha = 0.28f * p),
+            startAngle = 180f,
+            sweepAngle = 180f,
+            useCenter = false,
+            topLeft = centre - Offset(radius, radius),
+            size =
+                androidx.compose.ui.geometry
+                    .Size(radius * 2f, radius * 2f),
+            style =
+                androidx.compose.ui.graphics.drawscope
+                    .Stroke(width = band),
+        )
+    }
+}
+
+/** "kee", "kee!": bright, each pops out by the beak and rises, as the win's calls do. */
+private fun DrawScope.drawReadyCalls(
+    t: Long,
+    texts: List<TextLayoutResult>,
+    palette: ScenePalette,
+) {
+    val calls = LossTimeline.readyCalls(t)
+    if (calls.all { it == null }) return
+    val bird = LossTimeline.bird(t, size)
+    val beak = bird.toScene(KestrelShape.Beak.getBounds().topRight)
+    val u = SceneLayout(size).unit
+    for ((index, p) in calls.withIndex()) {
+        if (p == null) continue
+        val text = texts.getOrNull(index) ?: continue
+        val alpha = if (p < 0.6f) 1f else 1f - (p - 0.6f) / 0.4f
+        val lift = (10f + index * 12f + 12f * easeOut(p)) * u
+        val sideways = (14f + index * 16f + 4f * p) * u
+        val topLeft = beak + Offset(sideways, -lift) - Offset(text.size.width / 2f, text.size.height / 2f)
+        drawText(text, color = palette.call.copy(alpha = alpha), topLeft = topLeft)
+    }
 }
 
 /** The gust that takes the tag: white streaks racing low over the grass, left to right. */
@@ -526,6 +594,14 @@ private fun LossSheet(
                 color = if (content.preview) inkSoft else MaterialTheme.colorScheme.onBackground,
             )
         }
+        Column(Modifier.reveal(time, LossTimeline.HOPE_FROM)) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                content.hope,
+                style = typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+        }
     }
 }
 
@@ -546,10 +622,25 @@ private const val LOSS_TAG_WORD = "SOLD"
 
 private const val LOSS_CALL_WORD = "kee…"
 
+private val READY_WORDS = listOf("kee", "kee!")
+
+private val RAINBOW =
+    listOf(
+        Color(0xFFE5766B),
+        Color(0xFFF0A65E),
+        Color(0xFFF3D372),
+        Color(0xFF8CC08A),
+        Color(0xFF7FA9D6),
+        Color(0xFF9C8CC9),
+    )
+
 private const val LOSS_DESCRIPTION =
     "A kestrel dives at your lot’s tag in the grass, but a gust blows the tag away and its talons close on nothing. " +
-        "It flies back to its fence post, hunches as the sky clouds over and the rain comes, and calls once, softly."
+        "It flies back to its fence post and hunches as the sky clouds over and the rain comes. Then the rain eases, " +
+        "the sun comes back with a rainbow, and the kestrel lifts its head, stretches and calls, ready for the next one."
 
 private const val LOSS_PREVIEW_NOTE = "This plays the first time you open a loss. Nothing was bid."
 
-private const val COMFORT = "You pay nothing. Kestrel is ready for the next one."
+private const val COMFORT = "You pay nothing."
+
+private const val HOPE = "The sun’s back out. Kestrel is ready for the next one."

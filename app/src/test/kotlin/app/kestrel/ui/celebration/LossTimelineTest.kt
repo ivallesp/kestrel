@@ -61,13 +61,19 @@ class LossTimelineTest {
     }
 
     @Test
-    fun itEndsFacingTheSceneWithItsHeadDownAndItsEyesHeavy() {
+    fun itHunchesInTheRainThenEndsUprightAndReady() {
         val landed = LossTimeline.bird(LossTimeline.PERCH, size)
+        val rain = LossTimeline.bird(LossTimeline.RISE_FROM - 100L, size)
+        assertTrue("the head has sunk in the rain", rain.headTurn > landed.headTurn + 30f)
+        assertTrue(rain.eyelid > 0.5f)
+
         val end = LossTimeline.bird(LossTimeline.END, size)
         assertEquals(1f, end.facing)
-        assertTrue("the head has sunk", end.headTurn > landed.headTurn + 30f)
-        assertTrue(end.eyelid > 0.5f)
-        assertEquals(1f, end.fold)
+        assertEquals("eyes wide open again", 0f, end.eyelid, 0.001f)
+        assertTrue("head up, level with the body", kotlin.math.abs(end.headTurn + end.pitch) < 10f)
+        assertEquals("wings folded after the stretch", 1f, end.fold, 0.001f)
+        val stretching = LossTimeline.bird((LossTimeline.STRETCH_FROM + LossTimeline.STRETCH_TO) / 2, size)
+        assertTrue("a wing opens for the stretch", stretching.fold < 0.5f)
     }
 
     @Test
@@ -77,19 +83,43 @@ class LossTimelineTest {
     }
 
     @Test
-    fun theWeatherClosesInAndTheRainSetsIn() {
+    fun theWeatherClosesInThenTheSunComesBack() {
         assertEquals(0f, LossTimeline.dim(0L))
-        assertEquals(1f, LossTimeline.dim(LossTimeline.END))
+        assertEquals("grey at its worst", 1f, LossTimeline.dim(LossTimeline.SUN_FROM - 1L))
+        assertEquals("the sun is back", 0f, LossTimeline.dim(LossTimeline.END))
+        assertEquals(1f, LossTimeline.sun(LossTimeline.END))
+        assertEquals(1f, LossTimeline.parting(LossTimeline.END))
+        assertEquals(1f, LossTimeline.rainbow(LossTimeline.END))
         assertEquals(0f, LossTimeline.rain(LossTimeline.RAIN_FROM - 1L))
-        assertEquals(1f, LossTimeline.rain(LossTimeline.END))
-        assertEquals(1f, LossTimeline.clouds(LossTimeline.END))
+        assertEquals(1f, LossTimeline.rain(LossTimeline.RAIN_EASE_FROM))
+        assertEquals(0f, LossTimeline.rain(LossTimeline.RAIN_EASE_TO))
+        assertEquals(0f, LossTimeline.rain(LossTimeline.END))
+        // The rain sets in steadily and eases off steadily, before the sun.
         var last = 0f
         var t = 0L
-        while (t <= LossTimeline.END) {
+        while (t <= LossTimeline.RAIN_EASE_FROM) {
             val rain = LossTimeline.rain(t)
-            assertTrue("never lets up, at $t ms", rain >= last)
+            assertTrue("sets in, at $t ms", rain >= last)
             last = rain
             t += 50L
+        }
+        while (t <= LossTimeline.END) {
+            val rain = LossTimeline.rain(t)
+            assertTrue("eases, at $t ms", rain <= last)
+            last = rain
+            t += 50L
+        }
+        assertTrue(LossTimeline.RAIN_EASE_TO <= LossTimeline.SUN_TO)
+    }
+
+    @Test
+    fun aFewFlowersOpenInTheSunBeforeTheEnd() {
+        val flowers = LossTimeline.flowers(size)
+        assertTrue(flowers.size in 3..8)
+        for (flower in flowers) {
+            assertTrue(flower.bloomAt >= LossTimeline.SUN_FROM)
+            assertTrue(flower.bloomAt + CelebrationTimeline.BLOOM_MILLIS <= LossTimeline.END)
+            assertTrue("by the post, clear of the rainbow", flower.at.x < size.width * 0.5f)
         }
     }
 
@@ -120,7 +150,11 @@ class LossTimelineTest {
         assertTrue(LossTimeline.MONEY_FROM > LossTimeline.HEADLINE_FROM)
         assertTrue(LossTimeline.COMFORT_FROM >= LossTimeline.RAIN_FROM)
         assertTrue(LossTimeline.COMFORT_FROM + 600L <= LossTimeline.END)
-        assertTrue(LossTimeline.CALL_AT + LossTimeline.CALL_MILLIS <= LossTimeline.END)
+        assertTrue(LossTimeline.CALL_AT + LossTimeline.CALL_MILLIS <= LossTimeline.SUN_FROM)
         assertNull(LossTimeline.call(LossTimeline.END))
+        assertTrue(LossTimeline.HOPE_FROM >= LossTimeline.SUN_FROM)
+        assertTrue(LossTimeline.HOPE_FROM + 600L <= LossTimeline.END)
+        for (at in LossTimeline.READY_CALLS) assertTrue(at + LossTimeline.READY_CALL_MILLIS <= LossTimeline.END)
+        assertTrue(LossTimeline.readyCalls(LossTimeline.END).all { it == null })
     }
 }

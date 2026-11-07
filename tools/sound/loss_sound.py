@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Synthesises the loss scene's sound, app/src/main/res/raw/loss.wav (mono, 32 kHz, 16-bit).
+"""Synthesises the loss scene's sound, app/src/main/res/raw/loss.wav (mono, 32 kHz, 16-bit): the miss and the rain,
+then the sun coming back and the kestrel's bright call.
 
 Every sound is made here from sine waves and noise, so the track carries no third-party audio. Its moments follow
 LossTimeline (ui/celebration/LossScene.kt), whose flight is CelebrationTimeline's up to the strike; change them
@@ -21,7 +22,11 @@ GUST_FROM, GUST_TO = 2.620, 3.700
 CLIMB, LAND, PERCH = 3.200, 4.380, 4.620
 RAIN_FROM, RAIN_FULL = 4.500, 5.700
 SHIVER_FROM, SHIVER_TO = 5.950, 6.350
-CALL_AT, END = 6.450, 7.400
+CALL_AT = 6.450
+RAIN_EASE_FROM, RAIN_EASE_TO = 7.100, 8.200
+SUN_FROM, BLOOM_FROM, BLOOM_GAP = 7.700, 8.500, 0.110
+STRETCH_FROM, STRETCH_TO = 8.700, 9.200
+READY_CALLS, END = (9.150, 9.380), 10.000
 
 rng = np.random.default_rng(11)
 n = int(END * RATE)
@@ -59,6 +64,27 @@ def fade_out(signal, seconds=0.06):
 def noise(length):
     # A couple of samples to spare, so a slice to any window of the same length always fits.
     return rng.standard_normal(int(length * RATE) + 2)
+
+
+def bell(start, freq, amp, length=2.0):
+    """A small bell, as in the win: inharmonic partials, each fading at its own pace."""
+    s, lt = window(start, length)
+    tone = np.zeros_like(lt)
+    for ratio, weight, decay in ((1.0, 1.0, 0.9), (2.01, 0.45, 0.55), (3.02, 0.22, 0.35), (4.17, 0.1, 0.2)):
+        tone += weight * np.sin(2 * math.pi * freq * ratio * lt) * np.exp(-lt / decay)
+    tone *= np.minimum(1, lt / 0.004)
+    out[s] += amp * fade_out(tone)
+
+
+def kee(start, length, top, bottom, amp):
+    """A kestrel's sharp call: a high note sliding down, roughened by a fast flutter."""
+    s, lt = window(start, length)
+    glide = top + (bottom - top) * (lt / length)
+    flutter = 1 + 0.018 * np.sin(2 * math.pi * 38 * lt)
+    phase = 2 * math.pi * np.cumsum(glide * flutter) / RATE
+    tone = np.sin(phase) + 0.32 * np.sin(2 * phase) + 0.12 * np.sin(3 * phase)
+    envelope = np.minimum(1, lt / 0.008) * np.minimum(1, (length - lt) / 0.045)
+    out[s] += amp * tone * envelope
 
 
 def note(start, freq, amp, length=1.6):
@@ -120,21 +146,22 @@ out[s] += 0.24 * fade_out(knock, 0.02)
 for at, freq, amp in ((3.25, 659.25, 0.15), (3.75, 523.25, 0.14), (4.3, 440.0, 0.14), (4.95, 349.23, 0.13),
                       (5.6, 329.63, 0.13)):
     note(at, freq, amp)
-s, lt = window(4.6, END - 4.6)
+s, lt = window(4.6, 3.6)
 pad = np.zeros_like(lt)
 for freq in (220.0, 261.63, 329.63):
     for detune in (-0.5, 0.5):
         pad += np.sin(2 * math.pi * (freq + detune) * lt)
-length = END - 4.6
-out[s] += 0.022 * pad * np.minimum(1, lt / 0.8) * np.clip((length - lt) / 1.2, 0, 1)
+out[s] += 0.022 * pad * np.minimum(1, lt / 0.8) * np.clip((3.6 - lt) / 1.0, 0, 1)
 
-# 10. The rain: a hiss that grows with the drops, and single drops ticking on the grass and the post.
-s, lt = window(RAIN_FROM, END - RAIN_FROM)
+# 10. The rain: a hiss that grows with the drops and eases off before the sun, and single drops ticking on the grass
+# and the post while it lasts.
+s, lt = window(RAIN_FROM, RAIN_EASE_TO - RAIN_FROM)
 grow = np.clip(lt / (RAIN_FULL - RAIN_FROM), 0, 1)
-hiss = highpass(noise(END - RAIN_FROM), 1800)[: len(lt)]
-out[s] += 0.13 * hiss * grow
+ease = np.clip((lt - (RAIN_EASE_FROM - RAIN_FROM)) / (RAIN_EASE_TO - RAIN_EASE_FROM), 0, 1)
+hiss = highpass(noise(RAIN_EASE_TO - RAIN_FROM), 1800)[: len(lt)]
+out[s] += 0.13 * hiss * grow * (1 - ease)
 for _ in range(140):
-    at = RAIN_FROM + (END - RAIN_FROM) * rng.random() ** 0.7
+    at = RAIN_FROM + (RAIN_EASE_FROM - RAIN_FROM) * rng.random() ** 0.7
     s, lt = window(at, 0.03)
     drop = np.sin(2 * math.pi * rng.uniform(2200, 4200) * lt) * np.exp(-lt / 0.006)
     out[s] += 0.05 * fade_out(drop, 0.005)
@@ -153,10 +180,35 @@ phase = 2 * math.pi * np.cumsum(glide * vibrato) / RATE
 tone = np.sin(phase) + 0.25 * np.sin(2 * phase)
 out[s] += 0.12 * tone * np.minimum(1, lt / 0.03) * np.minimum(1, (0.42 - lt) / 0.15)
 
+# 13. The sun comes back: a warm major chord swells under a rising bell phrase.
+s, lt = window(SUN_FROM, END - SUN_FROM)
+pad = np.zeros_like(lt)
+for freq in (261.63, 329.63, 392.0, 523.25):
+    for detune in (-0.6, 0.6):
+        pad += np.sin(2 * math.pi * (freq + detune) * lt)
+length = END - SUN_FROM
+out[s] += 0.024 * pad * np.minimum(1, lt / 0.9) * np.clip((length - lt) / 1.0, 0, 1)
+for at, freq in ((8.05, 523.25), (8.3, 659.25), (8.55, 783.99), (8.9, 1046.5)):
+    bell(at, freq, 0.14)
+
+# 14. A few flowers open by the post, one pluck each (C major pentatonic).
+for index, freq in enumerate((1046.5, 1174.66, 1318.51, 1567.98, 1760.0, 1318.51, 1567.98)):
+    s, lt = window(BLOOM_FROM + index * BLOOM_GAP, 0.18)
+    out[s] += 0.045 * fade_out(np.sin(2 * math.pi * freq * lt) * np.exp(-lt / 0.05), 0.03)
+
+# 15. The stretch: one soft "fwip" of a wing opening and folding.
+s, lt = window(STRETCH_FROM, STRETCH_TO - STRETCH_FROM)
+length = STRETCH_TO - STRETCH_FROM
+out[s] += 0.4 * bandpass(noise(length), 900, 3000)[: len(lt)] * np.sin(math.pi * lt / length) ** 2
+
+# 16. "kee", "kee!": the kestrel is ready for the next one.
+kee(READY_CALLS[0], 0.13, 3250, 2650, 0.18)
+kee(READY_CALLS[1], 0.17, 3400, 2650, 0.21)
+
 # Master: gentle limiting, -4 dBFS peak (a quieter track than the win's), short fades at both ends.
 out = np.tanh(out * 1.2)
 out *= 0.63 / np.max(np.abs(out))
-out *= np.minimum(1, t / 0.05) * np.clip((END - t) / 0.4, 0, 1)
+out *= np.minimum(1, t / 0.05) * np.clip((END - t) / 0.5, 0, 1)
 
 path = sys.argv[1] if len(sys.argv) > 1 else "app/src/main/res/raw/loss.wav"
 with wave.open(path, "wb") as file:

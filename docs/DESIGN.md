@@ -697,14 +697,18 @@ and with reduced motion opens on its last frame.
   before the strike a gust snatches the "SOLD" tag out of the grass, so the talons close on nothing (the win's puff of
   seeds, a flat haptic tick). The bird flies back to its post with nothing, turns to watch the tag tumble away, and
   hunches: head sunk towards the grass, wings let down, eyelids heavy. Clouds roll over the sun, the day greys, rain
-  sets in; the bird shakes the rain off, one feather drifts down, and it calls once, softly: "kee…". About 7.4 s.
+  sets in; the bird shakes the rain off, one feather drifts down, and it calls once, softly: "kee…". Then (asked for on
+  7 Nov: "a touch of optimism") the rain eases, the clouds part, the sun and its warmth come back with a rainbow over
+  the meadow, and a few flowers open by the post. The kestrel lifts its head, opens its eyes, stretches a wing, calls
+  "kee", "kee!" and looks out over the meadow, ready for the next one. About 10 s.
 - **Words** (the sheet over the scene, as for the win): flag glyph and "YOU LOST" in the Ended state's colours, a
   headline that comes after the miss ("It got away.", "So close.", "Not this time." or "Next time.", by the lot), the
-  title, then "Sold for £79.00", "Your max £65.00" and S4's reason, and with the rain "You pay nothing. Kestrel is
-  ready for the next one." No coffee note. The preview shows PREVIEW and "This plays the first time you open a loss.
+  title, then "Sold for £79.00", "Your max £65.00" and S4's reason, with the rain "You pay nothing.", and with the sun
+  "The sun’s back out. Kestrel is ready for the next one." in bold. No coffee note. The preview shows PREVIEW and "This plays the first time you open a loss.
   Nothing was bid."
 - **Sound:** res/raw/loss.wav, made by tools/sound/loss_sound.py: the wind, the stoop, the gust and an empty thump, a
-  falling phrase in A minor over a quiet minor chord, the rain and one low "kee". Settings > Appearance > "Sound for
+  falling phrase in A minor over a quiet minor chord, the rain and one low "kee"; then the rain fades, a warm major
+  chord swells under a rising bell phrase, a pluck for each flower, the wing's "fwip" and a bright "kee", "kee!". Settings > Appearance > "Sound for
   wins and losses" covers both scenes.
 - **Actions:** as for the win: "See the receipt", or "Play again" and "Done" in the preview; Back, the close button,
   and a tap on the scene to skip to the end.

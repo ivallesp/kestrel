@@ -50,9 +50,12 @@ class LossSceneTest {
         composeRule.onNodeWithText("Sold for £79.00").assertExists()
         composeRule.onNodeWithText("Your max £65.00").assertExists()
         composeRule
-            .onNodeWithText(
-                "You pay nothing. Kestrel is ready for the next one.",
-            ).performScrollTo()
+            .onNodeWithText("You pay nothing.")
+            .performScrollTo()
+            .assertExists()
+        composeRule
+            .onNodeWithText("The sun’s back out. Kestrel is ready for the next one.")
+            .performScrollTo()
             .assertExists()
         composeRule.onNodeWithText("See the receipt").assertIsDisplayed()
     }
