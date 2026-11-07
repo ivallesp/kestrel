@@ -1354,7 +1354,9 @@ No channel uses full-screen intents.
 - `setUsesChronometer(true)`;
 - `setChronometerCountDown(true)`.
 
-It shows "9:58" and later "0:36". Do not set shortCriticalText. When the end moves, `when` moves with it.
+It shows "9:58" and later "0:36". Do not set shortCriticalText. When the end moves, `when` moves with it. The countdown
+never runs below zero: the Live Update is rebuilt just after the moment it counts to (the bid, then the end), so it
+counts on to the end or shows no time while the result is read.
 
 **ProgressStyle:**
 - **Track:** 600 s, from the end minus 10 min to the end.

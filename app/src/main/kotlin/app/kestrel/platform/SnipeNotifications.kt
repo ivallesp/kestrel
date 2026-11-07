@@ -26,6 +26,8 @@ import app.kestrel.model.SnipeResult
 import app.kestrel.model.SnipeStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -62,6 +64,8 @@ class SnipeNotifications internal constructor(
         var outcome: SnipeOutcome? = null,
         var dismissed: Boolean = false,
         var latest: Notification? = null,
+        /** Rebuilds the Live Update when its countdown reaches zero, so it never shows time below zero. */
+        var countdownRefresh: Job? = null,
     )
 
     fun createChannels() = NotificationChannels.create(context)
@@ -127,7 +131,7 @@ class SnipeNotifications internal constructor(
 
     override fun windowClosed(snipeId: Long) {
         synchronized(windows) {
-            windows.remove(snipeId)
+            windows.remove(snipeId)?.countdownRefresh?.cancel()
             closedWindows.add(snipeId)
         }
         // Ignored by Android while it is the service's foreground notification; the service drops it when it moves on.
@@ -142,11 +146,14 @@ class SnipeNotifications internal constructor(
     private fun hasWindow(snipeId: Long): Boolean = synchronized(windows) { windows.containsKey(snipeId) }
 
     /** Rebuilds an open window from what it already shows, for example once its photo has loaded. */
-    private fun refreshWindow(snipeId: Long) {
+    private fun refreshWindow(
+        snipeId: Long,
+        scheduleCountdownRefresh: Boolean = true,
+    ) {
         val notification =
             synchronized(windows) {
                 val state = windows[snipeId] ?: return
-                buildWindow(state).also { state.latest = it }.takeUnless { state.dismissed }
+                buildWindow(state, scheduleCountdownRefresh).also { state.latest = it }.takeUnless { state.dismissed }
             }
         notification?.let { post(NotificationIds.window(snipeId), it) }
     }
@@ -178,7 +185,10 @@ class SnipeNotifications internal constructor(
         notification?.let { post(NotificationIds.window(snipe.id), it) }
     }
 
-    private fun buildWindow(state: WindowState): Notification {
+    private fun buildWindow(
+        state: WindowState,
+        scheduleCountdownRefresh: Boolean = true,
+    ): Notification {
         val snipe = state.snipe
         val bidAt = state.bidAtUtcMillis
         val title = if (snipe == null) texts.preparingTitle() else texts.windowTitle(snipe, bidAt)
@@ -216,13 +226,10 @@ class SnipeNotifications internal constructor(
         photos.cached(snipe?.imageUrl)?.let { builder.setLargeIcon(it) }
         val chip = state.outcome?.let(texts::chipText) ?: texts.chipText(state.phase)
         chip?.let { builder.setShortCriticalText(it) }
-        // Counts down to the bid, then to the end (which moves with every extension); never to a moment gone by.
         val countdownTo =
-            when {
-                state.outcome != null || bidAt == null -> null
-                state.phase in AFTER_THE_BID -> state.endTimeUtcMillis?.takeIf { it > clock.nowUtcMillis() }
-                else -> bidAt
-            }
+            WindowCountdown.target(state.phase, state.outcome, bidAt, state.endTimeUtcMillis, clock.nowUtcMillis())
+        state.countdownRefresh?.cancel()
+        state.countdownRefresh = countdownTo?.takeIf { scheduleCountdownRefresh }?.let { refreshAt(state.snipeId, it) }
         if (countdownTo != null) {
             builder
                 .setWhen(toDeviceClock(countdownTo))
@@ -234,6 +241,20 @@ class SnipeNotifications internal constructor(
         }
         return builder.build()
     }
+
+    /**
+     * Android's countdown keeps running below zero, and the engine's next step can come seconds after the moment it
+     * counted to. So the Live Update is rebuilt just after that moment: it then counts to the end, or shows no time.
+     */
+    private fun refreshAt(
+        snipeId: Long,
+        targetUtcMillis: Long,
+    ): Job =
+        scope.launch {
+            delay((targetUtcMillis - clock.nowUtcMillis()).coerceAtLeast(0L) + WindowCountdown.REFRESH_AFTER_MILLIS)
+            // Only a moment that has passed moves the countdown on; a clock set back meanwhile waits for the engine.
+            refreshWindow(snipeId, scheduleCountdownRefresh = clock.nowUtcMillis() >= targetUtcMillis)
+        }
 
     private fun progressStyle(state: WindowState): Notification.ProgressStyle {
         val segments = WindowProgress.segmentLengths.map { Notification.ProgressStyle.Segment(it) }
@@ -710,19 +731,43 @@ class SnipeNotifications internal constructor(
         const val SET_A_MAX_LABEL = "Set a max"
         const val UNDO_CANCEL_LABEL = "Undo cancel"
 
-        /** Phases once the bid went out: the countdown follows the end of the auction then. */
-        val AFTER_THE_BID =
-            setOf(
-                WindowPhase.BID_SENT,
-                WindowPhase.LEADING,
-                WindowPhase.OUTBID,
-                WindowPhase.EXTENDED,
-                WindowPhase.RESOLVING,
-            )
         const val OPEN_EBAY_PAGE_LABEL = "Open eBay page"
         const val CONFIRMATION_TIMEOUT_MILLIS = 5 * 60_000L
         const val WINDOW_NOTIFICATION_LINGER_MILLIS = 60 * 60_000L
         const val MINIMUM_TIMEOUT_MILLIS = 5 * 60_000L
+    }
+}
+
+/** What the window's Live Update counts down to. */
+internal object WindowCountdown {
+    /** How long after the moment counted to the Live Update is rebuilt, so that moment has surely passed. */
+    const val REFRESH_AFTER_MILLIS = 50L
+
+    /** Phases once the bid went out: the countdown follows the end of the auction then. */
+    private val AFTER_THE_BID =
+        setOf(
+            WindowPhase.BID_SENT,
+            WindowPhase.LEADING,
+            WindowPhase.OUTBID,
+            WindowPhase.EXTENDED,
+            WindowPhase.RESOLVING,
+        )
+
+    /**
+     * The bid while it is still ahead, then the end, which moves with every extension. Never a moment gone by: once
+     * both have passed, or the outcome is known, there is no countdown, so it cannot run below zero while the result is
+     * read.
+     */
+    fun target(
+        phase: WindowPhase?,
+        outcome: SnipeOutcome?,
+        bidAtUtcMillis: Long?,
+        endUtcMillis: Long?,
+        nowUtcMillis: Long,
+    ): Long? {
+        if (outcome != null || bidAtUtcMillis == null) return null
+        if (phase !in AFTER_THE_BID && bidAtUtcMillis > nowUtcMillis) return bidAtUtcMillis
+        return endUtcMillis?.takeIf { it > nowUtcMillis }
     }
 }
 

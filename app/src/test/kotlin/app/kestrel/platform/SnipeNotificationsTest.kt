@@ -136,6 +136,50 @@ class SnipeNotificationsTest {
         assertFalse(reading.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER))
     }
 
+    /** Moves the true clock and the coroutine clock on together, as real time does. */
+    private fun elapse(millis: Long) {
+        repeat((millis / 10).toInt()) {
+            clock.now += 10
+            scope.testScheduler.advanceTimeBy(10)
+        }
+        scope.testScheduler.runCurrent()
+    }
+
+    @Test
+    fun theCountdownMovesOnAtZeroAndNeverRunsBelowIt() {
+        val bidAt = snipe.endTimeUtcMillis - 6_000
+        clock.now = bidAt - 10_000
+        notifications.windowOpened(snipe, bidAt)
+        assertEquals(bidAt - 2_500, posted(NotificationIds.window(snipe.id))!!.`when`)
+
+        // The bid moment passes before the engine says the bid went out: the countdown goes on to the end.
+        elapse(10_000 + 100)
+        val toTheEnd = posted(NotificationIds.window(snipe.id))!!
+        assertEquals(snipe.endTimeUtcMillis - 2_500, toTheEnd.`when`)
+        assertTrue(toTheEnd.extras.getBoolean(Notification.EXTRA_CHRONOMETER_COUNT_DOWN))
+
+        // The end passes and the result is not in yet: no countdown at all, rather than one below zero.
+        elapse(6_000)
+        assertFalse(posted(NotificationIds.window(snipe.id))!!.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER))
+
+        // The engine's next step arrives late, 5 s after the end: still no countdown.
+        elapse(5_000)
+        notifications.windowProgress(snipe, WindowPhase.LEADING)
+        assertFalse(posted(NotificationIds.window(snipe.id))!!.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER))
+    }
+
+    @Test
+    fun aClosedWindowIsNotBroughtBackByItsCountdown() {
+        val bidAt = snipe.endTimeUtcMillis - 6_000
+        clock.now = bidAt - 1_000
+        notifications.windowOpened(snipe, bidAt)
+        notifications.windowClosed(snipe.id)
+
+        clock.now = snipe.endTimeUtcMillis + 1_000
+        scope.testScheduler.advanceUntilIdle()
+        assertNull(posted(NotificationIds.window(snipe.id)))
+    }
+
     @Test
     fun theLiveUpdateDropsEditMaxOnceTheEditsLock() {
         val bidAt = snipe.endTimeUtcMillis - 6_000
