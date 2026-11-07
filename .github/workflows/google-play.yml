@@ -78,7 +78,8 @@ jobs:
         env:
           KESTREL_UPLOAD_KEYSTORE_BASE64: ${{ secrets.KESTREL_UPLOAD_KEYSTORE_BASE64 }}
           KESTREL_UPLOAD_STORE_PASSWORD: ${{ secrets.KESTREL_UPLOAD_STORE_PASSWORD }}
-          KESTREL_UPLOAD_KEY_ALIAS: ${{ secrets.KESTREL_UPLOAD_KEY_ALIAS }}
+          # The alias is a plain variable: as a secret, GitHub would mask the word "upload" in every log line.
+          KESTREL_UPLOAD_KEY_ALIAS: ${{ vars.KESTREL_UPLOAD_KEY_ALIAS }}
           KESTREL_UPLOAD_KEY_PASSWORD: ${{ secrets.KESTREL_UPLOAD_KEY_PASSWORD }}
         run: |
           export KESTREL_UPLOAD_STORE_FILE="$RUNNER_TEMP/upload.jks"

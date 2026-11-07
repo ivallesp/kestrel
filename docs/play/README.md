@@ -15,8 +15,8 @@ the Play Console account owner can take, and the answers for Play Console's form
   or the track in the `PLAY_TRACK` repository variable (`alpha` is closed testing). It can also be run by hand on any
   `v*` tag (Actions › Google Play › Run workflow), with or without the upload. It never releases to production.
 - **The secrets**, in the `google-play` environment (only runs from `main` or a `v*` tag get them):
-  `KESTREL_UPLOAD_KEYSTORE_BASE64`, `KESTREL_UPLOAD_STORE_PASSWORD`, `KESTREL_UPLOAD_KEY_ALIAS` and
-  `KESTREL_UPLOAD_KEY_PASSWORD` are set. `PLAY_SERVICE_ACCOUNT_JSON` comes from step O7. Until it exists, the workflow
+  `KESTREL_UPLOAD_KEYSTORE_BASE64`, `KESTREL_UPLOAD_STORE_PASSWORD` and `KESTREL_UPLOAD_KEY_PASSWORD` are set, and the
+  key alias is the environment variable `KESTREL_UPLOAD_KEY_ALIAS`. `PLAY_SERVICE_ACCOUNT_JSON` comes from step O7. Until it exists, the workflow
   builds and checks the bundle and says it did not upload.
 - **The store listing** in `fastlane/metadata/android/en-GB/`: name, short and full description, release notes per
   version code (`changelogs/<versionCode>.txt`), the 512 px icon, the feature graphic and six phone screenshots.
