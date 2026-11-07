@@ -124,6 +124,15 @@ and it never bids, raises or buys on its own. You are responsible for your bids 
 Kestrel has no ads and no fees. If it wins you something you wanted, you can
 [buy me a coffee](https://ko-fi.com/ivallesp).
 
+## Licence
+
+Kestrel is free software under the GNU General Public License, version 3 only (GPL-3.0-only); the full text is in
+[LICENSE](LICENSE). You may use, study, change and share it. Anything you distribute that is built on it must stay
+under the same licence and come with its source. The fonts and the product photos in the screenshots keep their own
+licences (see Credits).
+
+Copyright © 2026 Ivan Valles.
+
 ## Credits
 
 - Fonts: Google Sans Flex and Newsreader, both under the SIL Open Font Licence (`app/src/main/assets/licenses/`).

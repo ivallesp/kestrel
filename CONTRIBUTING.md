@@ -59,6 +59,11 @@ Run all of these before you open a pull request:
 - The subject is a short imperative sentence, such as "Show the group line on the hero card". The body explains why.
 - Only release commits change `versionCode` and `versionName`.
 
+## Licence
+
+Kestrel is licensed under the GNU General Public License, version 3 only ([LICENSE](LICENSE)). By sending a
+contribution, you agree that it is licensed under the same terms.
+
 ## Reporting problems
 
 - Open an issue with what you did, what you expected and what happened.
