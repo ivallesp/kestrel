@@ -81,7 +81,7 @@ interface LotData {
     /** Settings "Suggest odd pence": whether the set-max sheet offers £90.37 for a round £90.00. */
     suspend fun suggestOddPence(): Boolean = true
 
-    /** Whether the WON seal of [id] already stamped once (DESIGN 2.10: it plays on the first open only). */
+    /** Whether the result of [id] already played its scene once (DESIGN 2.10, 3.22: on the first open only). */
     suspend fun sealStamped(id: Long): Boolean
 
     suspend fun markSealStamped(id: Long)
@@ -220,7 +220,7 @@ class ContainerLotData(
     private fun sealPreferences() = container.context.getSharedPreferences(SEAL_FILE, Context.MODE_PRIVATE)
 
     private companion object {
-        /** Only the ids of won snipes whose seal already stamped; nothing else is kept. */
+        /** Only the ids of won or lost snipes whose scene already played; nothing else is kept. */
         const val SEAL_FILE = "result_seals"
         const val STAMPED = "stamped"
     }

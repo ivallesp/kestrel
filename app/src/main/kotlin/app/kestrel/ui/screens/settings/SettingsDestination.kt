@@ -80,6 +80,8 @@ fun SettingsDestination(
 
                 override fun openCelebration() = navigator.open(Destination.Celebration)
 
+                override fun openLossPreview() = navigator.open(Destination.LossPreview)
+
                 override fun setCelebrationSound(on: Boolean) = viewModel.setCelebrationSound(on)
 
                 override fun buyMeACoffee() {

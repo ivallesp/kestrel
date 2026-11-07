@@ -24,6 +24,7 @@ class SettingsAboutTest {
     val composeRule = createComposeRule()
 
     private var celebrations = 0
+    private var losses = 0
     private var coffees = 0
     private var privacy = 0
     private val sounds = mutableListOf<Boolean>()
@@ -32,6 +33,10 @@ class SettingsAboutTest {
         object : SettingsActions by NoSettingsActions {
             override fun openCelebration() {
                 celebrations++
+            }
+
+            override fun openLossPreview() {
+                losses++
             }
 
             override fun buyMeACoffee() {
@@ -60,6 +65,18 @@ class SettingsAboutTest {
         composeRule.onNodeWithText("Buy me a coffee").performClick()
         assertEquals(1, celebrations)
         assertEquals(1, coffees)
+    }
+
+    @Test
+    fun aboutOpensTheLossPreview() {
+        composeRule.setContent {
+            ScreenshotSurface(darkTheme = false, time = "18:08", reduceMotion = true) {
+                SettingsScreen(SettingsFixtures.signedIn, actions, windowInsets = PhoneInsets)
+            }
+        }
+        composeRule.onNodeWithText("What plays the first time you open a loss. Nothing is bid.").performScrollTo()
+        composeRule.onNodeWithText("Watch the loss").performClick()
+        assertEquals(1, losses)
     }
 
     @Test
@@ -96,7 +113,7 @@ class SettingsAboutTest {
                 SettingsScreen(SettingsFixtures.signedIn, actions, windowInsets = PhoneInsets)
             }
         }
-        composeRule.onNodeWithText("Sound for a win").performScrollTo().performClick()
+        composeRule.onNodeWithText("Sound for wins and losses").performScrollTo().performClick()
         assertEquals(listOf(false), sounds)
     }
 }

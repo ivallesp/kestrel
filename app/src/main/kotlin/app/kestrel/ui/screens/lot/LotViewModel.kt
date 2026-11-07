@@ -179,7 +179,7 @@ class LotViewModel(
             .flowOn(work)
             .onEach { decideSeal(it) }
             .filter { page ->
-                !(page.isWon() && sealDecision.value == null) && !(page == LotPage.Gone && closing.value)
+                !(page.isTold() && sealDecision.value == null) && !(page == LotPage.Gone && closing.value)
             }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_AFTER_MILLIS), LotPage.Loading)
 
     private fun page(
@@ -219,11 +219,16 @@ class LotViewModel(
             }
         }
 
-    private fun LotPage.isWon(): Boolean = this is LotPage.Finished && state.variant == ResultVariant.Won
+    /** A result told by a scene on its first open: a win or a loss. */
+    private fun LotPage.isTold(): Boolean =
+        this is LotPage.Finished && (state.variant == ResultVariant.Won || state.variant == ResultVariant.Lost)
 
-    /** The seal stamps on the first open of a won result only, so the decision is made once and remembered. */
+    /**
+     * The win's seal and scene, or the loss's scene, play on the first open of that result only, so the decision is made
+     * once and remembered.
+     */
     private fun decideSeal(page: LotPage) {
-        if (sealCheckStarted || !page.isWon()) return
+        if (sealCheckStarted || !page.isTold()) return
         sealCheckStarted = true
         viewModelScope.launch {
             val stamped = data.sealStamped(snipeId)

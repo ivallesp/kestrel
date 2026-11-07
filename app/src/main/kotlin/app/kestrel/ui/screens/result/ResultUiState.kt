@@ -15,7 +15,10 @@ import app.kestrel.ui.model.StateWords
 import app.kestrel.ui.theme.StatusTone
 import java.time.Instant
 
-/** Everything S4 is built from. [stampSeal] is true the first time a won result opens (DESIGN 2.10). */
+/**
+ * Everything S4 is built from. [stampSeal] is true the first time a won or lost result opens (DESIGN 2.10, 3.22): it
+ * stamps the WON seal and plays the win, or plays the loss.
+ */
 data class ResultInputs(
     val snipe: Snipe,
     val events: List<TimelineEvent>,
@@ -52,6 +55,8 @@ data class ResultUiState(
     /** "Mark as won" and "Mark as lost": a sent bid whose result Kestrel could not read (SnipeRules.settleRefusal). */
     val canSettle: Boolean = false,
     val stampSeal: Boolean = false,
+    /** The loss plays over the page: the first open of a confirmed loss, within a week of its end. */
+    val mourn: Boolean = false,
     val paid: PaidCardText? = null,
     val sold: SoldCardText? = null,
     val outcome: OutcomeCardText? = null,

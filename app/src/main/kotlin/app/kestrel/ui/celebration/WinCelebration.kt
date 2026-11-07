@@ -419,7 +419,7 @@ private fun CelebrationSheet(
 
 /** The way out, docked under the page so it is always in reach: the receipt, or (preview) done and play again. */
 @Composable
-private fun CelebrationActions(
+internal fun CelebrationActions(
     preview: Boolean,
     onDone: () -> Unit,
     onPlayAgain: (() -> Unit)?,
@@ -506,7 +506,7 @@ fun CoffeeNote(
 }
 
 /** Fades in and rises 16 dp from [from], on the layer, so the frames never recompose the text. */
-private fun Modifier.reveal(
+internal fun Modifier.reveal(
     time: () -> Long,
     from: Long,
 ): Modifier =
@@ -551,11 +551,11 @@ private fun Modifier.unfold(
 
 /** Ink on the morning sky, paper on the dusk sky: the close button sits on the scene. */
 @Composable
-private fun sceneInk(): Color = if (KestrelTheme.isDark) Color(0xFFEDE6D9) else Color(0xFF1E1B16)
+internal fun sceneInk(): Color = if (KestrelTheme.isDark) Color(0xFFEDE6D9) else Color(0xFF1E1B16)
 
-private const val LARGE_TEXT = 1.3f
+internal const val LARGE_TEXT = 1.3f
 private const val REVEAL_MILLIS = 600L
-private val SHEET_OVERLAP = 28.dp
+internal val SHEET_OVERLAP = 28.dp
 private const val TAG_WORD = "WON"
 private const val CHEER_MILLIS = 560L
 private const val UNFOLD_MILLIS = 260L
@@ -583,8 +583,10 @@ const val COFFEE_NOTE =
 const val NO_ADS_NOTE = "Kestrel hunts for you alone: no ads, no fees, nothing sold."
 
 /**
- * A result page that celebrates a verified win the first time it opens: the celebration covers the page, and the
- * page's WON seal stamps once the celebration closes. Every other result, and every later open, shows the page alone.
+ * A result page that tells its result once, the first time it opens (DESIGN 3.21 and 3.22): a verified win plays the
+ * celebration, and the page's WON seal stamps once it closes; a confirmed loss plays the loss. Every other result,
+ * and every later open, shows the page alone. Each result has its own page, so several results that end together
+ * each play once, when each is opened, and never over one another.
  */
 @Composable
 fun CelebratedResult(
@@ -593,10 +595,13 @@ fun CelebratedResult(
     page: @Composable (sealHeld: Boolean) -> Unit,
 ) {
     val celebrate = state.variant == ResultVariant.Won && state.stampSeal
-    var showing by rememberSaveable(state.id) { mutableStateOf(celebrate) }
-    page(showing)
-    if (showing) {
+    val mourn = state.variant == ResultVariant.Lost && state.mourn
+    var showing by rememberSaveable(state.id) { mutableStateOf(celebrate || mourn) }
+    page(showing && celebrate)
+    if (showing && celebrate) {
         WinCelebration(CelebrationContent.of(state), onDone = { showing = false }, windowInsets = windowInsets)
+    } else if (showing && mourn) {
+        LossScene(LossContent.of(state), onDone = { showing = false }, windowInsets = windowInsets)
     }
 }
 

@@ -642,9 +642,13 @@ The Attention row uses the Attention container. The "Bid not sent" row uses the 
 ### 3.21 Win celebration
 Asked for by the owner on 6 Nov: the one moment where motion is a celebration rather than an explanation (it still plays
 once and never loops, so P5 holds everywhere else).
-- **When:** the first open of a won result (the same moment the WON seal would stamp), over S3 or S4; the seal waits
-  and stamps as the page comes into view. Settings > About > "Watch the win celebration" plays a preview with no lot,
-  no amount and nothing bid.
+- **When:** the first open of a won result (the same moment the WON seal would stamp), over S3 or S4, within a week of
+  its end; the seal waits and stamps as the page comes into view. Settings > About > "Watch the win celebration" plays
+  a preview with no lot, no amount and nothing bid.
+- **Several results at once:** each result has its own page and its own notification, so nothing queues, merges or
+  plays by itself. Each win and each confirmed loss (3.22) plays its scene once, the first time its page opens, and
+  never over another; every later open, and any other result, shows the page alone. Five lots ending in the same second
+  give five notifications and five rows in Done; opening them in turn plays five scenes, one per page.
 - **Scene** (top 47 % of the screen, 38 % at text scale above 1.3; drawn, not a photo): a morning sky (dusk in the
   dark theme), sun, hills, a fence and a lot tag in the grass. The launcher icon's kestrel hovers with its head
   perfectly still while its body rides the wingbeats (the bird's own trick and Kestrel's: wait, then strike at the
@@ -667,7 +671,7 @@ once and never loops, so P5 holds everywhere else).
   hover wingbeats, a fold, a rising whoosh, a thump and a bell at the strike, deeper wingbeats, a knock on the post,
   a five-bell arpeggio and three "kee" calls with the mantle, a pluck per flower and a warm chord that fades. It
   plays at media volume and ducks other audio; reduced motion, skipping and closing silence it. Settings >
-  Appearance > "Sound for a win" turns it off. The preview shows PREVIEW and "This plays the first time you open a win. Nothing was bid."
+  Appearance > "Sound for wins and losses" turns it off. The preview shows PREVIEW and "This plays the first time you open a win. Nothing was bid."
 - **Coffee note** (card colour, 16 dp): coffee glyph and "NO ADS · NO FEES", then "Kestrel hunts for you alone: no ads,
   no fees, nothing sold. If it caught you a good one, you can buy me a coffee.", a tonal "Buy me a coffee" and "Opens
   ko-fi.com/ivallesp". The button opens the owner's Ko-fi page (`CoffeeLink.url`, set on 6 Nov) in the browser; if
@@ -681,6 +685,29 @@ once and never loops, so P5 holds everywhere else).
   "kee-kee!" or "kee-kee-kee!" in turn rising from the beak, a light haptic tick, and the kestrel_chirp sound
   (two synthesised "kee" notes) when the celebration's sound is on. With reduced motion the word shows still for
   1.2 s. TalkBack: the scene's action reads "Make the kestrel call". It works in the About preview too.
+
+### 3.22 Loss
+Asked for by the owner on 7 Nov: a sad scene for a confirmed loss, told by the same kestrel. It plays once, never loops,
+and with reduced motion opens on its last frame.
+- **When:** the first open of a confirmed loss (LotStatus.Lost: someone else won, whether or not Kestrel's bid went
+  out), over S3 or S4, within a week of its end. Not for "Bid not sent", "Bid failed", unknown results, cancellations
+  or listings that ended early. Settings > About > "Watch the loss" plays a preview with no lot, no amount and nothing
+  bid.
+- **Scene** (the win's band, in the same art and palette): the kestrel hovers and stoops exactly as for a win. Just
+  before the strike a gust snatches the "SOLD" tag out of the grass, so the talons close on nothing (the win's puff of
+  seeds, a flat haptic tick). The bird flies back to its post with nothing, turns to watch the tag tumble away, and
+  hunches: head sunk towards the grass, wings let down, eyelids heavy. Clouds roll over the sun, the day greys, rain
+  sets in; the bird shakes the rain off, one feather drifts down, and it calls once, softly: "kee…". About 7.4 s.
+- **Words** (the sheet over the scene, as for the win): flag glyph and "YOU LOST" in the Ended state's colours, a
+  headline that comes after the miss ("It got away.", "So close.", "Not this time." or "Next time.", by the lot), the
+  title, then "Sold for £79.00", "Your max £65.00" and S4's reason, and with the rain "You pay nothing. Kestrel is
+  ready for the next one." No coffee note. The preview shows PREVIEW and "This plays the first time you open a loss.
+  Nothing was bid."
+- **Sound:** res/raw/loss.wav, made by tools/sound/loss_sound.py: the wind, the stoop, the gust and an empty thump, a
+  falling phrase in A minor over a quiet minor chord, the rain and one low "kee". Settings > Appearance > "Sound for
+  wins and losses" covers both scenes.
+- **Actions:** as for the win: "See the receipt", or "Play again" and "Done" in the preview; Back, the close button,
+  and a tap on the scene to skip to the end.
 
 ### 3.16 Bottom sheet
 - **Container:** ModalBottomSheet in surfaceContainerLow, 28 dp top corners.
@@ -1294,12 +1321,13 @@ Opened from the S1 account button.
    - "Price passed your max" / "One alert per listing when the price goes past your max", with a Switch, shown on and disabled until the alerts can be turned off;
    - "Notification settings" / "Live Updates, sounds and lock screen", with a chevron to the system page.
 5. **"THIS PHONE":** "Phone checks", whose StateLabel reads "1 thing needs attention" (or "All checks passed at 18:06"). It opens S5 ("This phone").
-6. **"APPEARANCE":** "Theme", with connected toggles System / Light / Dark; "Sound for a win" / "The celebration's
-   bells and kestrel calls, at media volume", with a Switch (3.21).
+6. **"APPEARANCE":** "Theme", with connected toggles System / Light / Dark; "Sound for wins and losses" / "The win's
+   bells and calls, and the loss's rain, at media volume", with a Switch (3.21, 3.22).
 7. **"HELP":** "How Kestrel bids" (a sheet: one bid at the end, a dry run first, you stay in charge, from this phone) and eBay's own words on sniping as a pull-quote.
 8. **"ABOUT":**
    - "Kestrel 1.0 (1)" / "Kestrel isn't made by or affiliated with eBay.";
    - "Watch the win celebration" / "What plays the first time you open a win. Nothing is bid." (3.21);
+   - "Watch the loss" / "What plays the first time you open a loss. Nothing is bid." (3.22);
    - "Buy me a coffee" / "Kestrel has no ads and no fees. Opens ko-fi.com/ivallesp." (opens the Ko-fi page in the
      browser; a snackbar explains if nothing can open it). The Google Play build has no such row;
    - "Send a problem report" / "Recent freezes and crashes, to share in a message";

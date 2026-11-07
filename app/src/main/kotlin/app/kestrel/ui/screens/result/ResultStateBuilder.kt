@@ -40,6 +40,9 @@ object ResultStateBuilder {
 
     const val SECOND_CHANCE_TITLE = "If the winner doesn’t pay"
 
+    /** How long after its end a win or a loss still plays its scene on the first open. */
+    val SCENE_FRESH_FOR: Duration = Duration.ofDays(7)
+
     const val SECOND_CHANCE =
         "The seller may offer it to you at your max as a Second Chance Offer. Accept it only in eBay Messages; " +
             "offers by email are often scams."
@@ -73,13 +76,31 @@ object ResultStateBuilder {
             canDelete = SnipeRules.deleteRefusal(snipe, now.toEpochMilli()) == null,
             // A bid whose result Kestrel could not read, long after the end: the user says how it ended.
             canSettle = SnipeRules.settleRefusal(snipe, now.toEpochMilli()) == null,
-            stampSeal = inputs.stampSeal && variant == ResultVariant.Won,
+            stampSeal = inputs.stampSeal && variant == ResultVariant.Won && fresh(status, now),
+            mourn = inputs.stampSeal && variant == ResultVariant.Lost && fresh(status, now),
             paid = paid,
             sold = sold,
             outcome = outcome(status, variant, evidence, now, zone),
             secondChance = status is LotStatus.Lost && status.max != null && evidence.sentAtMillis != null,
             quote = quote,
         )
+    }
+
+    /**
+     * A win or a loss is told by its scene only within [SCENE_FRESH_FOR] of its end: a result first opened weeks later,
+     * from History, opens on its page.
+     */
+    private fun fresh(
+        status: LotStatus,
+        now: Instant,
+    ): Boolean {
+        val endedAt =
+            when (status) {
+                is LotStatus.Won -> status.endedAt
+                is LotStatus.Lost -> status.endedAt
+                else -> return false
+            }
+        return Duration.between(endedAt, now) <= SCENE_FRESH_FOR
     }
 
     fun variantOf(status: LotStatus): ResultVariant =

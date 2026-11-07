@@ -169,6 +169,26 @@ class SnipeNotificationsTest {
     }
 
     @Test
+    fun fiveResultsInTheSameSecondGiveFiveNotificationsEachOpeningItsOwnLot() {
+        val outcomes =
+            listOf(SnipeOutcome.WON, SnipeOutcome.LOST, SnipeOutcome.LOST, SnipeOutcome.WON, SnipeOutcome.LOST)
+        val snipes = outcomes.indices.map { index -> snipe.copy(id = 21L + index, title = "Lot ${index + 1}") }
+        for ((lot, outcome) in snipes.zip(outcomes)) {
+            notifications.result(lot, SnipeResult(outcome, gbp("41.00"), end, 6_000, 300, null, null))
+        }
+
+        val shown = snipes.map { posted(NotificationIds.result(it.id))!! }
+        assertEquals(5, snipes.map { NotificationIds.result(it.id) }.toSet().size)
+        for ((lot, notification) in snipes.zip(shown)) {
+            assertEquals(
+                Destination.Lot(lot.id),
+                LaunchIntents.destinationOf(shadowOf(notification.contentIntent).savedIntent),
+            )
+            assertTrue("gone once tapped", notification.flags and Notification.FLAG_AUTO_CANCEL != 0)
+        }
+    }
+
+    @Test
     fun aClosedWindowIsNotBroughtBackByItsCountdown() {
         val bidAt = snipe.endTimeUtcMillis - 6_000
         clock.now = bidAt - 1_000

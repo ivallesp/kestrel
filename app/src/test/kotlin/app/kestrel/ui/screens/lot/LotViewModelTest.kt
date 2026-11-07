@@ -427,12 +427,69 @@ class LotViewModelTest {
             runCurrent()
             assertEquals(false, (second.state.value as LotPage.Finished).state.stampSeal)
         }
+
+    @Test
+    fun aLossPlaysOnItsFirstOpenOnly() =
+        runTest(dispatcher) {
+            val data = FakeLotData(fixture.nintendo64Lost, testScheduler::currentTime)
+            val first = viewModelFor(data)
+            runCurrent()
+            val page = first.state.value as LotPage.Finished
+            assertEquals(ResultVariant.Lost, page.state.variant)
+            assertTrue(page.state.mourn)
+
+            val second = viewModelFor(data)
+            runCurrent()
+            assertEquals(false, (second.state.value as LotPage.Finished).state.mourn)
+        }
+
+    @Test
+    fun fiveResultsEndingInTheSameSecondEachPlayTheirOwnSceneOnceWhenOpened() =
+        runTest(dispatcher) {
+            // Two wins and three losses, all ending at the Canon's end second, opened in turn and then again.
+            val end = fixture.canonWon.snipe.endTimeUtcMillis
+
+            fun LotMoment.asSnipe(id: Long): LotMoment =
+                copy(
+                    snipe = snipe.copy(id = id, endTimeUtcMillis = end),
+                    events = events.map { it.copy(snipeId = id) },
+                    now = fixture.canonWon.now,
+                )
+            val played = mutableSetOf<Long>()
+            val results =
+                listOf(
+                    fixture.canonWon.asSnipe(101),
+                    fixture.nintendo64Lost.asSnipe(102),
+                    fixture.nintendo64Lost.asSnipe(103),
+                    fixture.canonWon.asSnipe(104),
+                    fixture.nintendo64Lost.asSnipe(105),
+                )
+            val scenes = mutableListOf<String>()
+            repeat(2) { round ->
+                for (moment in results) {
+                    val viewModel = viewModelFor(FakeLotData(moment, testScheduler::currentTime, played))
+                    runCurrent()
+                    val state = (viewModel.state.value as LotPage.Finished).state
+                    if (state.stampSeal) scenes += "win ${state.id}"
+                    if (state.mourn) scenes += "loss ${state.id}"
+                    assertTrue("never both on one page", !(state.stampSeal && state.mourn))
+                    if (round ==
+                        1
+                    ) {
+                        assertTrue("opened again: no scene for ${state.id}", !state.stampSeal && !state.mourn)
+                    }
+                }
+            }
+            assertEquals(listOf("win 101", "loss 102", "loss 103", "win 104", "loss 105"), scenes)
+        }
 }
 
 /** A [LotData] over one fixture moment, with time from the test scheduler and every change recorded. */
 private class FakeLotData(
     moment: LotMoment,
     private val elapsedMillis: () -> Long,
+    /** The results whose scene already played; shared when a test opens several results. */
+    private val stamped: MutableSet<Long> = mutableSetOf(),
 ) : LotData {
     val snipeId = moment.snipe.id
     val snipe = MutableStateFlow<Snipe?>(moment.snipe)
@@ -446,7 +503,6 @@ private class FakeLotData(
     var undoDeletes = 0
     var clockReads = 0
     var updateMaxResult: (Money?) -> EditResult = { max -> EditResult.Done(snipe.value!!.copy(maxBid = max)) }
-    private val stamped = mutableSetOf<Long>()
     private val detached = mutableListOf<suspend () -> Unit>()
 
     override fun snipe(id: Long): Flow<Snipe?> = snipe

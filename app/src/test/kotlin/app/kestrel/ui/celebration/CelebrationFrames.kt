@@ -23,10 +23,10 @@ import org.robolectric.annotation.GraphicsMode
 import java.io.File
 
 /**
- * Writes frames of the win celebration as PNGs, for looking at the animation and making a preview of it. Runs only
- * when the environment variable `KESTREL_FRAMES` names a folder, so a normal test run writes nothing:
+ * Writes frames of the win celebration, or of the loss, as PNGs, for looking at the animation and making a preview of
+ * it. Runs only when the environment variable `KESTREL_FRAMES` names a folder, so a normal test run writes nothing:
  * `KESTREL_FRAMES=/tmp/frames ./gradlew :app:testDebugUnitTest --tests '*CelebrationFrames*'`
- * (`KESTREL_FRAMES_DARK=true`, `_STEP=66`, `_FROM`, `_TO`, `_FONT=2.0` and `_PREVIEW=true` vary it).
+ * (`KESTREL_FRAMES_SCENE=loss`, `_DARK=true`, `_STEP=66`, `_FROM`, `_TO`, `_FONT=2.0` and `_PREVIEW=true` vary it).
  */
 @RunWith(AndroidJUnit4::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -47,15 +47,25 @@ class CelebrationFrames {
         val from = System.getenv("KESTREL_FRAMES_FROM")?.toLongOrNull() ?: 0L
         val to = System.getenv("KESTREL_FRAMES_TO")?.toLongOrNull() ?: CelebrationTimeline.END
         val fontScale = System.getenv("KESTREL_FRAMES_FONT")?.toFloatOrNull() ?: 1f
+        val loss = System.getenv("KESTREL_FRAMES_SCENE") == "loss"
         var frame by mutableLongStateOf(0L)
         composeRule.setContent {
             ScreenshotSurface(darkTheme = dark, time = "18:22", fontScale = fontScale) {
-                WinCelebration(
-                    content = if (preview) CelebrationContent.Preview else SAMPLE,
-                    onDone = {},
-                    windowInsets = PhoneInsets,
-                    frameMillis = frame,
-                )
+                if (loss) {
+                    LossScene(
+                        content = if (preview) LossContent.Preview else LOSS_SAMPLE,
+                        onDone = {},
+                        windowInsets = PhoneInsets,
+                        frameMillis = frame,
+                    )
+                } else {
+                    WinCelebration(
+                        content = if (preview) CelebrationContent.Preview else SAMPLE,
+                        onDone = {},
+                        windowInsets = PhoneInsets,
+                        frameMillis = frame,
+                    )
+                }
             }
         }
         var time = from
@@ -74,5 +84,6 @@ class CelebrationFrames {
 
     private companion object {
         val SAMPLE = CelebrationContent.of(CatalogueFixture.canonWon.resultState())
+        val LOSS_SAMPLE = LossContent.of(CatalogueFixture.nintendo64Lost.resultState())
     }
 }

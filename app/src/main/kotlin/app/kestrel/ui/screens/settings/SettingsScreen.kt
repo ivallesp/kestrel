@@ -98,6 +98,9 @@ interface SettingsActions {
     /** Plays the win celebration as a preview: nothing is bid and no snipe changes. */
     fun openCelebration() {}
 
+    /** Opens the loss's preview. */
+    fun openLossPreview() {}
+
     /** "Buy me a coffee": opens the link, or says it isn't set up yet. */
     fun buyMeACoffee() {}
 
@@ -109,7 +112,7 @@ interface SettingsActions {
 }
 
 /** About's rows with "Buy me a coffee"; the build without the link has one fewer. */
-private const val ABOUT_ROWS = 6
+private const val ABOUT_ROWS = 7
 
 /** The lead times on offer (DESIGN 3.17): 3 s, 6 s and 10 s. */
 val LeadTimeChoices: List<Int> = listOf(3, 6, 10)
@@ -193,8 +196,8 @@ fun SettingsScreen(
                         ThemeRow(state, actions)
                         Gap()
                         SwitchRow(
-                            title = "Sound for a win",
-                            detail = "The celebration’s bells and kestrel calls, at media volume",
+                            title = "Sound for wins and losses",
+                            detail = "The win’s bells and calls, and the loss’s rain, at media volume",
                             checked = state.celebrationSound,
                             onCheckedChange = actions::setCelebrationSound,
                             index = 1,
@@ -229,13 +232,21 @@ fun SettingsScreen(
                             index = 1,
                             count = rows,
                         )
+                        Gap()
+                        LinkRow(
+                            title = "Watch the loss",
+                            detail = "What plays the first time you open a loss. Nothing is bid.",
+                            onClick = actions::openLossPreview,
+                            index = 2,
+                            count = rows,
+                        )
                         if (state.coffee) {
                             Gap()
                             LinkRow(
                                 title = "Buy me a coffee",
                                 detail = "Kestrel has no ads and no fees. Opens ${CoffeeLink.SHOWN}.",
                                 onClick = actions::buyMeACoffee,
-                                index = 2,
+                                index = 3,
                                 count = rows,
                             )
                         }
@@ -244,7 +255,7 @@ fun SettingsScreen(
                             title = "Send a problem report",
                             detail = "Recent freezes and crashes, to share in a message",
                             onClick = actions::sendProblemReport,
-                            index = 2 + coffee,
+                            index = 3 + coffee,
                             count = rows,
                         )
                         Gap()
@@ -254,7 +265,7 @@ fun SettingsScreen(
                                 "Your snipes and your eBay session stay on this phone. " +
                                     "Opens ${PrivacyPolicy.SHOWN}.",
                             onClick = actions::openPrivacyPolicy,
-                            index = 3 + coffee,
+                            index = 4 + coffee,
                             count = rows,
                         )
                         Gap()
@@ -262,7 +273,7 @@ fun SettingsScreen(
                             title = "Licences",
                             detail = "Fonts and open-source software",
                             onClick = { actions.openSheet(SettingsSheet.Licences) },
-                            index = 4 + coffee,
+                            index = 5 + coffee,
                             count = rows,
                         )
                     }

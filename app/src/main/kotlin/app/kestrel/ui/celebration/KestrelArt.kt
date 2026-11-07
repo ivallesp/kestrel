@@ -7,6 +7,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.drawscope.withTransform
@@ -61,6 +62,8 @@ internal data class BirdPose(
     val headTurn: Float = 0f,
     val fold: Float = 0f,
     val farWingAngle: Float? = null,
+    /** How far the upper eyelid has come down, from 0 (wide awake) to 1 (a heavy, sad lid over half the eye). */
+    val eyelid: Float = 0f,
 ) {
     /** Turning, the bird narrows to a sliver and comes back the other way, never to nothing. */
     val drawnFacing: Float get() = if (facing < 0f) minOf(facing, -MIN_FACING) else maxOf(facing, MIN_FACING)
@@ -271,9 +274,41 @@ private fun DrawScope.drawHead(pose: BirdPose) {
         drawCircle(Plumage.amber, radius = 2.55f, center = KestrelShape.Eye)
         drawCircle(Plumage.iris, radius = 1.95f, center = KestrelShape.Eye)
         drawCircle(Color.White, radius = 0.62f, center = KestrelShape.Eye + Offset(0.7f, -0.7f))
+        if (pose.eyelid > 0f) drawEyelid(pose.eyelid)
         drawPath(KestrelShape.Beak, Plumage.beak)
         drawCircle(Plumage.amber, radius = 1.35f, center = Offset(32.3f, -17.7f))
     }
+}
+
+/** The upper eyelid, in the head's colour, down over [amount] of half the eye, with a dark edge. */
+private fun DrawScope.drawEyelid(amount: Float) {
+    val radius = 2.7f
+    val eye =
+        Path().apply {
+            addOval(
+                androidx.compose.ui.geometry
+                    .Rect(KestrelShape.Eye, radius),
+            )
+        }
+    val edge = KestrelShape.Eye.y - radius + 2f * radius * 0.55f * amount.coerceIn(0f, 1f)
+    clipPath(eye) {
+        drawRect(
+            Plumage.head,
+            topLeft = KestrelShape.Eye - Offset(radius, radius),
+            size =
+                Size(
+                    2f * radius,
+                    edge - (KestrelShape.Eye.y - radius),
+                ),
+        )
+    }
+    drawLine(
+        Plumage.iris,
+        Offset(KestrelShape.Eye.x - radius * 0.9f, edge),
+        Offset(KestrelShape.Eye.x + radius * 0.9f, edge),
+        strokeWidth = 0.45f,
+        cap = StrokeCap.Round,
+    )
 }
 
 /**

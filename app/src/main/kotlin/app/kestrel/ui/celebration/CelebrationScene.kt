@@ -681,38 +681,44 @@ private fun DrawScope.drawFeathers(
     layout: SceneLayout,
     t: Long,
 ) {
-    val u = layout.unit
-    for (feather in layout.feathers) {
-        val (position, turn) = feather.at(t) ?: continue
-        val body = if (feather.blue) Plumage.tail else Plumage.back
-        rotate(turn, position) {
-            val length = 6.5f * u
-            val width = 2.6f * u
-            val path =
-                Path().apply {
-                    moveTo(position.x, position.y - length)
-                    quadraticTo(position.x + width, position.y - length * 0.1f, position.x, position.y + length)
-                    quadraticTo(position.x - width, position.y - length * 0.1f, position.x, position.y - length)
-                    close()
-                }
-            drawPath(path, body)
-            // A dark bar across, as on a kestrel's wing and tail feathers, and the shaft.
-            val bar = Offset(1.7f * u, 0f)
-            drawLine(
-                Plumage.spots,
-                position + Offset(0f, 2.6f * u) - bar,
-                position + Offset(0f, 2.6f * u) + bar,
-                strokeWidth =
-                    1.1f * u,
-            )
-            drawLine(
-                body.darken(0.65f),
-                position - Offset(0f, length),
-                position + Offset(0f, length),
-                strokeWidth =
-                    0.4f * u,
-            )
-        }
+    for (feather in layout.feathers) drawFeather(feather, t, layout.unit)
+}
+
+/** One feather as it falls at [t], or nothing before it comes loose. */
+internal fun DrawScope.drawFeather(
+    feather: Feather,
+    t: Long,
+    u: Float,
+) {
+    val (position, turn) = feather.at(t) ?: return
+    val body = if (feather.blue) Plumage.tail else Plumage.back
+    rotate(turn, position) {
+        val length = 6.5f * u
+        val width = 2.6f * u
+        val path =
+            Path().apply {
+                moveTo(position.x, position.y - length)
+                quadraticTo(position.x + width, position.y - length * 0.1f, position.x, position.y + length)
+                quadraticTo(position.x - width, position.y - length * 0.1f, position.x, position.y - length)
+                close()
+            }
+        drawPath(path, body)
+        // A dark bar across, as on a kestrel's wing and tail feathers, and the shaft.
+        val bar = Offset(1.7f * u, 0f)
+        drawLine(
+            Plumage.spots,
+            position + Offset(0f, 2.6f * u) - bar,
+            position + Offset(0f, 2.6f * u) + bar,
+            strokeWidth =
+                1.1f * u,
+        )
+        drawLine(
+            body.darken(0.65f),
+            position - Offset(0f, length),
+            position + Offset(0f, length),
+            strokeWidth =
+                0.4f * u,
+        )
     }
 }
 
@@ -749,7 +755,7 @@ private inline fun DrawScope.withTransformScale(
     block: DrawScope.() -> Unit,
 ) = scale(scale, scale, pivot, block)
 
-private fun DrawScope.drawSun(
+internal fun DrawScope.drawSun(
     layout: SceneLayout,
     palette: ScenePalette,
     rise: Float,
@@ -769,7 +775,7 @@ private fun DrawScope.drawSun(
     drawCircle(palette.sun, radius = radius, center = centre)
 }
 
-private fun DrawScope.drawClouds(
+internal fun DrawScope.drawClouds(
     layout: SceneLayout,
     palette: ScenePalette,
     t: Long,
@@ -779,7 +785,7 @@ private fun DrawScope.drawClouds(
     cloud(Offset(size.width * 0.86f - drift * 0.7f, size.height * 0.36f), size.width * 0.26f, palette.cloud)
 }
 
-private fun DrawScope.cloud(
+internal fun DrawScope.cloud(
     centre: Offset,
     width: Float,
     colour: Color,
@@ -793,7 +799,7 @@ private fun DrawScope.cloud(
     )
 }
 
-private fun DrawScope.drawWind(
+internal fun DrawScope.drawWind(
     layout: SceneLayout,
     palette: ScenePalette,
     t: Long,
@@ -821,7 +827,7 @@ private fun DrawScope.drawWind(
     }
 }
 
-private fun DrawScope.drawFarHills(
+internal fun DrawScope.drawFarHills(
     layout: SceneLayout,
     palette: ScenePalette,
 ) {
@@ -839,7 +845,7 @@ private fun DrawScope.drawFarHills(
     drawPath(path, palette.farHills)
 }
 
-private fun DrawScope.drawMidHills(
+internal fun DrawScope.drawMidHills(
     layout: SceneLayout,
     palette: ScenePalette,
 ) {
@@ -862,7 +868,7 @@ private fun DrawScope.drawMidHills(
     drawPath(path, palette.midHills)
 }
 
-private fun DrawScope.drawFence(
+internal fun DrawScope.drawFence(
     layout: SceneLayout,
     palette: ScenePalette,
 ) {
@@ -906,7 +912,7 @@ private fun DrawScope.drawFence(
     }
 }
 
-private fun DrawScope.drawMeadow(
+internal fun DrawScope.drawMeadow(
     layout: SceneLayout,
     palette: ScenePalette,
 ) {
@@ -924,7 +930,7 @@ private fun DrawScope.drawMeadow(
     drawPath(path, Brush.verticalGradient(0f to palette.meadow, 1f to palette.meadowShade, startY = h * 0.8f, endY = h))
 }
 
-private fun DrawScope.drawGrass(
+internal fun DrawScope.drawGrass(
     layout: SceneLayout,
     palette: ScenePalette,
     t: Long,
@@ -946,7 +952,7 @@ private fun DrawScope.drawGrass(
     }
 }
 
-private fun DrawScope.drawTag(
+internal fun DrawScope.drawTag(
     tag: TagState,
     layout: SceneLayout,
     palette: ScenePalette,
@@ -1021,7 +1027,7 @@ private fun DrawScope.tagShape(
     drawText(text, color = palette.tagText, topLeft = textTopLeft)
 }
 
-private fun DrawScope.drawSpeedLines(
+internal fun DrawScope.drawSpeedLines(
     layout: SceneLayout,
     t: Long,
 ) {
@@ -1044,7 +1050,7 @@ private fun DrawScope.drawSpeedLines(
     }
 }
 
-private fun DrawScope.drawStrikePuff(
+internal fun DrawScope.drawStrikePuff(
     layout: SceneLayout,
     palette: ScenePalette,
     t: Long,

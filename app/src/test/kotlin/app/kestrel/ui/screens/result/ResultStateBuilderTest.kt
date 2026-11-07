@@ -1,6 +1,7 @@
 package app.kestrel.ui.screens.result
 
 import app.kestrel.ui.fixture.CatalogueFixture
+import app.kestrel.ui.fixture.LotMoment
 import app.kestrel.ui.format.NO_BREAK_SPACE
 import app.kestrel.ui.model.LotAction
 import app.kestrel.ui.screens.lot.LotFixtures
@@ -159,5 +160,43 @@ class ResultStateBuilderTest {
     fun theSealStampsOnlyWhenAskedAndOnlyForAWin() {
         assertFalse(fixture.canonWon.resultState(stampSeal = false).stampSeal)
         assertFalse(fixture.nintendo64Lost.resultState(stampSeal = true).stampSeal)
+    }
+
+    @Test
+    fun theLossPlaysOnTheFirstOpenOfAConfirmedLossOnly() {
+        assertTrue(fixture.nintendo64Lost.resultState(stampSeal = true).mourn)
+        assertFalse(fixture.nintendo64Lost.resultState(stampSeal = false).mourn)
+        assertFalse("a win is not mourned", fixture.canonWon.resultState(stampSeal = true).mourn)
+    }
+
+    @Test
+    fun aResultFirstOpenedMoreThanAWeekAfterItsEndPlaysNoScene() {
+        val week = ResultStateBuilder.SCENE_FRESH_FOR
+
+        fun LotMoment.later(by: java.time.Duration) = copy(now = now + by)
+        assertTrue(
+            fixture.nintendo64Lost
+                .later(week.minusMinutes(5))
+                .resultState(stampSeal = true)
+                .mourn,
+        )
+        assertFalse(
+            fixture.nintendo64Lost
+                .later(week.plusHours(2))
+                .resultState(stampSeal = true)
+                .mourn,
+        )
+        assertTrue(
+            fixture.canonWon
+                .later(week.minusMinutes(5))
+                .resultState(stampSeal = true)
+                .stampSeal,
+        )
+        assertFalse(
+            fixture.canonWon
+                .later(week.plusHours(2))
+                .resultState(stampSeal = true)
+                .stampSeal,
+        )
     }
 }

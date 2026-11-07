@@ -325,7 +325,9 @@ class WinCelebrationTest {
                 }
             }
         }
-        assertTrue(composeRule.onAllNodesWithText("See the receipt").fetchSemanticsNodes().isEmpty())
+        // It plays the loss instead (LossSceneTest), never the win.
+        assertTrue(composeRule.onAllNodesWithText("YOU WON").fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithText("YOU LOST").assertExists()
     }
 
     @Test
@@ -387,7 +389,7 @@ class WinCelebrationTest {
         var chirps = 0
         var releases = 0
 
-        override fun play() {
+        override fun play(track: SceneTrack) {
             plays++
         }
 

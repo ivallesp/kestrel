@@ -9,13 +9,24 @@ import android.media.SoundPool
 import androidx.compose.runtime.staticCompositionLocalOf
 import app.kestrel.R
 
+/** The scenes' tracks, each timed to its scene and made by a script in tools/sound. */
+enum class SceneTrack(
+    val raw: Int,
+) {
+    /** The win: wind, the stoop, the strike, the bells, the "kee-kee-kee" and the meadow's plucks. */
+    Win(R.raw.celebration),
+
+    /** The loss: wind, the stoop, the empty strike and the gust, a falling phrase, the rain and one low "kee". */
+    Loss(R.raw.loss),
+}
+
 /**
- * The win celebration's sound: one track (res/raw/celebration.wav, made by tools/sound/celebration_sound.py) timed to
- * the scene, from the wind and the stoop to the strike, the bells, the "kee-kee-kee" and the meadow's plucks.
+ * The sound of the win celebration and of the loss: one track at a time (res/raw/celebration.wav, made by
+ * tools/sound/celebration_sound.py, and res/raw/loss.wav, made by tools/sound/loss_sound.py), timed to its scene.
  */
 interface CelebrationSound {
-    /** Starts the track from the beginning. */
-    fun play()
+    /** Starts [track] from the beginning. */
+    fun play(track: SceneTrack = SceneTrack.Win)
 
     /** Stops it at once (skipped, closed or played again) and lets go of the player. */
     fun stop()
@@ -64,11 +75,11 @@ class AndroidCelebrationSound(
             .build()
     private val chirpSound: Int = pool.load(this.context, R.raw.kestrel_chirp, 1)
 
-    override fun play() {
+    override fun play(track: SceneTrack) {
         stop()
         val session = audio?.generateAudioSessionId() ?: AudioManager.AUDIO_SESSION_ID_GENERATE
         val made =
-            runCatching { MediaPlayer.create(context, R.raw.celebration, attributes, session) }.getOrNull() ?: return
+            runCatching { MediaPlayer.create(context, track.raw, attributes, session) }.getOrNull() ?: return
         player = made
         audio?.requestAudioFocus(focus)
         made.setOnCompletionListener { stop() }
