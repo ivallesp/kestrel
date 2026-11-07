@@ -49,8 +49,8 @@ android {
         applicationId = "app.kestrel"
         minSdk = 36
         targetSdk = 37
-        versionCode = 14
-        versionName = "1.0.13"
+        versionCode = 15
+        versionName = "1.0.14"
         buildConfigField("String", "DISTRIBUTION", "\"GITHUB\"")
     }
 

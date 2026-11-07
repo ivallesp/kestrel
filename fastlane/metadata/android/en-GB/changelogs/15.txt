@@ -1,0 +1,1 @@
+When you lose an auction, a short, sad scene plays the first time you open the result: the kestrel misses and waits out the rain. With several results at once, each plays its own scene once. The lock-screen countdown no longer runs below zero.
