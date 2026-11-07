@@ -1,0 +1,125 @@
+name: Google Play
+
+# A published GitHub release builds the Google Play bundle from its tag, checks it and uploads it to a Play testing
+# track. Production is never touched here: promoting a tested build to production is a manual step in Play Console.
+# Setup and the secrets this needs: docs/play/README.md.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build, for example v1.0.13
+        required: true
+      track:
+        description: Play testing track (internal, or alpha for closed testing)
+        type: choice
+        options: [internal, alpha]
+        default: internal
+      upload:
+        description: Upload to Google Play (off builds and checks the bundle only)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: google-play-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  bundle:
+    name: Build, check and upload the Play bundle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    # Its secrets are only given to runs from main or a v* tag.
+    environment: google-play
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      # Releases go to the PLAY_TRACK repository variable (internal by default); alpha is closed testing.
+      TRACK: ${{ github.event_name == 'release' && (vars.PLAY_TRACK || 'internal') || inputs.track }}
+      UPLOAD: ${{ github.event_name == 'release' || inputs.upload }}
+      HAS_PLAY_ACCOUNT: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
+    steps:
+      - name: Refuse anything but a testing track
+        run: |
+          case "$TRACK" in
+            internal | alpha | beta) echo "Track: $TRACK" ;;
+            *) echo "::error::Only Play testing tracks are allowed here; '$TRACK' was refused." && exit 1 ;;
+          esac
+          case "$TAG" in
+            v[0-9]*) ;;
+            *) echo "::error::'$TAG' is not a release tag such as v1.0.13." && exit 1 ;;
+          esac
+
+      - name: Check out the release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install the Android SDK packages
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-37.2" "build-tools;37.0.0" > /dev/null
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          # Nothing from a signing build is cached for other runs.
+          cache-disabled: true
+
+      - name: Build the bundle
+        env:
+          KESTREL_UPLOAD_KEYSTORE_BASE64: ${{ secrets.KESTREL_UPLOAD_KEYSTORE_BASE64 }}
+          KESTREL_UPLOAD_STORE_PASSWORD: ${{ secrets.KESTREL_UPLOAD_STORE_PASSWORD }}
+          KESTREL_UPLOAD_KEY_ALIAS: ${{ secrets.KESTREL_UPLOAD_KEY_ALIAS }}
+          KESTREL_UPLOAD_KEY_PASSWORD: ${{ secrets.KESTREL_UPLOAD_KEY_PASSWORD }}
+        run: |
+          export KESTREL_UPLOAD_STORE_FILE="$RUNNER_TEMP/upload.jks"
+          printf '%s' "$KESTREL_UPLOAD_KEYSTORE_BASE64" | base64 --decode > "$KESTREL_UPLOAD_STORE_FILE"
+          ./gradlew --no-configuration-cache --no-build-cache bundlePlay
+          rm -f "$KESTREL_UPLOAD_STORE_FILE"
+
+      - name: Check the bundle
+        run: tools/play/check-bundle.sh app/build/outputs/bundle/play/app-play.aab "${TAG#v}"
+
+      - name: Keep the bundle with the run
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: kestrel-play-${{ env.TAG }}
+          path: app/build/outputs/bundle/play/app-play.aab
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Write the Play release notes
+        if: env.UPLOAD == 'true' && env.HAS_PLAY_ACCOUNT == 'true'
+        run: |
+          code="$(sed -n 's/.*versionCode = \([0-9]*\).*/\1/p' app/build.gradle.kts | head -1)"
+          notes="fastlane/metadata/android/en-GB/changelogs/$code.txt"
+          mkdir -p "$RUNNER_TEMP/whatsnew"
+          if [ -f "$notes" ]; then
+            head -c 500 "$notes" > "$RUNNER_TEMP/whatsnew/whatsnew-en-GB"
+          else
+            echo "Kestrel ${TAG#v}" > "$RUNNER_TEMP/whatsnew/whatsnew-en-GB"
+          fi
+
+      - name: Upload to Google Play
+        if: env.UPLOAD == 'true' && env.HAS_PLAY_ACCOUNT == 'true'
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: app.kestrel
+          releaseFiles: app/build/outputs/bundle/play/app-play.aab
+          tracks: ${{ env.TRACK }}
+          status: completed
+          whatsNewDirectory: ${{ runner.temp }}/whatsnew
+
+      - name: Say why nothing was uploaded
+        if: env.UPLOAD == 'true' && env.HAS_PLAY_ACCOUNT != 'true'
+        run: echo "::notice::There is no PLAY_SERVICE_ACCOUNT_JSON secret yet, so the bundle was built and checked but not uploaded."

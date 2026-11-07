@@ -1,0 +1,22 @@
+Kestrel bids your maximum on an eBay auction a few seconds before it ends, from your own phone and through your own eBay session. There is no server, no account to create, no ads and no fees.
+
+How it works
+• Share a listing from the eBay app, or paste its link, and set your maximum.
+• About ten minutes before the end, Kestrel does a dry run. It opens eBay's bid panel, types your maximum and stops without bidding, so a sign-in or verification problem shows up while you can still fix it.
+• A few seconds before the end (6 seconds by default, 3 to 10 if you prefer), it submits your maximum once. eBay's proxy bidding means you pay one step above the next bidder, never more than your maximum.
+• It follows the auction to its real end, including extended bidding, then tells you Won or Lost in eBay's own words, with a timeline of what happened.
+• If the price passes your maximum before the end, a notification lets you raise it.
+• Put lots in a group, such as two cameras when you want only one, and Kestrel stops bidding on the others once it wins.
+
+What it never does
+• Bid above your maximum, change it by itself, buy anything or pay for anything.
+• Press eBay's bid button more than once per snipe.
+• Solve a captcha or a verification step. It stops and hands eBay's page to you.
+• Send your data anywhere. Your snipes and your eBay session stay on your phone.
+
+Good to know
+• Your phone does the bidding, so it must be on, online and charged when the auction ends. Kestrel's checklist tells you when something is at risk, and asks you once to allow exact alarms.
+• Kestrel signs in on ebay.co.uk and opens every listing there. The bid is in the listing's currency.
+• Kestrel is free software under the GNU GPL. Its code is at github.com/ivallesp/kestrel.
+
+Kestrel is not made by, affiliated with or endorsed by eBay. eBay's help pages say that bid sniping, including software that places bids for you, is allowed. You are responsible for your bids.

@@ -16,6 +16,8 @@ A change that breaks one of these will not be merged, whatever else it improves.
    requests, never changes its user agent and never calls eBay from outside the WebView.
 5. Captchas and verification steps go to the user. Kestrel never tries to solve or get around them.
 6. Nothing leaves the phone: no server, no analytics, no ads and no third-party calls except the clock check.
+7. The Google Play build stays within Play's policies: no `USE_EXACT_ALARM`, no direct battery exemption request and
+   no link to a payment page (`Distribution.PLAY`, `app/src/play/AndroidManifest.xml`).
 
 ## Set up
 
@@ -34,6 +36,10 @@ Run all of these before you open a pull request:
 ./gradlew lintDebug                        # Android lint: add no new warnings
 (cd tools/jstest && npm ci && npm test)    # tests of the page helper (assets/js/kestrel.js) in jsdom
 ```
+
+A change to permissions, the manifest or anything Play reviews also needs the Play build to pass:
+`./gradlew bundlePlay`, then `KESTREL_ALLOW_UNSIGNED=1 tools/play/check-bundle.sh
+app/build/outputs/bundle/play/app-play.aab <versionName>` (without the upload key the bundle is unsigned).
 
 ## Tests never touch eBay
 

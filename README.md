@@ -51,6 +51,9 @@ Kestrel needs Android 16 or later. It is built and tested on a Pixel 9a with And
 3. Open the APK on the phone (or run `adb install -r Kestrel-<version>.apk`) and allow installs from that source when
    Android asks. Updates install over the previous version and keep your snipes.
 
+Kestrel is not on Google Play yet. The Google Play build and the steps to publish it are in
+[docs/play/README.md](docs/play/README.md).
+
 ## First run
 
 1. **Sign in to eBay** on eBay's own page inside the app, with your email or username and your eBay password.
@@ -82,6 +85,7 @@ Node.js 22.13 or later. The build and the tests run on Linux.
 ./gradlew assembleDebug                    # app/build/outputs/apk/debug/app-debug.apk
 ./gradlew testDebugUnitTest                # JVM tests: parsing, engine, platform and UI screenshots
 (cd tools/jstest && npm ci && npm test)    # tests of the page helper against archived eBay pages
+./gradlew bundlePlay                       # the Google Play bundle (see docs/play/README.md)
 ```
 
 `./gradlew assembleRelease` signs the APK only when `../kestrel-signing/signing.properties` exists next to the
@@ -101,7 +105,10 @@ app/src/main/kotlin/app/kestrel/
 app/src/main/assets/js/kestrel.js   the page helper that reads and drives eBay's page
 tools/jstest/                       jsdom tests of the page helper
 tools/sound/                        scripts that synthesise the win sounds
-docs/                               architecture, design and research
+tools/play/                         the Play bundle check and the store images
+fastlane/metadata/android/          the Google Play store listing
+.github/workflows/google-play.yml   a GitHub release uploads the Play bundle to a testing track
+docs/                               architecture, design, research and Google Play
 ```
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how a snipe runs and the safety rules behind it.
